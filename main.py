@@ -3238,7 +3238,7 @@ async def open_parent_cabinet(call: types.CallbackQuery, state: FSMContext):
     if len(children) < MAX_CHILDREN:
         rows.append([btn("➕ Yana farzand ulash", "reg_enter_code")])
     if MINIAPP_URL:
-        parent_app = miniapp_role_url("parent")
+        parent_app = miniapp_role_url("parent") + f"&child_id={s_id}"
         rows.append([InlineKeyboardButton(text="💳 To‘lov qilish", web_app=WebAppInfo(url=parent_app))])
         rows.append([InlineKeyboardButton(text="📱 Ota-ona ilovasini ochish", web_app=WebAppInfo(url=parent_app))])
     rows.extend([
