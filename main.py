@@ -3203,7 +3203,7 @@ async def sa_verify_view(call: types.CallbackQuery):
         await call.answer("O‘qituvchi topilmadi.", show_alert=True)
         return
     await call.answer()
-    caption = f"🪪 **{md(teacher_name(t))}**\n📞 {t['phone']}\nHolat: {VERIFY_TEXT.get(t['verify_status'], '—')}"
+    caption = f"🪪 **{md(teacher_name(t))}**\n📞 {t['phone']}\nHolat: {VERIFY_TEXT.get(t['verify_status'] if t.get('admin_approved') else 'admin_pending', '—')}"
     markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
     if t["doc_file_id"]:
         await call.message.answer_photo(t["doc_file_id"], caption=caption, reply_markup=markup, parse_mode="Markdown")
