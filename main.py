@@ -551,24 +551,39 @@ def teacher_payment_method(teacher_id):
 
 
 def db_parent_student_ids(parent_chat_id):
-    # Ota-ona kirishi farzandining o'qituvchisi tasdig'i VA tarifidagi mini_app huquqiga bog'liq.
-    rows = run("""SELECT pc.student_id, t.id, t.active, t.verify_status, t.admin_approved
+    """Telegram ota-ona kabineti uchun tasdiqlangan o'qituvchiga bog'langan farzandlar."""
+    rows = run("""SELECT pc.student_id, t.active, t.verify_status, t.admin_approved
         FROM parent_children pc
         JOIN students s ON s.id = pc.student_id
         JOIN teachers t ON t.id = s.teacher_id
         WHERE pc.parent_chat_id = ?""", (parent_chat_id,), fetch="all")
+    return {sid for sid, active, verify_status, admin_approved in rows
+            if active and verify_status == "approved" and admin_approved}
+
+
+def db_parent_miniapp_student_ids(parent_chat_id):
+    """Mini ilova uchun ota-ona farzandlari: tasdiq + o'qituvchi tarifida mini_app."""
     allowed = set()
-    for student_id, teacher_id, active, verify_status, admin_approved in rows:
-        teacher = db_teacher(teacher_id)
-        if (teacher and active and verify_status == "approved" and admin_approved
-                and has_feature(teacher, "mini_app")):
-            allowed.add(student_id)
+    for sid in db_parent_student_ids(parent_chat_id):
+        st = db_student(sid)
+        teacher = db_teacher(st["teacher_id"]) if st else None
+        if teacher and has_feature(teacher, "mini_app"):
+            allowed.add(sid)
     return allowed
 
 
 def db_parent_children(parent_chat_id):
     items = []
     for sid in db_parent_student_ids(parent_chat_id):
+        st = db_student(sid)
+        if st:
+            items.append((sid, st))
+    return sorted(items, key=lambda x: x[1]["fio"])
+
+
+def db_parent_miniapp_children(parent_chat_id):
+    items = []
+    for sid in db_parent_miniapp_student_ids(parent_chat_id):
         st = db_student(sid)
         if st:
             items.append((sid, st))
@@ -3895,7 +3910,7 @@ def miniapp_identity(request):
     t = teacher_by_chat(uid)
     row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
     st = db_student(row[0]) if row else None
-    parent_ids = db_parent_student_ids(uid)
+    parent_ids = db_parent_miniapp_student_ids(uid)
     if not requested_role:
         roles = (["teacher"] if t else []) + (["student"] if st else []) + (["parent"] if parent_ids else [])
         if len(roles) > 1:
@@ -3933,7 +3948,7 @@ async def api_me(request):
                                   "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])]})
     if kind == "parent":
         children = [{"id": sid, "fio": child["fio"], "group_name": child["group_name"]}
-                    for sid, child in db_parent_children(obj)]
+                    for sid, child in db_parent_miniapp_children(obj)]
         return web.json_response({"role": "parent", "parent": {"children": children}})
     teacher = db_teacher(obj["teacher_id"])
     subj = db_subject(obj["subject_id"])
@@ -3969,7 +3984,7 @@ async def api_parent_overview(request):
     if err or kind != "parent":
         return err or web.json_response({"error": "forbidden"}, status=403)
     children = []
-    for sid, st in db_parent_children(parent_id):
+    for sid, st in db_parent_miniapp_children(parent_id):
         subj = db_subject(st["subject_id"])
         classmates = list(db_students(st["teacher_id"], st["subject_id"]).values())
         ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
@@ -4029,7 +4044,7 @@ async def api_parent_payment(request):
         sid = int(fields.get("student_id"))
     except (TypeError, ValueError):
         return web.json_response({"error": "bad"}, status=400)
-    if sid not in db_parent_student_ids(parent_id):
+    if sid not in db_parent_miniapp_student_ids(parent_id):
         return web.json_response({"error": "forbidden"}, status=403)
     st = db_student(sid)
     if not st or st["payment_amount"] <= 0:
