@@ -1137,7 +1137,6 @@ async def faq_menu(call: types.CallbackQuery):
         "9. **To‘lovni kim tasdiqlaydi?**\n   _Chek rasmi o‘qituvchiga yuboriladi. U tasdiqlaydi yoki rad etadi._\n\n"
         "10. **Yordamni qayerdan olaman?**\n   _Ilovadagi “Yordam” tugmasi orqali administrator bilan bog‘laning._"
     )
-    )
     await call.message.edit_text(text, reply_markup=kb([[btn("⬅️ Orqaga", "back_home")]]), parse_mode="Markdown")
 
 
