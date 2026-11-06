@@ -98,7 +98,7 @@ def run(sql, params=(), fetch="none"):
         cur = conn.cursor()
         cur.execute("SET search_path TO neuron_bot, public")
         query = sql.strip()
-        pragma = re.match(r"PRAGMA\\s+table_info\\(([^)]+)\\)", query, re.I)
+        pragma = re.match(r"PRAGMA\s+table_info\(([^)]+)\\)", query, re.I)
         if pragma:
             table_name = pragma.group(1).strip().strip('"').strip("'")
             cur.execute("""
@@ -111,9 +111,9 @@ def run(sql, params=(), fetch="none"):
             """, (table_name,))
         else:
             query = query.replace("?", "%s")
-            query = re.sub(r"INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT", "BIGSERIAL PRIMARY KEY", query, flags=re.I)
-            query = re.sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", query, flags=re.I)
-            query = re.sub(r"INSERT\\s+OR\\s+REPLACE\\s+INTO", "INSERT INTO", query, flags=re.I)
+            query = re.sub(r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT", "BIGSERIAL PRIMARY KEY", query, flags=re.I)
+            query = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", query, flags=re.I)
+            query = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", query, flags=re.I)
             if "INSERT INTO settings (key, value)" in query:
                 query += " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
             elif "INSERT INTO student_links (chat_id, student_id)" in query:
