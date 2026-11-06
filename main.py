@@ -1264,7 +1264,10 @@ async def t_reg_doc_fallback(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "tp_verify")
 async def tp_verify(call: types.CallbackQuery, state: FSMContext):
-    t = _me(call)
+    t = teacher_by_chat(call.from_user.id)
+    if not t:
+        await call.answer("O‘qituvchi hisobi topilmadi.", show_alert=True)
+        return
     status = t["verify_status"]
     if status == "approved" and t.get("admin_approved"):
         await call.answer("✅ Hisobingiz Super Admin tomonidan tasdiqlangan.", show_alert=True)
@@ -1332,14 +1335,19 @@ async def check_teacher_code(message: types.Message, state: FSMContext):
 
 # --- O'qituvchi paneli ---
 def _me(obj):
-    return teacher_by_chat(obj.from_user.id)
+    t = teacher_by_chat(obj.from_user.id)
+    return t if t and t.get("admin_approved") and t.get("verify_status") == "approved" else None
 
 
 @dp.callback_query(F.data == "tp_menu")
 async def tp_menu(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.clear()
-    await call.message.edit_text(teacher_panel_text(_me(call)), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
+    t = teacher_by_chat(call.from_user.id)
+    if not t:
+        await call.message.edit_text("O‘qituvchi hisobi topilmadi.", reply_markup=main_menu_kb())
+        return
+    await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data == "tp_subjects")
