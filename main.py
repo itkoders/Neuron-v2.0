@@ -93,7 +93,10 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS plans (
         key TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0,
         student_limit INTEGER DEFAULT 0, duration_days INTEGER DEFAULT 0,
-        features TEXT DEFAULT '', active INTEGER DEFAULT 1)""")
+        features TEXT DEFAULT '', active INTEGER DEFAULT 1, subject_limit INTEGER DEFAULT 0)""")
+    plan_columns = {r[1] for r in run("PRAGMA table_info(plans)", fetch="all")}
+    if "subject_limit" not in plan_columns:
+        run("ALTER TABLE plans ADD COLUMN subject_limit INTEGER DEFAULT 0")
     run("""CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER UNIQUE,
@@ -244,10 +247,10 @@ def _plan(row):
     if not row:
         return None
     return {"key": row[0], "name": row[1], "price": row[2], "student_limit": row[3],
-            "duration_days": row[4], "features": set(filter(None, (row[5] or "").split(","))), "active": row[6]}
+            "duration_days": row[4], "features": set(filter(None, (row[5] or "").split(","))), "active": row[6], "subject_limit": row[7]}
 
 
-PLAN_COLS = "key, name, price, student_limit, duration_days, features, active"
+PLAN_COLS = "key, name, price, student_limit, duration_days, features, active, subject_limit"
 
 
 def db_plan(key):
@@ -259,7 +262,7 @@ def db_plans():
 
 
 def save_plan_field(key, field, value):
-    if field not in {"name", "price", "student_limit", "duration_days"}:
+    if field not in {"name", "price", "student_limit", "subject_limit", "duration_days"}:
         raise ValueError("bad field")
     run(f"UPDATE plans SET {field} = ? WHERE key = ?", (value, key))
 
@@ -316,6 +319,15 @@ def db_all_teachers():
 
 def teacher_student_count(tid):
     return run("SELECT COUNT(*) FROM students WHERE teacher_id = ?", (tid,), fetch="one")[0]
+
+
+def teacher_subject_count(tid):
+    return run("SELECT COUNT(*) FROM subjects WHERE teacher_id = ?", (tid,), fetch="one")[0]
+
+
+def teacher_subject_limit_reached(t):
+    p, _ = effective_plan(t)
+    return bool(p.get("subject_limit", 0)) and teacher_subject_count(t["id"]) >= p["subject_limit"]
 
 
 def teacher_name(t):
@@ -683,7 +695,8 @@ def plan_line(t):
     if expired_now:
         until = f"muddati tugagan ({t['plan_expires']})"
     limit = p["student_limit"] or "cheksiz"
-    return p, f"📦 Tarif: **{p['name']}** — {teacher_student_count(t['id'])}/{limit} o'quvchi\n📅 Muddat: {until}"
+    subject_limit = p.get("subject_limit", 0) or "cheksiz"
+    return p, f"📦 Tarif: **{p['name']}** — {teacher_student_count(t['id'])}/{limit} o'quvchi\n📚 Fanlar: {teacher_subject_count(t['id'])}/{subject_limit}\n📅 Muddat: {until}"
 
 
 def teacher_panel_text(t):
@@ -699,6 +712,7 @@ def teacher_panel_kb():
         [btn("📅 Taqvim", "tp_cal"), btn("📝 Eslatmalar", "tp_notes")],
         [btn("📊 Dashboard", "tp_dash"), btn("👁 Kirganlar", "tp_logs")],
         [btn("📢 E'lon yuborish", "tp_bcast"), btn("📢 Kanalni sozlash", "tp_chan")],
+        [btn("📊 Kunlik hisobotni kanalga", "tp_post"), btn("🏆 Reytingni kanalga", "tp_post_lb")],
         [btn("⏰ Rejalashtirilgan e'lon", "tp_sbc")],
         [btn("🤖 AI tutor", "tp_ai")],
         [btn("🪪 Tasdiqlash holati", "tp_verify")],
@@ -786,6 +800,7 @@ async def notify_parents_of(student_id, text):
 # ============================================================
 # Callback prefiksi -> talab qilinadigan tarif imkoniyati
 FEATURE_RULES = [
+    (("tp_post_lb",), "reports"),
     (("tp_pay", "tp_list_pay"), "payments"),
     (("tp_att", "tp_list_att"), "attendance"),
     (("tp_sc", "tp_list_sc"), "scores"),
@@ -839,6 +854,8 @@ SUB_CACHE = {}  # uid -> (obuna_bormi, vaqt); 60 soniya keshlanadi
 async def is_subscribed(uid):
     if db_get_setting("mandatory_sub") != "1" or is_super(uid):
         return True
+    if not bot:
+        return False
     channel = db_get_setting("required_channel")
     if not channel:
         return True
@@ -850,7 +867,7 @@ async def is_subscribed(uid):
         ok = member.status in ("member", "administrator", "creator")
     except Exception:
         logging.exception("Obunani tekshirishda xato")
-        ok = True  # kanal bilan aloqa bo'lmasa, barcha foydalanuvchilar bloklanmasin
+        ok = False  # tekshiruv xatosida obunani tasdiqlamaymiz
     SUB_CACHE[uid] = (ok, time.time())
     return ok
 
@@ -1882,6 +1899,25 @@ async def tp_channel_save(message: types.Message, state: FSMContext):
         await send_auto_clean_message(message.chat.id, teacher_panel_text(db_teacher(t["id"])), reply_markup=teacher_panel_kb(), delay=300)
 
 
+@dp.callback_query(F.data == "tp_post_lb")
+async def tp_post_leaderboard(call: types.CallbackQuery):
+    await call.answer()
+    t = _me(call)
+    if not t or not t["channel_id"]:
+        await call.answer("Avval kanalni sozlang!", show_alert=True)
+        return
+    try:
+        for subj in db_subjects(t["id"]):
+            img = create_leaderboard_image(db_students(t["id"], subj["id"]), subj["name"], subj["labels"])
+            await bot.send_photo(t["channel_id"], BufferedInputFile(img, filename="reyting.png"),
+                                 caption=f"🏆 **{md(subj['name'])} — reyting ({datetime.now().strftime('%d.%m.%Y')})**",
+                                 parse_mode="Markdown")
+        await call.message.answer("✅ Reyting rasmlari kanalga yuborildi.")
+    except Exception:
+        logging.exception("Reytingni kanalga yuborishda xato")
+        await call.message.answer("❌ Reytingni kanalga yuborib bo'lmadi. Bot kanal admini ekanini tekshiring.")
+
+
 @dp.callback_query(F.data == "tp_post")
 async def tp_post(call: types.CallbackQuery):
     await call.answer()
@@ -2487,7 +2523,8 @@ async def render_plan(call, key):
     feat_rows = [items[i:i + 2] for i in range(0, len(items), 2)]  # ikki ustunli ro'yxat
     rows = [
         [btn("✏️ Nomi", f"sa_pf_{key}_name"), btn("💰 Narx", f"sa_pf_{key}_price")],
-        [btn("👥 Limit", f"sa_pf_{key}_student_limit"), btn("📅 Kun", f"sa_pf_{key}_duration_days")],
+        [btn("👥 O'quvchi limiti", f"sa_pf_{key}_student_limit"), btn("📚 Fan limiti", f"sa_pf_{key}_subject_limit")],
+        [btn("📅 Kun", f"sa_pf_{key}_duration_days")],
         *feat_rows,
         [btn("🔴 Faolsizlantirish" if p["active"] else "🟢 Faollashtirish", f"sa_ptog_{key}")],
         [btn("⬅️ Tariflar", "sa_plans")],
@@ -2672,6 +2709,7 @@ FIELD_PROMPTS = {
     "name": ("nomini", str),
     "price": ("narxini (so'm, masalan 150000)", int),
     "student_limit": ("o'quvchi limitini (0 = cheksiz)", int),
+    "subject_limit": ("fan limitini (0 = cheksiz)", int),
     "duration_days": ("muddatini kunlarda (0 = cheksiz)", int),
 }
 
@@ -3061,6 +3099,11 @@ async def check_student_login_code(message: types.Message, state: FSMContext):
 async def student_cabinet_callback(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     s_id = (await state.get_data()).get("student_id")
+    if not s_id:
+        linked = run("SELECT student_id FROM student_links WHERE chat_id = ?", (call.from_user.id,), fetch="one")
+        s_id = linked[0] if linked else None
+        if s_id:
+            await state.update_data(student_id=s_id)
     st = db_student(s_id) if s_id else None
     if not st:
         await student_login_prompt(call, state)
