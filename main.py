@@ -195,6 +195,32 @@ def migrate_sqlite_to_neon():
             target.close()
 
 
+
+def migrate_telegram_id_columns():
+    """Telegram user/chat ID qiymatlarini PostgreSQL BIGINT ga xavfsiz kengaytiradi."""
+    if not DATABASE_URL:
+        return
+    id_columns = (
+        ("teachers", "chat_id"),
+        ("super_admins", "chat_id"),
+        ("student_links", "chat_id"),
+        ("parent_children", "parent_chat_id"),
+        ("pending_requests", "parent_chat_id"),
+        ("payment_requests", "parent_chat_id"),
+        ("audit_log", "actor"),
+    )
+    for table, column in id_columns:
+        row = run(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_schema = 'neuron_bot' AND table_name = ? AND column_name = ?",
+            (table, column), fetch="one"
+        )
+        if row and row[0] != "bigint":
+            # INTEGER -> BIGINT ma'lumotni yo'qotmaydi; mavjud indeks/cheklovlar saqlanadi.
+            run(f'ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE BIGINT')
+            logging.info("Migrated neuron_bot.%s.%s to BIGINT", table, column)
+
+
 def init_db():
     run("""CREATE TABLE IF NOT EXISTS plans (
         key TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0,
@@ -205,7 +231,7 @@ def init_db():
         run("ALTER TABLE plans ADD COLUMN subject_limit INTEGER DEFAULT 0")
     run("""CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id INTEGER UNIQUE,
+        chat_id BIGINT UNIQUE,
         first_name TEXT, last_name TEXT, phone TEXT,
         code_lookup TEXT UNIQUE,
         plan_key TEXT DEFAULT 'free',
@@ -239,7 +265,7 @@ def init_db():
         teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
         bank_name TEXT DEFAULT '', updated_at TEXT)""")
     run("""CREATE TABLE IF NOT EXISTS payment_requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id INTEGER NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id BIGINT NOT NULL,
         amount INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT DEFAULT '', status TEXT DEFAULT 'pending',
         created_at TEXT, reviewed_at TEXT DEFAULT '')""")
     run("""CREATE TABLE IF NOT EXISTS parent_children (
@@ -249,20 +275,23 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS attendance_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
-    run("CREATE TABLE IF NOT EXISTS super_admins (chat_id INTEGER PRIMARY KEY)")
+    run("CREATE TABLE IF NOT EXISTS super_admins (chat_id BIGINT PRIMARY KEY)")
     run("""CREATE TABLE IF NOT EXISTS pending_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
-        parent_chat_id INTEGER, parent_name TEXT)""")
+        parent_chat_id BIGINT, parent_name TEXT)""")
     run("CREATE TABLE IF NOT EXISTS calendar_events (id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, title TEXT, event_date TEXT)")
     run("CREATE TABLE IF NOT EXISTS admin_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, note_text TEXT)")
     run("""CREATE TABLE IF NOT EXISTS audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, actor INTEGER, action TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT, actor BIGINT, action TEXT,
         target TEXT, details TEXT, created_at TEXT)""")
     run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
     run("""CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
-    run("CREATE TABLE IF NOT EXISTS student_links (chat_id INTEGER PRIMARY KEY, student_id INTEGER)")
+    run("CREATE TABLE IF NOT EXISTS student_links (chat_id BIGINT PRIMARY KEY, student_id INTEGER)")
+
+    # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
+    migrate_telegram_id_columns()
 
     # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
     migrate_sqlite_to_neon()
