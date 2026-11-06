@@ -784,15 +784,20 @@ async def notify_teacher(t_id, text, reply_markup=None):
         try:
             await bot.send_message(t["chat_id"], text, reply_markup=reply_markup, parse_mode="Markdown")
         except Exception:
-            pass
+            logging.exception("O'qituvchiga xabar yuborilmadi: teacher_id=%s", t_id)
 
 
 async def notify_parents_of(student_id, text):
-    for p_id in db_parent_chat_ids_for_student(student_id):
+    parent_ids = list(dict.fromkeys(db_parent_chat_ids_for_student(student_id)))
+    sent, failed = [], []
+    for p_id in parent_ids:
         try:
             await bot.send_message(p_id, text, parse_mode="Markdown")
-        except Exception:
-            pass
+            sent.append(p_id)
+        except Exception as exc:
+            logging.exception("Ota-onaga xabar yuborilmadi: student_id=%s parent_chat_id=%s", student_id, p_id)
+            failed.append({"chat_id": p_id, "error": str(exc)[:240]})
+    return {"total": len(parent_ids), "sent": len(sent), "failed": failed}
 
 
 # ============================================================
@@ -3590,12 +3595,19 @@ async def api_score(request):
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
     subj = db_subject(st["subject_id"])
-    if subj and val > 0 and val != prev:  # ota-onaga faqat o'zgargan ballni yuboramiz
-        try:
-            await notify_parents_of(sid, f"📝 **{md(st['fio'])}** — {md(subj['labels'][idx - 1])}: **{val}%**")
-        except Exception:
-            logging.exception("Ota-onaga xabar yuborishda xato")
-    return web.json_response({"ok": True, "last": db_student(sid)["last_score_date"]})
+    notification = {"total": 0, "sent": 0, "failed": []}
+    if subj and val != prev:
+        notification = await notify_parents_of(
+            sid,
+            f"📊 **Farzandingiz ({md(st['fio'])}) natijasi yangilandi:**\\n"
+            f"📚 Fan: **{md(subj['name'])}**\\n"
+            f"📝 {md(subj['labels'][idx - 1])}: **{val}%**"
+        )
+    return web.json_response({
+        "ok": True,
+        "last": db_student(sid)["last_score_date"],
+        "parent_notifications": notification
+    })
 
 
 async def api_attendance(request):
