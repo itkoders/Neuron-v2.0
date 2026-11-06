@@ -153,8 +153,12 @@ def migrate_sqlite_to_neon():
         target = psycopg2.connect(DATABASE_URL, connect_timeout=15)
         cur = target.cursor()
         cur.execute("SET search_path TO neuron_bot, public")
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'neuron_bot'")
+        target_tables = {r[0] for r in cur.fetchall()}
         moved = 0
         for table in names:
+            if table not in target_tables:
+                continue
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
                 continue
             columns = [r[1] for r in source.execute(f'PRAGMA table_info("{table}")').fetchall()]
