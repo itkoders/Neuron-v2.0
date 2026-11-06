@@ -320,6 +320,8 @@
       auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
       role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
+      subject_limit: "Tarifdagi fanlar soni limiti tugagan.",
+      student_limit: "Tarifdagi o‘quvchilar soni limiti tugagan.",
       ai_off: "AI bu o'qituvchi uchun hozircha yoqilmagan.",
       ai_unconfigured: "AI hali sozlanmagan.",
       no_session: "Mashq sessiyasi topilmadi. Mavzuni qayta tanlang.",
@@ -686,6 +688,33 @@
     if (state.stab === "mine") loadOverview();
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  $("addSubjectBtn").addEventListener("click", async () => {
+    const name = prompt("Yangi fan nomi:");
+    if (!name || !name.trim()) return;
+    const raw = prompt("3 ta baholash nomini vergul bilan kiriting:", "Test, Qo‘shimcha, Uy vazifasi") || "";
+    const labels = raw.split(",").map(x => x.trim()).filter(Boolean);
+    if (labels.length !== 3) { toast("Aynan 3 ta baholash nomi kerak."); return; }
+    try {
+      const r = await api("/api/subject", {method:"POST", body:JSON.stringify({name:name.trim(),labels})});
+      state.subjects.push(r.subject);
+      const sel = $("subject"); sel.innerHTML = "";
+      state.subjects.forEach(x => { const o=document.createElement("option"); o.value=x.id; o.textContent=x.name; sel.appendChild(o); });
+      sel.value = String(r.subject.id);
+      await loadSubject(r.subject.id);
+      toast("Fan qo‘shildi.");
+    } catch(err) { toast(errText(err)); }
+  });
+  $("addStudentBtn").addEventListener("click", async () => {
+    if (!state.subject) { toast("Avval fan tanlang."); return; }
+    const fio = prompt("O‘quvchining F.I.O.:");
+    if (!fio || fio.trim().length < 2) return;
+    const group = prompt("Sinf yoki guruh:", "Guruhsiz") || "Guruhsiz";
+    try {
+      const r = await api("/api/student", {method:"POST", body:JSON.stringify({subject_id:state.subject.id,fio:fio.trim(),group_name:group})});
+      await loadSubject(state.subject.id);
+      toast("O‘quvchi qo‘shildi. Kirish kodi: " + r.code);
+    } catch(err) { toast(errText(err)); }
+  });
   document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener("click", () => { localStorage.setItem("neuron-theme", b.dataset.themeChoice); applyTheme(); }));
   $("search").addEventListener("input", e => { state.query = e.target.value; renderTeacherTab(); });
   $("topicBtn").addEventListener("click", startAi);
