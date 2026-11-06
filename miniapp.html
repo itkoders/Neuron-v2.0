@@ -473,7 +473,14 @@
       const s = state.students.find(x => x.id === id);
       if (s) s["s" + idx] = val;
       inp.closest("td").className = tone(val);
-      setStatus("Saqlandi ✓", "ok");
+      const notice = r.parent_notifications || {total:0,sent:0,failed:[]};
+      if (notice.sent > 0) {
+        setStatus("Saqlandi ✓ · ota-onaga xabar yuborildi", "ok");
+      } else if (notice.total === 0) {
+        setStatus("Saqlandi ✓ · ota-ona akkaunti bog'lanmagan", "err");
+      } else {
+        setStatus("Saqlandi ✓ · ota-onaga xabar yetmadi", "err");
+      }
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
     } catch (err) {
       inp.closest("td").className = "cell-err";
