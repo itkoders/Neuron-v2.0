@@ -881,8 +881,11 @@ class SubGuard(BaseMiddleware):
             return await handler(event, data)
         channel = db_get_setting("required_channel") or ""
         rows = []
-        if channel.startswith("@"):
-            rows.append([InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=f"https://t.me/{channel[1:]}")])
+        join_url = db_get_setting("required_channel_url") or ""
+        if not join_url and channel.startswith("@"):
+            join_url = f"https://t.me/{channel[1:]}"
+        if join_url:
+            rows.append([InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=join_url)])
         rows.append([btn("✅ Tekshirish", "check_sub")])
         text = "🔔 Botdan foydalanish uchun avval kanalimizga obuna bo'ling, so'ng \"✅ Tekshirish\" tugmasini bosing."
         if isinstance(event, types.CallbackQuery):
@@ -2637,16 +2640,21 @@ async def sa_sub_channel_save(message: types.Message, state: FSMContext):
         await send_and_clean_both(message, "❌ Noto'g'ri format. Masalan: @kanalim yoki -1001234567890", delay=20)
         return
     try:
-        await bot.get_chat(raw)
+        channel_chat = await bot.get_chat(raw)
         me = await bot.get_me()
         bot_member = await bot.get_chat_member(raw, me.id)
         if bot_member.status not in ("administrator", "creator"):
             await send_and_clean_both(message, "❌ Bot bu kanalda admin emas. Avval botni kanalga administrator qiling.", delay=30)
             return
+        join_url = f"https://t.me/{channel_chat.username}" if channel_chat.username else (channel_chat.invite_link or "")
+        if not join_url:
+            invite = await bot.create_chat_invite_link(raw)
+            join_url = invite.invite_link
     except Exception:
         await send_and_clean_both(message, "❌ Kanal topilmadi yoki bot kanalga kira olmaydi. Botni kanalga admin qilib, qayta urinib ko'ring.", delay=30)
         return
     db_set_setting("required_channel", raw)
+    db_set_setting("required_channel_url", join_url)
     SUB_CACHE.clear()
     audit(message.chat.id, "required_channel", "", raw)
     await state.clear()
