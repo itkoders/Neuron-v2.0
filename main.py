@@ -32,11 +32,9 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "").strip()
-if not TOKEN:
-    raise RuntimeError("BOT_TOKEN topilmadi.")
-if not SUPER_ADMIN_PASSWORD:
-    raise RuntimeError("SUPER_ADMIN_PASSWORD topilmadi.")
-PEPPER = os.environ.get("PEPPER", "") or TOKEN
+# Maxfiy qiymatlar Render Environment bo'limiga keyin kiritilishi mumkin.
+# BOT_TOKEN bo'lmasa web server ishga tushadi, bot polling esa kutadi.
+PEPPER = os.environ.get("PEPPER", "").strip() or TOKEN or "neuron-v2-initial-pepper-change-me"
 
 DB_NAME = os.environ.get("DB_PATH", "school_bot_v4.db")
 MAX_LOGIN_FAILS = 5
@@ -70,7 +68,7 @@ SEED_PLANS = [
     ("premium", "Premium", 300000, 1000, 30, ",".join(FEATURES.keys())),
 ]
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
 
@@ -150,7 +148,7 @@ def init_db():
     if not run("SELECT 1 FROM plans LIMIT 1", fetch="one"):
         for p in SEED_PLANS:
             run("INSERT INTO plans (key, name, price, student_limit, duration_days, features) VALUES (?, ?, ?, ?, ?, ?)", p)
-    if db_get_setting("super_admin_password") is None:
+    if SUPER_ADMIN_PASSWORD and db_get_setting("super_admin_password") is None:
         db_set_setting("super_admin_password", hash_pw(SUPER_ADMIN_PASSWORD))
     if db_get_setting("verify_mode") is None:
         db_set_setting("verify_mode", "phone")  # "phone" yoki "manual" (hujjat rasmi ham tekshiriladi)
@@ -1949,11 +1947,13 @@ def ai_tone(tid):
 
 def ai_quota_ok(s_id):
     key = f"ai_use_{s_id}_{local_now().strftime('%d.%m.%Y')}"
+    return int(db_get_setting(key) or 0) < AI_DAILY_LIMIT
+
+
+def ai_quota_consume(s_id):
+    key = f"ai_use_{s_id}_{local_now().strftime('%d.%m.%Y')}"
     used = int(db_get_setting(key) or 0)
-    if used >= AI_DAILY_LIMIT:
-        return False
     db_set_setting(key, str(used + 1))
-    return True
 
 
 async def gemini_json(system, user_text):
@@ -1964,7 +1964,7 @@ async def gemini_json(system, user_text):
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
     }
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as s:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=18)) as s:
         async with s.post(GEMINI_URL.format(model=GEMINI_MODEL), json=body,
                           headers={"x-goog-api-key": GEMINI_KEY}) as r:
             data = await r.json(content_type=None)
@@ -1987,7 +1987,7 @@ async def openai_json(system, user_text):
         "response_format": {"type": "json_object"},
         "temperature": 0.6,
     }
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=40)) as s:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=18)) as s:
         async with s.post(OPENAI_URL, json=body, headers={"Authorization": f"Bearer {OPENAI_KEY}"}) as r:
             data = await r.json(content_type=None)
             if r.status in (402, 429):
@@ -2076,6 +2076,7 @@ async def ai_step(state, st, teacher, answer=None):
     except Exception:
         logging.exception("AI xatosi")
         return False, "❌ AI hozir javob bera olmadi. Birozdan keyin qayta urinib ko'ring."
+    ai_quota_consume(st["id"])
     verdict = str(res.get("verdict", "unknown"))
     feedback = str(res.get("feedback", ""))[:800]
     nxt = str(res.get("next_question", ""))[:500] or "Mavzu bo'yicha savol bering yoki 'Tugatish' ni bosing."
@@ -3394,8 +3395,10 @@ def verify_init_data(init_data):
     if not hmac.compare_digest(expected, received):
         return None
     try:
-        if time.time() - int(pairs.get("auth_date", "0") or 0) > 86400:  # 24 soatdan eski sessiya
-            return None
+        auth_date = int(pairs.get("auth_date", "0") or 0)
+        now = int(time.time())
+        if auth_date <= 0 or auth_date > now + 60 or now - auth_date > 86400:
+            return None  # 24 soatdan eski yoki kelajakdagi sessiya
         return int(json.loads(pairs.get("user", "{}"))["id"])
     except (ValueError, KeyError, TypeError):
         return None
@@ -3640,12 +3643,20 @@ async def start_web_server():
 
 async def main():
     init_db()
-    asyncio.create_task(background_loop())
     runner = await start_web_server()
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await runner.cleanup()
+    if bot:
+        asyncio.create_task(background_loop())
+        try:
+            await dp.start_polling(bot)
+        finally:
+            await runner.cleanup()
+            await bot.session.close()
+    else:
+        logging.warning("BOT_TOKEN kiritilmagan: web server ishlayapti, Telegram bot polling kutmoqda.")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await runner.cleanup()
 
 
 if __name__ == "__main__":
