@@ -37,6 +37,7 @@ SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "").strip()
 PEPPER = os.environ.get("PEPPER", "").strip() or TOKEN or "neuron-v2-initial-pepper-change-me"
 
 DB_NAME = os.environ.get("DB_PATH", "school_bot_v4.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 MAX_LOGIN_FAILS = 5
 BLOCK_SECONDS = 600
 MAX_CHILDREN = 3
@@ -76,17 +77,69 @@ dp = Dispatcher()
 # 1. MA'LUMOTLAR BAZASI
 # ============================================================
 def run(sql, params=(), fetch="none"):
-    with closing(sqlite3.connect(DB_NAME)) as conn:
-        cur = conn.execute(sql, params)
-        result = None
+    # Neon PostgreSQL asosiy baza; DATABASE_URL bo'lmasa eski SQLite fallback ishlaydi.
+    if not DATABASE_URL:
+        with closing(sqlite3.connect(DB_NAME)) as conn:
+            cur = conn.execute(sql, params)
+            if fetch == "all":
+                result = cur.fetchall()
+            elif fetch == "one":
+                result = cur.fetchone()
+            elif fetch == "lastid":
+                result = cur.lastrowid
+            else:
+                result = None
+            conn.commit()
+            return result
+
+    import psycopg2
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+    try:
+        cur = conn.cursor()
+        cur.execute("SET search_path TO neuron_bot, public")
+        query = sql.strip()
+        pragma = re.match(r"PRAGMA\\s+table_info\\(([^)]+)\\)", query, re.I)
+        if pragma:
+            table_name = pragma.group(1).strip().strip('"').strip("'")
+            cur.execute("""
+                SELECT ordinal_position - 1, column_name, data_type,
+                       CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END,
+                       column_default, 0
+                FROM information_schema.columns
+                WHERE table_schema = 'neuron_bot' AND table_name = %s
+                ORDER BY ordinal_position
+            """, (table_name,))
+        else:
+            query = query.replace("?", "%s")
+            query = re.sub(r"INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT", "BIGSERIAL PRIMARY KEY", query, flags=re.I)
+            query = re.sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", query, flags=re.I)
+            query = re.sub(r"INSERT\\s+OR\\s+REPLACE\\s+INTO", "INSERT INTO", query, flags=re.I)
+            if "INSERT INTO settings (key, value)" in query:
+                query += " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+            elif "INSERT INTO student_links (chat_id, student_id)" in query:
+                query += " ON CONFLICT (chat_id) DO UPDATE SET student_id = EXCLUDED.student_id"
+            elif "INSERT INTO super_admins (chat_id)" in query or "INSERT INTO parent_children (parent_chat_id, student_id)" in query:
+                query += " ON CONFLICT DO NOTHING"
+            if fetch == "lastid" and query.lstrip().upper().startswith("INSERT") and "RETURNING" not in query.upper():
+                query += " RETURNING id"
+            cur.execute(query, params)
+
         if fetch == "all":
             result = cur.fetchall()
         elif fetch == "one":
             result = cur.fetchone()
         elif fetch == "lastid":
-            result = cur.lastrowid
+            row = cur.fetchone()
+            result = row[0] if row else None
+        else:
+            result = None
         conn.commit()
         return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -192,7 +245,7 @@ def db_get_setting(key):
 
 
 def db_set_setting(key, value):
-    run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
+    run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
 
 
 def audit(actor, action, target="", details=""):
@@ -2648,7 +2701,7 @@ async def check_super_password(message: types.Message, state: FSMContext):
         return
     if verify_pw(db_get_setting("super_admin_password"), (message.text or "").strip()):
         reset_fails(cid)
-        run("INSERT OR IGNORE INTO super_admins (chat_id) VALUES (?)", (cid,))
+        run("INSERT INTO super_admins (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING", (cid,))
         await state.clear()
         asyncio.create_task(safe_delete_message(message, 0))
         await send_auto_clean_message(cid, sa_menu_text(), reply_markup=sa_menu_kb(), delay=300)
@@ -3333,7 +3386,7 @@ async def check_student_login_code(message: types.Message, state: FSMContext):
     if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
         await send_and_clean_both(message, "⛔ O'qituvchi hisobi Super Admin tomonidan hali tasdiqlanmagan. Tasdiqlangach kirishingiz mumkin.", delay=45)
         return
-    run("INSERT OR REPLACE INTO student_links (chat_id, student_id) VALUES (?, ?)", (cid, s_id))  # ilova uchun
+    run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id", (cid, s_id))  # ilova uchun
     await state.clear()
     await state.update_data(student_id=s_id)
     db_log_student_login(s_id, st["fio"])
@@ -3486,7 +3539,7 @@ async def teacher_process_request(call: types.CallbackQuery):
         if len(db_parent_student_ids(parent_chat_id)) >= MAX_CHILDREN:
             await call.message.edit_text("⚠️ Bu ota-onada maksimal farzandlar soni bor.")
             return
-        run("INSERT OR IGNORE INTO parent_children (parent_chat_id, student_id) VALUES (?, ?)", (parent_chat_id, student_id))
+        run("INSERT INTO parent_children (parent_chat_id, student_id) VALUES (?, ?) ON CONFLICT(parent_chat_id, student_id) DO NOTHING", (parent_chat_id, student_id))
         await call.message.edit_text(f"✅ **Tasdiqlandi!** {md(st['fio'])} ota-onasiga biriktirildi.", parse_mode="Markdown")
         try:
             await bot.send_message(parent_chat_id, "🎉 **Tabriklaymiz!** O'qituvchi ulanishni tasdiqladi.",
