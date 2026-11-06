@@ -1121,11 +1121,18 @@ async def public_plans(call: types.CallbackQuery):
 async def faq_menu(call: types.CallbackQuery):
     await call.answer()
     text = (
-        "❓ **Ko'p Beriladigan Savollar (FAQ):**\n\n"
-        "1. **Botga qanday ulanaman?**\n   _Ro'yxatdan farzandingiz ismini tanlang yoki 4 xonali kodi orqali bog'laning._\n\n"
-        "2. **To'lov qachon amalga oshirilishi kerak?**\n   _Har oyning 1-chisidan 5-chisigacha._\n\n"
-        f"3. **Kabinetga nechta farzand qo'shsa bo'ladi?**\n   _Bitta kabinetga {MAX_CHILDREN} tagacha farzand._\n\n"
-        "4. **O'qituvchi bo'lish mumkinmi?**\n   _Ha, \"O'qituvchi bo'lish\" orqali ro'yxatdan o'ting. Bepul tarifda 50 tagacha o'quvchi._"
+        "❓ **Ko‘p so‘raladigan savollar:**\n\n"
+        "1. **Botga qanday ulanaman?**\n   _Farzandingizning 4 xonali kodi orqali bog‘laning._\n\n"
+        "2. **To‘lov qachon amalga oshiriladi?**\n   _Har oyning 1–5 sanalari oralig‘ida._\n\n"
+        f"3. **Kabinetga nechta farzand qo‘shsa bo‘ladi?**\n   _Bitta kabinetga {MAX_CHILDREN} tagacha farzand ulash mumkin._\n\n"
+        "4. **O‘qituvchi qanday ro‘yxatdan o‘tadi?**\n   _“O‘qituvchi bo‘lish” bo‘limidan ism, familiya va telefon raqamini kiriting._\n\n"
+        "5. **O‘qituvchi hisobi qachon faollashadi?**\n   _Super Admin hisobni tasdiqlaganidan keyin._\n\n"
+        "6. **Ota-ona kabinetiga qanday kiriladi?**\n   _Farzand kodini yuboring. O‘qituvchi ulanishni tasdiqlaydi. O‘qituvchi hisobi Super Admin tomonidan tasdiqlangan bo‘lishi shart._\n\n"
+        "7. **Jurnalga kim ball qo‘yadi?**\n   _Tasdiqlangan o‘qituvchi o‘z o‘quvchilariga ball va davomat kiritadi._\n\n"
+        "8. **To‘lov chekini qanday yuboraman?**\n   _Chek raqamini emas, to‘lov skrinshotini JPG, PNG yoki WEBP formatida yuboring._\n\n"
+        "9. **To‘lovni kim tasdiqlaydi?**\n   _Chek rasmi o‘qituvchiga yuboriladi. U tasdiqlaydi yoki rad etadi._\n\n"
+        "10. **Yordamni qayerdan olaman?**\n   _Ilovadagi “Yordam” tugmasi orqali administrator bilan bog‘laning._"
+    )
     )
     await call.message.edit_text(text, reply_markup=kb([[btn("⬅️ Orqaga", "back_home")]]), parse_mode="Markdown")
 
@@ -3136,14 +3143,16 @@ async def sa_verify_queue(call: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("sa_vt_"))
 async def sa_verify_view(call: types.CallbackQuery):
     t = db_teacher(int(call.data.split("_")[2]))
-    if not t or not t["doc_file_id"]:
-        await call.answer("Hujjat topilmadi.", show_alert=True)
+    if not t:
+        await call.answer("O‘qituvchi topilmadi.", show_alert=True)
         return
     await call.answer()
-    await call.message.answer_photo(t["doc_file_id"],
-                                    caption=f"🪪 **{md(teacher_name(t))}**\n📞 `{t['phone']}`\nHolat: {VERIFY_TEXT.get(t['verify_status'], '—')}",
-                                    reply_markup=kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]]),
-                                    parse_mode="Markdown")
+    caption = f"🪪 **{md(teacher_name(t))}**\n📞 {t['phone']}\nHolat: {VERIFY_TEXT.get(t['verify_status'], '—')}"
+    markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
+    if t["doc_file_id"]:
+        await call.message.answer_photo(t["doc_file_id"], caption=caption, reply_markup=markup, parse_mode="Markdown")
+    else:
+        await call.message.answer(caption + "\n\nTelefon raqami tasdiqlangan. Super Admin ruxsatini tanlang.", reply_markup=markup, parse_mode="Markdown")
 
 
 @dp.callback_query(F.data.startswith("sa_vapp_"))
