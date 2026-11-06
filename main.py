@@ -126,6 +126,13 @@ def init_db():
         group_name TEXT DEFAULT 'Guruhsiz',
         teacher_note TEXT DEFAULT 'Izoh mavjud emas',
         last_score_date TEXT DEFAULT '')""")
+    run("""CREATE TABLE IF NOT EXISTS teacher_payment_methods (
+        teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
+        bank_name TEXT DEFAULT '', updated_at TEXT)""")
+    run("""CREATE TABLE IF NOT EXISTS payment_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id INTEGER NOT NULL,
+        amount INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT DEFAULT '', status TEXT DEFAULT 'pending',
+        created_at TEXT, reviewed_at TEXT DEFAULT '')""")
     run("""CREATE TABLE IF NOT EXISTS parent_children (
         id INTEGER PRIMARY KEY AUTOINCREMENT, parent_chat_id INTEGER NOT NULL,
         student_id INTEGER NOT NULL, UNIQUE(parent_chat_id, student_id))""")
@@ -528,6 +535,17 @@ def db_set_payment_status(s_id, status):
     run("UPDATE students SET payment_status = ?, payment_date = ? WHERE id = ?", (status, today, s_id))
 
 
+def score_average(st):
+    values = [int(st.get(f"s{i}", 0) or 0) for i in (1, 2, 3)]
+    values = [v for v in values if v > 0]
+    return round(sum(values) / len(values)) if values else None
+
+
+def teacher_payment_method(teacher_id):
+    row = run("SELECT card_number, card_holder, bank_name FROM teacher_payment_methods WHERE teacher_id = ?", (teacher_id,), fetch="one")
+    return {"card_number": row[0], "card_holder": row[1], "bank_name": row[2]} if row else None
+
+
 def db_parent_student_ids(parent_chat_id):
     return {r[0] for r in run("SELECT student_id FROM parent_children WHERE parent_chat_id = ?", (parent_chat_id,), fetch="all")}
 
@@ -575,6 +593,7 @@ class TeacherStates(StatesGroup):
     broadcast = State()
     sched_text = State()
     sched_time = State()
+    payment_card = State()
 
 
 class SuperStates(StatesGroup):
@@ -1652,6 +1671,7 @@ async def tp_pay_menu(call: types.CallbackQuery):
     await call.message.edit_text(_pay_text(st, subj), parse_mode="Markdown", reply_markup=kb([
         [btn(toggle, f"tp_payt_{st['id']}")],
         [btn("💰 Summani qo'lda", f"tp_payc_{st['id']}")],
+        [btn("💳 Karta ma’lumotlarini sozlash", f"tp_paycard_{st['id']}")],
         [btn("💵 150,000", f"tp_pays_{st['id']}_150000"), btn("💵 200,000", f"tp_pays_{st['id']}_200000")],
         [btn("⬅️ Orqaga", f"tp_list_pay_{st['subject_id']}")],
     ]))
