@@ -1266,8 +1266,11 @@ async def t_reg_doc_fallback(message: types.Message, state: FSMContext):
 async def tp_verify(call: types.CallbackQuery, state: FSMContext):
     t = _me(call)
     status = t["verify_status"]
-    if status == "approved":
-        await call.answer("✅ Hisobingiz tasdiqlangan.", show_alert=True)
+    if status == "approved" and t.get("admin_approved"):
+        await call.answer("✅ Hisobingiz Super Admin tomonidan tasdiqlangan.", show_alert=True)
+        return
+    if not t.get("admin_approved") and status != "doc_pending":
+        await call.answer("⏳ Hisobingiz Super Admin tasdig‘ini kutmoqda.", show_alert=True)
         return
     if status == "doc_pending":
         await call.answer("⏳ Hujjatingiz hozir tekshirilmoqda.", show_alert=True)
@@ -1807,8 +1810,8 @@ async def tp_paycard_save(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
 async def teacher_review_payment(call: types.CallbackQuery):
     t = _me(call)
-    if not t:
-        await call.answer("O‘qituvchi ruxsati kerak.", show_alert=True)
+    if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved"):
+        await call.answer("⛔ O‘qituvchi hisobi Super Admin tomonidan tasdiqlanishi kerak.", show_alert=True)
         return
     approve = call.data.startswith("payreq_ok_")
     req_id = int(call.data.rsplit("_", 1)[1])
@@ -2292,7 +2295,8 @@ async def _ai_context(state):
     data = await state.get_data()
     st = db_student(data["student_id"]) if data.get("student_id") else None
     teacher = db_teacher(st["teacher_id"]) if st else None
-    return (st, teacher) if st and teacher else (None, None)
+    allowed = bool(st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher.get("admin_approved"))
+    return (st, teacher) if allowed else (None, None)
 
 
 @dp.callback_query(F.data == "stu_ai")
@@ -3178,7 +3182,7 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
 @dp.callback_query(F.data == "sa_vqueue")
 async def sa_verify_queue(call: types.CallbackQuery):
     await call.answer()
-    rows = run("SELECT id, first_name, last_name FROM teachers WHERE admin_approved = 0 ORDER BY id", fetch="all")
+    rows = run("SELECT id, first_name, last_name FROM teachers WHERE admin_approved = 0 AND verify_status IN ('approved', 'admin_pending', 'doc_pending') ORDER BY id", fetch="all")
     buttons = [[btn(f"🪪 {f} {l}"[:40], f"sa_vt_{i}")] for i, f, l in rows]
     buttons.append([btn("🔙 Super panel", "sa_menu")])
     text = "🛡 **Super Admin tasdig‘ini kutayotgan o‘qituvchilar:**" if rows else "_Tasdiq kutayotgan o‘qituvchi yo‘q._"
@@ -3321,6 +3325,12 @@ async def student_cabinet_callback(call: types.CallbackQuery, state: FSMContext)
     st = db_student(s_id) if s_id else None
     if not st:
         await student_login_prompt(call, state)
+        return
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
+        await state.update_data(student_id=None)
+        await call.message.edit_text("⛔ O‘qituvchi hisobi Super Admin tasdig‘idan o‘tmagan. Kabinet vaqtincha yopildi.",
+                                     reply_markup=kb([[btn("🔙 Asosiy menyu", "back_home")]]))
         return
     subj = db_subject(st["subject_id"])
     await call.message.edit_text(cabinet_text(st, subj, db_students(st["teacher_id"], st["subject_id"]), "🎓 **O'QUVCHI SHAXSIY KABINETI**"),
@@ -3467,6 +3477,10 @@ async def _can_view(call, state, s_id):
     st = db_student(s_id)
     if not st:
         await call.answer("Topilmadi!", show_alert=True)
+        return False
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
+        await call.answer("⛔ O‘qituvchi hisobi tasdiqlanmagan. Kirish yopilgan.", show_alert=True)
         return False
     if s_id in db_parent_student_ids(uid) or (await state.get_data()).get("student_id") == s_id:
         return True
@@ -3874,7 +3888,7 @@ def miniapp_identity(request):
             return None, None, web.json_response({"error": "role_required"}, status=409)
         requested_role = roles[0] if roles else ""
     if requested_role == "teacher":
-        if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
+        if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "mini_app"):
             return None, None, web.json_response({"error": "forbidden"}, status=403)
         return "teacher", t, None
     if requested_role == "student":
