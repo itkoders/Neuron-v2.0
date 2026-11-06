@@ -301,7 +301,7 @@
     let res;
     try {
       res = await fetch(path, { ...opts, signal: controller.signal,
-        headers: { "Content-Type": "application/json", "X-Init-Data": INIT, ...(opts.headers || {}) } });
+        headers: { "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(opts.headers || {}) } });
     } catch (err) {
       if (err.name === "AbortError") throw new Error("So'rov vaqti tugadi. Qayta urinib ko'ring.");
       throw err;
@@ -316,6 +316,7 @@
     if (code === "ai_fail" && err.data.message) return err.data.message;
     return ({
       auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
+      role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
       ai_off: "AI bu o'qituvchi uchun hozircha yoqilmagan.",
       ai_unconfigured: "AI hali sozlanmagan.",
