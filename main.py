@@ -535,9 +535,9 @@ def db_set_payment_status(s_id, status):
     run("UPDATE students SET payment_status = ?, payment_date = ? WHERE id = ?", (status, today, s_id))
 
 
-def score_average(st):
+def score_average(st, include_zero_idx=None):
     values = [int(st.get(f"s{i}", 0) or 0) for i in (1, 2, 3)]
-    values = [v for v in values if v > 0]
+    values = [v for i, v in enumerate(values, 1) if v > 0 or i == include_zero_idx]
     return round(sum(values) / len(values)) if values else None
 
 
@@ -3708,13 +3708,13 @@ async def api_score(request):
     notification = {"total": 0, "sent": 0, "failed": []}
     if subj and val != prev:
         latest = db_student(sid)
-        average = score_average(latest)
+        average = score_average(latest, idx)
         name = md(st["fio"])
         subject_name = md(subj["name"])
         labels = subj["labels"]
-        parts = [f"📝 {md(labels[i])}: **{latest[f's{i + 1}']}/100**" for i in range(3) if latest[f"s{i + 1}"] > 0]
+        parts = [f"📝 {md(labels[i])}: **{latest[f's{i + 1}']}/100**" for i in range(3) if latest[f"s{i + 1}"] > 0 or i + 1 == idx]
         avg_line = f"📊 **Umumiy natija: {average}/100**" if average is not None else "📊 Umumiy natija: hali hisoblanmadi"
-        if average is not None and average < 60:
+        if average is None or average < 60:
             title = "⚠️ **UMUMIY NATIJA: E'TIBOR KERAK**"
             status_line = "🔴 Holat: 60 balldan past"
             advice = "💡 Tavsiya: mavzularni takrorlash va mashq qilish."
