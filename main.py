@@ -594,6 +594,9 @@ class TeacherStates(StatesGroup):
     sched_text = State()
     sched_time = State()
     payment_card = State()
+    payment_card_number = State()
+    payment_card_holder = State()
+    payment_card_bank = State()
 
 
 class SuperStates(StatesGroup):
@@ -735,6 +738,7 @@ def teacher_panel_kb():
         [btn("⏰ Rejalashtirilgan e'lon", "tp_sbc")],
         [btn("🤖 AI tutor", "tp_ai")],
         [btn("🪪 Tasdiqlash holati", "tp_verify")],
+        [btn("💳 To‘lov kartalarini sozlash", "tp_paycard_global")],
         [btn("🔙 Chiqish", "back_home")],
     ]
     if MINIAPP_URL:
@@ -1671,7 +1675,6 @@ async def tp_pay_menu(call: types.CallbackQuery):
     await call.message.edit_text(_pay_text(st, subj), parse_mode="Markdown", reply_markup=kb([
         [btn(toggle, f"tp_payt_{st['id']}")],
         [btn("💰 Summani qo'lda", f"tp_payc_{st['id']}")],
-        [btn("💳 Karta ma’lumotlarini sozlash", f"tp_paycard_{st['id']}")],
         [btn("💵 150,000", f"tp_pays_{st['id']}_150000"), btn("💵 200,000", f"tp_pays_{st['id']}_200000")],
         [btn("⬅️ Orqaga", f"tp_list_pay_{st['subject_id']}")],
     ]))
@@ -1730,55 +1733,7 @@ async def tp_pay_custom_value(message: types.Message, state: FSMContext):
         await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
 
 
-@dp.callback_query(F.data.startswith("tp_paycard_"))
-async def tp_paycard_start(call: types.CallbackQuery, state: FSMContext):
-    st = owned_student(_me(call), int(call.data.split("_")[2]))
-    if not st:
-        await call.answer("O‘quvchi topilmadi.", show_alert=True)
-        return
-    await call.answer()
-    current = teacher_payment_method(st["teacher_id"])
-    current_text = ""
-    if current:
-        current_text = (f"\n\nJoriy karta: **{md(current['card_number'])}**\n"
-                        f"Egasi: **{md(current['card_holder'])}**\nBank: **{md(current['bank_name'] or '—')}**")
-    await state.update_data(paycard_sid=st["id"])
-    await state.set_state(TeacherStates.payment_card)
-    await call.message.edit_text(
-        "💳 **O‘qituvchi karta ma’lumotlari**" + current_text +
-        "\n\nQuyidagi shaklda yuboring:\n8600 1234 5678 9012 | ISM FAMILIYA | BANK" +
-        "\nKarta raqami, karta egasi va bank nomini | bilan ajrating.",
-        parse_mode="Markdown",
-        reply_markup=kb([[btn("❌ Bekor qilish", f"tp_pay_{st['id']}")]]))
-
-
-@dp.message(TeacherStates.payment_card, F.chat.type == "private")
-async def tp_paycard_save(message: types.Message, state: FSMContext):
-    parts = [p.strip() for p in (message.text or "").split("|")]
-    if len(parts) < 2:
-        await send_and_clean_both(message, "❌ Format xato. Namuna: 8600 1234 5678 9012 | ISM FAMILIYA | BANK", delay=30)
-        return
-    digits = re.sub(r"\D", "", parts[0])
-    holder = parts[1][:80]
-    bank = parts[2][:60] if len(parts) > 2 else ""
-    if not 16 <= len(digits) <= 19 or len(holder) < 3:
-        await send_and_clean_both(message, "❌ Karta raqami 16–19 raqam, karta egasi esa kamida 3 belgidan iborat bo‘lsin.", delay=30)
-        return
-    t = _me(message)
-    if not t:
-        await state.clear()
-        return
-    run("""INSERT INTO teacher_payment_methods (teacher_id, card_number, card_holder, bank_name, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(teacher_id) DO UPDATE SET card_number=excluded.card_number,
-            card_holder=excluded.card_holder, bank_name=excluded.bank_name, updated_at=excluded.updated_at""",
-        (t["id"], digits, holder, bank, datetime.now().strftime("%d.%m.%Y %H:%M")))
-    await state.clear()
-    await send_and_clean_both(message, "✅ Karta ma’lumotlari saqlandi. Ota-onalar to‘lov bo‘limida ushbu kartani ko‘radi.", delay=45)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
-
-
-@dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
+NaN@dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
 async def teacher_review_payment(call: types.CallbackQuery):
     t = _me(call)
     if not t:
@@ -3283,7 +3238,9 @@ async def open_parent_cabinet(call: types.CallbackQuery, state: FSMContext):
     if len(children) < MAX_CHILDREN:
         rows.append([btn("➕ Yana farzand ulash", "reg_enter_code")])
     if MINIAPP_URL:
-        rows.append([InlineKeyboardButton(text="📱 Ota-ona ilovasini ochish", web_app=WebAppInfo(url=miniapp_role_url("parent")))])
+        parent_app = miniapp_role_url("parent")
+        rows.append([InlineKeyboardButton(text="💳 To‘lov qilish", web_app=WebAppInfo(url=parent_app))])
+        rows.append([InlineKeyboardButton(text="📱 Ota-ona ilovasini ochish", web_app=WebAppInfo(url=parent_app))])
     rows.extend([
         [btn("📞 Telefon raqam", "set_phone_number")],
         [btn("📝 Sababli Ariza", f"send_leave_req_{s_id}"), btn("🔄 Profilni uzish", "reset_account")],
