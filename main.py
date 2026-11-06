@@ -110,6 +110,9 @@ def init_db():
         verify_status TEXT DEFAULT 'approved',
         doc_file_id TEXT,
         verify_note TEXT)""")
+    teacher_columns = {r[1] for r in run("PRAGMA table_info(teachers)", fetch="all")}
+    if "admin_approved" not in teacher_columns:
+        run("ALTER TABLE teachers ADD COLUMN admin_approved INTEGER DEFAULT 0")
     run("""CREATE TABLE IF NOT EXISTS subjects (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
         name TEXT NOT NULL, label1 TEXT, label2 TEXT, label3 TEXT)""")
@@ -298,9 +301,9 @@ def effective_plan(t):
 
 # --- O'qituvchilar ---
 TEACHER_COLS = ("id, first_name, last_name, phone, plan_key, plan_expires, active, channel_id, chat_id, created_at, "
-                "verify_status, doc_file_id, verify_note")
+                "verify_status, doc_file_id, verify_note, admin_approved")
 TEACHER_KEYS = ["id", "first_name", "last_name", "phone", "plan_key", "plan_expires", "active", "channel_id", "chat_id",
-                "created_at", "verify_status", "doc_file_id", "verify_note"]
+                "created_at", "verify_status", "doc_file_id", "verify_note", "admin_approved"]
 VERIFY_TEXT = {
     "approved": "✅ Super Admin tasdiqlagan",
     "admin_pending": "⏳ Super Admin tasdig‘i kutilmoqda",
@@ -354,7 +357,7 @@ def create_teacher(chat_id, data, status, doc_file_id=None):
     code = new_teacher_code()
     run("UPDATE teachers SET chat_id = NULL WHERE chat_id = ?", (chat_id,))
     run("INSERT INTO teachers (chat_id, first_name, last_name, phone, code_lookup, plan_key, plan_expires, active, "
-        "created_at, verify_status, doc_file_id) VALUES (?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?)",
+        "created_at, verify_status, doc_file_id, admin_approved) VALUES (?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?, 0)",
         (chat_id, data["first_name"], data["last_name"], data["phone"], teacher_lookup(code),
          datetime.now().strftime("%d.%m.%Y %H:%M"), status, doc_file_id))
     t = teacher_by_chat(chat_id)
@@ -552,7 +555,7 @@ def db_parent_student_ids(parent_chat_id):
     return {r[0] for r in run("""SELECT pc.student_id FROM parent_children pc
         JOIN students s ON s.id = pc.student_id
         JOIN teachers t ON t.id = s.teacher_id
-        WHERE pc.parent_chat_id = ? AND t.active = 1 AND t.verify_status = 'approved'""",
+        WHERE pc.parent_chat_id = ? AND t.active = 1 AND t.verify_status = 'approved' AND t.admin_approved = 1""",
         (parent_chat_id,), fetch="all")}
 
 
@@ -731,7 +734,7 @@ def plan_line(t):
 def teacher_panel_text(t):
     _, line = plan_line(t)
     return (f"👩‍🏫 **{md(teacher_name(t))}** — O'qituvchi paneli\n\n{line}\n"
-            f"🪪 Holat: {VERIFY_TEXT.get(t['verify_status'], '—')}\n"
+            f"🪪 Holat: {VERIFY_TEXT.get(t['verify_status'] if t.get('admin_approved') else 'admin_pending', '—')}\n"
             f"📢 Kanal: `{t['channel_id'] or 'Ulanmagan'}`")
 
 
@@ -871,7 +874,7 @@ class CallbackGuard(BaseMiddleware):
             if not t:
                 await event.answer("⛔ Avval o'qituvchi sifatida kiring.", show_alert=True)
                 return None
-            if t.get("verify_status") != "approved" and cb not in ("tp_menu", "tp_verify"):
+            if (t.get("verify_status") != "approved" or not t.get("admin_approved")) and cb not in ("tp_menu", "tp_verify"):
                 await event.answer("🪪 Hisobingiz hali tasdiqlanmagan. Panelda holatni ko'ring.", show_alert=True)
                 return None
             feat = required_feature(cb)
@@ -1227,7 +1230,7 @@ async def _finish_phone(message: types.Message, state: FSMContext):
 
 
 async def _send_code(message, t, code):
-    status_line = ("✅ Hisobingiz Super Admin tomonidan tasdiqlangan." if t["verify_status"] == "approved"
+    status_line = ("✅ Hisobingiz Super Admin tomonidan tasdiqlangan." if t.get("admin_approved") and t["verify_status"] == "approved"
                    else "⏳ Hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangunga qadar asosiy funksiyalar yopiq bo‘ladi.")
     await message.answer(
         f"✅ **Xush kelibsiz, {md(teacher_name(t))}!**\n\n🔑 Sizning kodingiz: `{code}`\n\n"
@@ -3175,7 +3178,7 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
 @dp.callback_query(F.data == "sa_vqueue")
 async def sa_verify_queue(call: types.CallbackQuery):
     await call.answer()
-    rows = run("SELECT id, first_name, last_name FROM teachers WHERE verify_status IN ('admin_pending', 'doc_pending') ORDER BY id", fetch="all")
+    rows = run("SELECT id, first_name, last_name FROM teachers WHERE admin_approved = 0 ORDER BY id", fetch="all")
     buttons = [[btn(f"🪪 {f} {l}"[:40], f"sa_vt_{i}")] for i, f, l in rows]
     buttons.append([btn("🔙 Super panel", "sa_menu")])
     text = "🛡 **Super Admin tasdig‘ini kutayotgan o‘qituvchilar:**" if rows else "_Tasdiq kutayotgan o‘qituvchi yo‘q._"
@@ -3204,7 +3207,7 @@ async def sa_verify_approve(call: types.CallbackQuery):
     if not t:
         await call.answer("Topilmadi.", show_alert=True)
         return
-    run("UPDATE teachers SET verify_status = 'approved', verify_note = NULL WHERE id = ?", (tid,))
+    run("UPDATE teachers SET verify_status = 'approved', admin_approved = 1, verify_note = NULL WHERE id = ?", (tid,))
     audit(call.from_user.id, "verify_approve", str(tid))
     await call.answer("Tasdiqlandi")
     await notify_teacher(tid, "✅ **Hisobingiz tasdiqlandi!** Endi barcha funksiyalardan foydalanishingiz mumkin.")
@@ -3294,7 +3297,7 @@ async def check_student_login_code(message: types.Message, state: FSMContext):
     reset_fails(cid)
     s_id, st = matched
     teacher = db_teacher(st["teacher_id"])
-    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved":
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
         await send_and_clean_both(message, "⛔ O'qituvchi hisobi Super Admin tomonidan hali tasdiqlanmagan. Tasdiqlangach kirishingiz mumkin.", delay=45)
         return
     run("INSERT OR REPLACE INTO student_links (chat_id, student_id) VALUES (?, ?)", (cid, s_id))  # ilova uchun
@@ -3586,7 +3589,7 @@ async def auto_notify_once():
         return
     db_set_setting("last_auto_notify", today)
     for t in db_all_teachers():
-        if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "auto_notify"):
+        if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "auto_notify"):
             continue
         for st in db_students(t["id"]).values():
             lines = []
@@ -3608,7 +3611,7 @@ async def scheduled_broadcast_once():
     for bid, tid, body in due:
         run("UPDATE scheduled_broadcasts SET sent = 1 WHERE id = ?", (bid,))
         t = db_teacher(tid)
-        if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "scheduled_broadcast"):
+        if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "scheduled_broadcast"):
             run("UPDATE scheduled_broadcasts SET sent = -1 WHERE id = ?", (bid,))  # bekor qilingan
             continue
         parents = {r[0] for r in run("SELECT pc.parent_chat_id FROM parent_children pc JOIN students s ON s.id = pc.student_id "
@@ -3680,7 +3683,7 @@ def miniapp_teacher(request):
     if request.headers.get("X-App-Role", "").strip().lower() == "student":
         return None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
-    if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
+    if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "mini_app"):
         return None, web.json_response({"error": "forbidden"}, status=403)
     return t, None
 
@@ -3876,7 +3879,7 @@ def miniapp_identity(request):
         return "teacher", t, None
     if requested_role == "student":
         teacher = db_teacher(st["teacher_id"]) if st else None
-        if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and has_feature(teacher, "mini_app"):
+        if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher.get("admin_approved") and has_feature(teacher, "mini_app"):
             return "student", st, None
         return None, None, web.json_response({"error": "forbidden"}, status=403)
     if requested_role == "parent":
