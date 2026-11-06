@@ -1814,12 +1814,18 @@ async def teacher_review_payment(call: types.CallbackQuery):
                        f"💰 Summa: **{req[2]:,} so‘m**\n📅 Sana: {datetime.now().strftime('%d.%m.%Y')}\n"
                        "Rahmat! To‘lov qabul qilindi.")
         await call.answer("To‘lov tasdiqlandi.")
-        await call.message.edit_text((call.message.text or "") + "\n\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
+        if call.message.photo:
+            await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
+        else:
+            await call.message.edit_text((call.message.text or "") + "\n\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
     else:
         parent_text = (f"❌ **TO‘LOV RAD ETILDI**\n👤 O‘quvchi: {md(req[7])}\n"
                        "Iltimos, to‘lov ma’lumotlarini tekshirib, qayta yuboring.")
         await call.answer("To‘lov rad etildi.")
-        await call.message.edit_text((call.message.text or "") + "\n\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
+        if call.message.photo:
+            await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
+        else:
+            await call.message.edit_text((call.message.text or "") + "\n\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
     try:
         await bot.send_message(req[1], parent_text, parse_mode="Markdown")
     except Exception:
@@ -3890,9 +3896,34 @@ async def api_parent_payment(request):
     kind, parent_id, err = miniapp_identity(request)
     if err or kind != "parent":
         return err or web.json_response({"error": "forbidden"}, status=403)
-    body = await _read_json(request)
     try:
-        sid = int(body.get("student_id"))
+        reader = await request.multipart()
+        fields = {}
+        receipt = None
+        receipt_name = "receipt.jpg"
+        async for part in reader:
+            if part.name == "receipt":
+                receipt_name = part.filename or receipt_name
+                receipt_type = (part.headers.get("Content-Type") or "").lower()
+                if receipt_type not in {"image/jpeg", "image/png", "image/webp"}:
+                    return web.json_response({"error": "receipt_image_only"}, status=400)
+                data = await part.read(decode=False)
+                if not data or len(data) > 5 * 1024 * 1024:
+                    return web.json_response({"error": "receipt_size"}, status=400)
+                try:
+                    img = Image.open(io.BytesIO(data))
+                    img.verify()
+                    if img.format not in {"JPEG", "PNG", "WEBP"}:
+                        raise ValueError("unsupported image")
+                except Exception:
+                    return web.json_response({"error": "receipt_invalid"}, status=400)
+                receipt = data
+            else:
+                fields[part.name] = (await part.text()).strip()
+    except Exception:
+        return web.json_response({"error": "bad_form"}, status=400)
+    try:
+        sid = int(fields.get("student_id"))
     except (TypeError, ValueError):
         return web.json_response({"error": "bad"}, status=400)
     if sid not in db_parent_student_ids(parent_id):
@@ -3902,12 +3933,11 @@ async def api_parent_payment(request):
         return web.json_response({"error": "amount_not_set"}, status=400)
     if st["payment_status"] == PAID:
         return web.json_response({"error": "already_paid"}, status=409)
-    method = str(body.get("method", "")).strip()
-    reference = str(body.get("reference", "")).strip()[:300]
+    method = str(fields.get("method", "")).strip()
     if method not in {"Karta orqali", "Naqd pul", "Boshqa usul"}:
         return web.json_response({"error": "bad_method"}, status=400)
-    if len(reference) < 3:
-        return web.json_response({"error": "reference_required"}, status=400)
+    if not receipt:
+        return web.json_response({"error": "receipt_required"}, status=400)
     card = teacher_payment_method(st["teacher_id"])
     if method == "Karta orqali" and not card:
         return web.json_response({"error": "card_not_set"}, status=400)
@@ -3915,26 +3945,40 @@ async def api_parent_payment(request):
                   (sid, parent_id), fetch="one")
     if pending:
         return web.json_response({"error": "payment_pending"}, status=409)
+    subj = db_subject(st["subject_id"])
     req_id = run("""INSERT INTO payment_requests
         (student_id,parent_chat_id,amount,method,reference,status,created_at)
         VALUES (?,?,?,?,?,'pending',?)""",
-        (sid, parent_id, st["payment_amount"], method, reference, datetime.now().strftime("%d.%m.%Y %H:%M")), fetch="lastid")
-    subj = db_subject(st["subject_id"])
+        (sid, parent_id, st["payment_amount"], method, "To‘lov cheki rasmi yuborildi",
+         datetime.now().strftime("%d.%m.%Y %H:%M")), fetch="lastid")
     lines = [
         "💳 **YANGI OYLIK TO‘LOV SO‘ROVI**",
         f"👤 O‘quvchi: **{md(st['fio'])}**",
         f"📚 Fan: {md(subj['name'] if subj else '-')}",
         f"💰 Summa: **{st['payment_amount']:,} so‘m**",
         f"💳 Usul: {md(method)}",
-        f"🧾 Chek / izoh: {md(reference)}",
+        "🧾 To‘lov cheki: yuqoridagi rasmda",
     ]
     if card and method == "Karta orqali":
         lines.extend([f"💳 Karta: {md(card['card_number'])}", f"👤 Karta egasi: {md(card['card_holder'])}"])
-    await notify_teacher(st["teacher_id"], "\n".join(lines),
-        reply_markup=kb([[btn("✅ Tasdiqlash", f"payreq_ok_{req_id}"), btn("❌ Rad etish", f"payreq_no_{req_id}")]]))
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["chat_id"]:
+        run("DELETE FROM payment_requests WHERE id=?", (req_id,))
+        return web.json_response({"error": "teacher_unavailable"}, status=503)
+    try:
+        await bot.send_photo(
+            teacher["chat_id"],
+            BufferedInputFile(receipt, filename=receipt_name),
+            caption="\n".join(lines),
+            parse_mode="Markdown",
+            reply_markup=kb([[btn("✅ Tasdiqlash", f"payreq_ok_{req_id}"),
+                              btn("❌ Rad etish", f"payreq_no_{req_id}")]])
+        )
+    except Exception:
+        logging.exception("O‘qituvchiga to‘lov cheki rasmi yuborilmadi: request=%s", req_id)
+        run("DELETE FROM payment_requests WHERE id=?", (req_id,))
+        return web.json_response({"error": "receipt_send_failed"}, status=502)
     return web.json_response({"ok": True, "request_id": req_id})
-
-
 
 
 
