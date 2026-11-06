@@ -98,7 +98,7 @@ def run(sql, params=(), fetch="none"):
         cur = conn.cursor()
         cur.execute("SET search_path TO neuron_bot, public")
         query = sql.strip()
-        pragma = re.match(r"PRAGMA\s+table_info\(([^)]+)\\)", query, re.I)
+        pragma = re.match(r"PRAGMA\s+table_info\(([^)]+)\)", query, re.I)
         if pragma:
             table_name = pragma.group(1).strip().strip('"').strip("'")
             cur.execute("""
