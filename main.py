@@ -136,6 +136,61 @@ def run(sql, params=(), fetch="none"):
         conn.close()
 
 
+def migrate_sqlite_to_neon():
+    """Render diskida eski SQLite fayli bo'lsa, mavjud ma'lumotlarni Neon'ga xavfsiz ko'chiradi."""
+    if not DATABASE_URL or not os.path.exists(DB_NAME):
+        return
+    source = sqlite3.connect(DB_NAME)
+    source.row_factory = None
+    target = None
+    try:
+        names = [r[0] for r in source.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()]
+        if not names:
+            return
+        import psycopg2
+        target = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        cur = target.cursor()
+        cur.execute("SET search_path TO neuron_bot, public")
+        moved = 0
+        for table in names:
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+                continue
+            columns = [r[1] for r in source.execute(f'PRAGMA table_info("{table}")').fetchall()]
+            if not columns:
+                continue
+            rows = source.execute(f'SELECT * FROM "{table}"').fetchall()
+            if not rows:
+                continue
+            col_sql = ", ".join('"' + c.replace('"', '""') + '"' for c in columns)
+            placeholders = ", ".join(["%s"] * len(columns))
+            insert_sql = f'INSERT INTO "{table}" ({col_sql}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
+            for row in rows:
+                cur.execute(insert_sql, row)
+                moved += max(cur.rowcount, 0)
+            if "id" in columns:
+                cur.execute("SELECT pg_get_serial_sequence(%s, 'id')", (f"neuron_bot.{table}",))
+                seq = cur.fetchone()[0]
+                if seq:
+                    cur.execute(
+                        f'SELECT setval(%s, GREATEST(COALESCE((SELECT MAX(id) FROM "{table}"), 1), 1), '
+                        f'EXISTS(SELECT 1 FROM "{table}"))',
+                        (seq,)
+                    )
+        target.commit()
+        logging.info("SQLite -> Neon migration checked; imported %s rows", moved)
+    except Exception:
+        if target:
+            target.rollback()
+        logging.exception("SQLite -> Neon migration failed")
+        raise
+    finally:
+        source.close()
+        if target:
+            target.close()
+
+
 def init_db():
     run("""CREATE TABLE IF NOT EXISTS plans (
         key TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0,
@@ -204,6 +259,9 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
     run("CREATE TABLE IF NOT EXISTS student_links (chat_id INTEGER PRIMARY KEY, student_id INTEGER)")
+
+    # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
+    migrate_sqlite_to_neon()
 
     if not run("SELECT 1 FROM plans LIMIT 1", fetch="one"):
         for p in SEED_PLANS:
