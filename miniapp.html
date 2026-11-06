@@ -336,6 +336,16 @@
     if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), { status: res.status, data });
     return data;
   }
+  async function apiUpload(path, form) {
+    const res = await fetch(path, { method: "POST", body: form, headers: {
+      "X-Init-Data": INIT,
+      "X-App-Role": new URLSearchParams(location.search).get("role") || ""
+    }});
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), {status:res.status,data});
+    return data;
+  }
   const errText = (err) => {
     const code = err.data && err.data.error;
     if (code === "ai_fail" && err.data.message) return err.data.message;
@@ -346,7 +356,12 @@
       amount_not_set: "O‘qituvchi oylik to‘lov summasini hali belgilamagan.",
       already_paid: "Bu oy uchun to‘lov allaqachon qabul qilingan.",
       card_not_set: "O‘qituvchi karta ma’lumotlarini hali kiritmagan.",
-      reference_required: "Chek raqami yoki to‘lov izohini kiriting.",
+      receipt_required: "To‘lov chekini skrinshot qilib yuklang.",
+      receipt_image_only: "Faqat JPG, PNG yoki WEBP rasm yuborish mumkin.",
+      receipt_size: "Skrinshot hajmi 5 MB dan oshmasin.",
+      receipt_invalid: "Rasm fayli noto‘g‘ri. Boshqa skrinshot tanlang.",
+      receipt_send_failed: "Chek rasmi o‘qituvchiga yuborilmadi. Qayta urinib ko‘ring.",
+      teacher_unavailable: "O‘qituvchi bilan bog‘lanib bo‘lmadi. Keyinroq urinib ko‘ring.",
       bad_method: "To‘lov usuli noto‘g‘ri.",
       payment_pending: "Oldingi to‘lov so‘rovingiz hali ko‘rib chiqilmoqda.",
       subject_limit: "Tarifdagi fanlar soni limiti tugagan.",
@@ -661,9 +676,19 @@
        c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
        (c.payment_request && c.payment_request.status === 'rejected' ? '<div class="card panel">❌ Oxirgi so‘rov rad etilgan. Ma’lumotni tekshirib, qayta yuborishingiz mumkin.</div>' : '') +
        '<label for="parentPayMethod">To‘lov usuli</label><select id="parentPayMethod">' + (c.card ? '<option>Karta orqali</option>' : '') + '<option>Naqd pul</option><option>Boshqa usul</option></select>' +
-       '<label for="parentPayRef">Chek raqami yoki izoh</label><input id="parentPayRef" maxlength="300" placeholder="Masalan: tranzaksiya raqami / to‘lov vaqti">' +
+       '<label for="parentPayReceipt">📸 To‘lov chekining skrinshoti</label><input id="parentPayReceipt" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">' +
+       '<p class="hint">Bank ilovasidan to‘lov muvaffaqiyatli bo‘lgan sahifaning skrinshotini tanlang. JPG, PNG yoki WEBP, 5 MB gacha.</p>' +
+       '<div id="parentReceiptPreview" class="hint"></div>' +
        '<button class="btn" id="parentPaySubmit" ' + (Number(c.payment_amount || 0) <= 0 ? 'disabled' : '') + '>📤 To‘lovni o‘qituvchiga yuborish</button><p class="hint">To‘lov o‘qituvchi tasdiqlagandan keyin qabul qilingan hisoblanadi.</p>') + '</div>' +
       '<div class="section-title">📚 Kunlik tarix</div>' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>');
+    const receiptInput = $("parentPayReceipt");
+    if (receiptInput) receiptInput.addEventListener("change", () => {
+      const file = receiptInput.files && receiptInput.files[0];
+      const preview = $("parentReceiptPreview");
+      if (!preview) return;
+      if (!file) { preview.textContent = ""; return; }
+      preview.textContent = "📎 Tanlandi: " + file.name + " (" + (file.size / 1024 / 1024).toFixed(2) + " MB)";
+    });
     const payBtn = $("parentPaySubmit");
     if (payBtn) payBtn.addEventListener("click", submitParentPayment);
     const jump = $("parentPayJump");
@@ -673,11 +698,18 @@
     const c = state.parentChildren.find(x => x.id === state.parentSelected);
     if (!c) return;
     const btnEl = $("parentPaySubmit");
+    const fileInput = $("parentPayReceipt");
+    const receipt = fileInput && fileInput.files && fileInput.files[0];
+    if (!receipt) { toast("Avval to‘lov chekini skrinshot qilib yuklang."); return; }
+    if (!["image/jpeg","image/png","image/webp"].includes(receipt.type)) { toast("Faqat JPG, PNG yoki WEBP rasm yuboring."); return; }
+    if (receipt.size > 5 * 1024 * 1024) { toast("Skrinshot 5 MB dan kichik bo‘lishi kerak."); return; }
     btnEl.disabled = true;
     try {
-      await api("/api/parent/payment", { method: "POST", body: JSON.stringify({
-        student_id: c.id, method: $("parentPayMethod").value, reference: $("parentPayRef").value.trim()
-      })});
+      const form = new FormData();
+      form.append("student_id", String(c.id));
+      form.append("method", $("parentPayMethod").value);
+      form.append("receipt", receipt, receipt.name || "receipt.jpg");
+      await apiUpload("/api/parent/payment", form);
       toast("✅ So‘rov o‘qituvchiga yuborildi");
       await loadParentOverview();
     } catch (err) {
