@@ -1730,6 +1730,94 @@ async def tp_pay_custom_value(message: types.Message, state: FSMContext):
         await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
 
 
+@dp.callback_query(F.data.startswith("tp_paycard_"))
+async def tp_paycard_start(call: types.CallbackQuery, state: FSMContext):
+    st = owned_student(_me(call), int(call.data.split("_")[2]))
+    if not st:
+        await call.answer("O‘quvchi topilmadi.", show_alert=True)
+        return
+    await call.answer()
+    current = teacher_payment_method(st["teacher_id"])
+    current_text = ""
+    if current:
+        current_text = (f"\\n\\nJoriy karta: **{md(current['card_number'])}**\\n"
+                        f"Egasi: **{md(current['card_holder'])}**\\nBank: **{md(current['bank_name'] or '—')}**")
+    await state.update_data(paycard_sid=st["id"])
+    await state.set_state(TeacherStates.payment_card)
+    await call.message.edit_text(
+        "💳 **O‘qituvchi karta ma’lumotlari**" + current_text +
+        "\\n\\nQuyidagi shaklda yuboring:\\n8600 1234 5678 9012 | ISM FAMILIYA | BANK" +
+        "\\nKarta raqami, karta egasi va bank nomini | bilan ajrating.",
+        parse_mode="Markdown",
+        reply_markup=kb([[btn("❌ Bekor qilish", f"tp_pay_{st['id']}")]]))
+
+
+@dp.message(TeacherStates.payment_card, F.chat.type == "private")
+async def tp_paycard_save(message: types.Message, state: FSMContext):
+    parts = [p.strip() for p in (message.text or "").split("|")]
+    if len(parts) < 2:
+        await send_and_clean_both(message, "❌ Format xato. Namuna: 8600 1234 5678 9012 | ISM FAMILIYA | BANK", delay=30)
+        return
+    digits = re.sub(r"\\D", "", parts[0])
+    holder = parts[1][:80]
+    bank = parts[2][:60] if len(parts) > 2 else ""
+    if not 16 <= len(digits) <= 19 or len(holder) < 3:
+        await send_and_clean_both(message, "❌ Karta raqami 16–19 raqam, karta egasi esa kamida 3 belgidan iborat bo‘lsin.", delay=30)
+        return
+    t = _me(message)
+    if not t:
+        await state.clear()
+        return
+    run("""INSERT INTO teacher_payment_methods (teacher_id, card_number, card_holder, bank_name, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(teacher_id) DO UPDATE SET card_number=excluded.card_number,
+            card_holder=excluded.card_holder, bank_name=excluded.bank_name, updated_at=excluded.updated_at""",
+        (t["id"], digits, holder, bank, datetime.now().strftime("%d.%m.%Y %H:%M")))
+    await state.clear()
+    await send_and_clean_both(message, "✅ Karta ma’lumotlari saqlandi. Ota-onalar to‘lov bo‘limida ushbu kartani ko‘radi.", delay=45)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+
+
+@dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
+async def teacher_review_payment(call: types.CallbackQuery):
+    t = _me(call)
+    if not t:
+        await call.answer("O‘qituvchi ruxsati kerak.", show_alert=True)
+        return
+    approve = call.data.startswith("payreq_ok_")
+    req_id = int(call.data.rsplit("_", 1)[1])
+    req = run("""SELECT pr.student_id, pr.parent_chat_id, pr.amount, pr.method, pr.reference,
+                        pr.status, s.teacher_id, s.fio
+                 FROM payment_requests pr JOIN students s ON s.id=pr.student_id WHERE pr.id=?""",
+              (req_id,), fetch="one")
+    if not req or req[6] != t["id"]:
+        await call.answer("To‘lov so‘rovi topilmadi yoki sizga tegishli emas.", show_alert=True)
+        return
+    if req[5] != "pending":
+        await call.answer("Bu so‘rov avval ko‘rib chiqilgan.", show_alert=True)
+        return
+    status = "approved" if approve else "rejected"
+    run("UPDATE payment_requests SET status=?, reviewed_at=? WHERE id=? AND status='pending'",
+        (status, datetime.now().strftime("%d.%m.%Y %H:%M"), req_id))
+    if approve:
+        db_set_payment_status(req[0], PAID)
+        parent_text = (f"✅ **TO‘LOV TASDIQLANDI**\\n👤 O‘quvchi: {md(req[7])}\\n"
+                       f"💰 Summa: **{req[2]:,} so‘m**\\n📅 Sana: {datetime.now().strftime('%d.%m.%Y')}\\n"
+                       "Rahmat! To‘lov qabul qilindi.")
+        await call.answer("To‘lov tasdiqlandi.")
+        await call.message.edit_text((call.message.text or "") + "\\n\\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
+    else:
+        parent_text = (f"❌ **TO‘LOV RAD ETILDI**\\n👤 O‘quvchi: {md(req[7])}\\n"
+                       "Iltimos, to‘lov ma’lumotlarini tekshirib, qayta yuboring.")
+        await call.answer("To‘lov rad etildi.")
+        await call.message.edit_text((call.message.text or "") + "\\n\\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
+    try:
+        await bot.send_message(req[1], parent_text, parse_mode="Markdown")
+    except Exception:
+        logging.exception("To‘lov natijasi ota-onaga yuborilmadi: request=%s", req_id)
+
+
+
 # --- O'quvchi izohlari ---
 @dp.callback_query(F.data.startswith("tp_nt_"))
 async def tp_note_start(call: types.CallbackQuery, state: FSMContext):
@@ -3619,32 +3707,27 @@ async def api_score(request):
     subj = db_subject(st["subject_id"])
     notification = {"total": 0, "sent": 0, "failed": []}
     if subj and val != prev:
+        latest = db_student(sid)
+        average = score_average(latest)
         name = md(st["fio"])
         subject_name = md(subj["name"])
-        label = md(subj["labels"][idx - 1])
-        if val < 60:
-            message_text = (
-                f"⚠️ **NATIJA: E'TIBOR KERAK**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"👤 **{name}**\n"
-                f"📚 {subject_name}\n"
-                f"📝 {label}: **{val}/100**\n"
-                f"🔴 Holat: 60 balldan past\n"
-                f"🎯 Maqsad: **60+ ball**\n"
-                f"💡 Tavsiya: mavzuni takrorlash va mashq qilish.\n"
-                f"━━━━━━━━━━━━━━"
-            )
+        labels = subj["labels"]
+        parts = [f"📝 {md(labels[i])}: **{latest[f's{i + 1}']}/100**" for i in range(3) if latest[f"s{i + 1}"] > 0]
+        avg_line = f"📊 **Umumiy natija: {average}/100**" if average is not None else "📊 Umumiy natija: hali hisoblanmadi"
+        if average is not None and average < 60:
+            title = "⚠️ **UMUMIY NATIJA: E'TIBOR KERAK**"
+            status_line = "🔴 Holat: 60 balldan past"
+            advice = "💡 Tavsiya: mavzularni takrorlash va mashq qilish."
         else:
-            message_text = (
-                f"🎉 **AJOYIB NATIJA!**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"👤 **{name}**\n"
-                f"📚 {subject_name}\n"
-                f"📝 {label}: **{val}/100**\n"
-                f"🟢 Holat: Maqsad bajarildi\n"
-                f"👏 Barakalla! Shu zaylda davom eting!\n"
-                f"━━━━━━━━━━━━━━"
-            )
+            title = "🎉 **UMUMIY NATIJA: AJOYIB!**"
+            status_line = "🟢 Holat: yaxshi natija"
+            advice = "👏 Barakalla! Shu zaylda davom eting!"
+        message_text = (
+            f"{title}\n━━━━━━━━━━━━━━\n"
+            f"👤 **{name}**\n📚 {subject_name}\n"
+            + "\n".join(parts) + "\n"
+            + avg_line + "\n" + status_line + "\n" + advice
+        )
         notification = await notify_parents_of(sid, message_text)
     return web.json_response({
         "ok": True,
@@ -3772,11 +3855,13 @@ async def api_parent_overview(request):
         ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
         rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == sid), None)
         teacher = db_teacher(st["teacher_id"])
+        card = teacher_payment_method(st["teacher_id"])
         children.append({
             "id": sid, "fio": st["fio"], "group_name": st["group_name"],
             "teacher_name": teacher_name(teacher), "subject": subj["name"] if subj else "-",
             "labels": subj["labels"][:3] if subj else ["Test", "Qo'shimcha", "Uy vazifasi"],
-            "scores": [st["s1"], st["s2"], st["s3"]], "davomat": st["davomat"],
+            "scores": [st["s1"], st["s2"], st["s3"]], "overall_score": score_average(st), "davomat": st["davomat"],
+            "card": card,
             "payment_status": st["payment_status"], "payment_amount": st["payment_amount"],
             "payment_date": st["payment_date"], "phone": st["phone"],
             "teacher_note": st["teacher_note"], "last_score_date": st["last_score_date"],
@@ -3785,6 +3870,55 @@ async def api_parent_overview(request):
                         for r in db_get_student_history(sid)]
         })
     return web.json_response({"children": children})
+
+
+
+async def api_parent_payment(request):
+    kind, parent_id, err = miniapp_identity(request)
+    if err or kind != "parent":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("student_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad"}, status=400)
+    if sid not in db_parent_student_ids(parent_id):
+        return web.json_response({"error": "forbidden"}, status=403)
+    st = db_student(sid)
+    if not st or st["payment_amount"] <= 0:
+        return web.json_response({"error": "amount_not_set"}, status=400)
+    method = str(body.get("method", "")).strip()
+    reference = str(body.get("reference", "")).strip()[:300]
+    if method not in {"Karta orqali", "Naqd pul", "Boshqa usul"}:
+        return web.json_response({"error": "bad_method"}, status=400)
+    if len(reference) < 3:
+        return web.json_response({"error": "reference_required"}, status=400)
+    card = teacher_payment_method(st["teacher_id"])
+    if method == "Karta orqali" and not card:
+        return web.json_response({"error": "card_not_set"}, status=400)
+    pending = run("SELECT id FROM payment_requests WHERE student_id=? AND parent_chat_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
+                  (sid, parent_id), fetch="one")
+    if pending:
+        return web.json_response({"error": "payment_pending"}, status=409)
+    req_id = run("""INSERT INTO payment_requests
+        (student_id,parent_chat_id,amount,method,reference,status,created_at)
+        VALUES (?,?,?,?,?,'pending',?)""",
+        (sid, parent_id, st["payment_amount"], method, reference, datetime.now().strftime("%d.%m.%Y %H:%M")), fetch="lastid")
+    subj = db_subject(st["subject_id"])
+    lines = [
+        "💳 **YANGI OYLIK TO‘LOV SO‘ROVI**",
+        f"👤 O‘quvchi: **{md(st['fio'])}**",
+        f"📚 Fan: {md(subj['name'] if subj else '-')}",
+        f"💰 Summa: **{st['payment_amount']:,} so‘m**",
+        f"💳 Usul: {md(method)}",
+        f"🧾 Chek / izoh: {md(reference)}",
+    ]
+    if card and method == "Karta orqali":
+        lines.extend([f"💳 Karta: {md(card['card_number'])}", f"👤 Karta egasi: {md(card['card_holder'])}"])
+    await notify_teacher(st["teacher_id"], "\n".join(lines),
+        reply_markup=kb([[btn("✅ Tasdiqlash", f"payreq_ok_{req_id}"), btn("❌ Rad etish", f"payreq_no_{req_id}")]]))
+    return web.json_response({"ok": True, "request_id": req_id})
+
 
 
 
@@ -3854,6 +3988,7 @@ async def start_web_server():
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/student/overview", api_student_overview)
     app.router.add_get("/api/parent/overview", api_parent_overview)
+    app.router.add_post("/api/parent/payment", api_parent_payment)
     app.router.add_post("/api/ai/start", api_ai_start)
     app.router.add_post("/api/ai/answer", api_ai_answer)
     app.router.add_post("/api/ai/stop", api_ai_stop)
