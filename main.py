@@ -2509,7 +2509,7 @@ async def sa_menu(call: types.CallbackQuery, state: FSMContext):
 def _plan_text(p):
     price = "Bepul" if p["price"] == 0 else f"{p['price']:,} so'm/oy"
     feats = "\n".join(f"  {'✅' if k in p['features'] else '⬜'} {v}" for k, v in FEATURES.items())
-    return (f"💼 **{md(p['name'])}** (`{p['key']}`)\n\n💰 Narx: **{price}**\n👥 Limit: **{p['student_limit'] or 'cheksiz'}**\n"
+    return (f"💼 **{md(p['name'])}** (`{p['key']}`)\n\n💰 Narx: **{price}**\n👥 O'quvchi limiti: **{p['student_limit'] or 'cheksiz'}**\n📚 Fan limiti: **{p.get('subject_limit', 0) or 'cheksiz'}**\n"
             f"📅 Muddat: **{p['duration_days'] or 'cheksiz'} kun**\n"
             f"{'🟢 Faol' if p['active'] else '🔴 Faol emas'}\n\n🧩 Imkoniyatlar:\n{feats}")
 
