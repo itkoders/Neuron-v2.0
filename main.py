@@ -1297,7 +1297,11 @@ async def tp_subjects(call: types.CallbackQuery):
     t = _me(call)
     subjects = db_subjects(t["id"])
     rows = [[btn(f"📚 {s['name']}", f"tp_sub_{s['id']}")] for s in subjects]
-    rows.append([btn("➕ Yangi fan", "tp_subadd")])
+    if teacher_subject_limit_reached(t):
+        p, _ = effective_plan(t)
+        rows.append([btn(f"🔒 Fan limiti ({p.get('subject_limit', 0)})", "public_plans")])
+    else:
+        rows.append([btn("➕ Yangi fan", "tp_subadd")])
     rows.append([btn("🔙 Panel", "tp_menu")])
     text = "📚 **Fanlarim**\n\n" + ("Fanni tanlang:" if subjects else "_Hozircha fan yo'q. Yangi fan qo'shing._")
     await call.message.edit_text(text, reply_markup=kb(rows), parse_mode="Markdown")
@@ -1305,6 +1309,11 @@ async def tp_subjects(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "tp_subadd")
 async def tp_subadd(call: types.CallbackQuery, state: FSMContext):
+    t = _me(call)
+    if teacher_subject_limit_reached(t):
+        p, _ = effective_plan(t)
+        await call.answer(f"⛔ Fan limiti to'ldi ({p.get('subject_limit', 0)} ta).", show_alert=True)
+        return
     await call.answer()
     await state.set_state(TeacherStates.subj_name)
     await call.message.edit_text("📚 **Yangi fan nomini kiriting:**\n\n_Masalan: Tarix, Geografiya_",
@@ -3490,6 +3499,50 @@ async def _read_json(request):
         return {}
 
 
+async def api_add_subject(request):
+    kind, t, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    if teacher_subject_limit_reached(t):
+        p, _ = effective_plan(t)
+        return web.json_response({"error": "subject_limit", "limit": p.get("subject_limit", 0)}, status=403)
+    body = await _read_json(request)
+    name = str(body.get("name", "")).strip()[:40]
+    if len(name) < 2:
+        return web.json_response({"error": "bad"}, status=400)
+    labels = body.get("labels") or DEFAULT_LABELS
+    if not isinstance(labels, list) or len(labels) != 3:
+        labels = DEFAULT_LABELS
+    labels = [str(x).strip()[:20] or DEFAULT_LABELS[i] for i, x in enumerate(labels)]
+    db_add_subject(t["id"], name, labels)
+    subj = db_subjects(t["id"])[-1]
+    audit(t["chat_id"], "miniapp_subject_add", str(subj["id"]), name)
+    return web.json_response({"ok": True, "subject": _subj_payload(subj)})
+
+
+async def api_add_student(request):
+    kind, t, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    if teacher_limit_reached(t):
+        p, _ = effective_plan(t)
+        return web.json_response({"error": "student_limit", "limit": p["student_limit"]}, status=403)
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("subject_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad"}, status=400)
+    if not owned_subject(t, sid):
+        return web.json_response({"error": "not_found"}, status=404)
+    fio = str(body.get("fio", "")).strip()[:80]
+    group = str(body.get("group_name", "Guruhsiz")).strip()[:40] or "Guruhsiz"
+    if len(fio) < 2:
+        return web.json_response({"error": "bad"}, status=400)
+    code = db_add_student(t["id"], sid, fio, group)
+    audit(t["chat_id"], "miniapp_student_add", str(sid), fio)
+    return web.json_response({"ok": True, "code": code})
+
+
 async def api_subject(request):
     t, err = miniapp_teacher(request)
     if err:
@@ -3685,6 +3738,8 @@ async def start_web_server():
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/me", api_me)
+    app.router.add_post("/api/subject", api_add_subject)
+    app.router.add_post("/api/student", api_add_student)
     app.router.add_get("/api/subject/{sid}", api_subject)
     app.router.add_post("/api/score", api_score)
     app.router.add_post("/api/attendance", api_attendance)
