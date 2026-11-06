@@ -255,6 +255,11 @@
       </div>
     </section>
   </section>
+  <!-- Ota-ona kabineti -->
+  <section id="parentView" class="hidden">
+    <div class="card panel"><h3>👨‍👩‍👧‍👦 Ota-ona kabineti</h3><p class="hint" style="margin:0 0 10px">Farzandingizning o‘quv natijalari va holati</p><select id="parentChildSelect" aria-label="Farzandni tanlang"></select></div>
+    <div id="parentContent"><div class="loading">Ma’lumotlar yuklanmoqda…</div></div>
+  </section>
 </main>
 
 <div id="toast" class="toast" role="status"></div>
@@ -270,7 +275,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+  const state = { role: null, parentChildren: [], parentSelected: null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
 
   function applyTheme() {
     const saved = localStorage.getItem("neuron-theme") || "system";
@@ -345,6 +350,7 @@
       const me = await api("/api/me");
       state.role = me.role;
       if (me.role === "teacher") initTeacher(me);
+      else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
     } catch (err) {
       $("who").textContent = "Kirish imkonsiz";
@@ -554,6 +560,75 @@
       </div>
       <div class="card panel"><h3>Bo'limlar bo'yicha o'rtacha</h3>${bars}</div>
       <div class="card panel"><h3>Eng yaxshi natijalar</h3><ol class="top">${top || "<li>—</li>"}</ol></div>`;
+  }
+
+  /* ===== OTA-ONA KABINETI ===== */
+  function initParent(parent) {
+    $("roleLabel").textContent = "Ota-ona";
+    state.parentChildren = parent.children || [];
+    $("teacherView").classList.add("hidden");
+    $("studentView").classList.add("hidden");
+    $("tabsTeacher").classList.add("hidden");
+    $("tabsStudent").classList.add("hidden");
+    $("teacherControls").classList.add("hidden");
+    $("parentView").classList.remove("hidden");
+    if (!state.parentChildren.length) {
+      $("parentContent").innerHTML = '<div class="card empty">Farzand ulanmagan. Avval botdagi ota-ona kabinetidan farzand kodini tasdiqlang.</div>';
+      return;
+    }
+    const sel = $("parentChildSelect");
+    sel.innerHTML = state.parentChildren.map(c => '<option value="' + c.id + '">' + esc(c.fio) + '</option>').join("");
+    state.parentSelected = state.parentChildren[0].id;
+    sel.addEventListener("change", () => { state.parentSelected = Number(sel.value); renderParentSelected(); });
+    loadParentOverview();
+  }
+  async function loadParentOverview() {
+    $("parentContent").innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    try {
+      const data = await api("/api/parent/overview");
+      state.parentChildren = data.children || [];
+      if (!state.parentChildren.length) {
+        $("parentContent").innerHTML = '<div class="card empty">Farzandlar ro‘yxati topilmadi.</div>';
+        return;
+      }
+      const sel = $("parentChildSelect"), old = state.parentSelected;
+      sel.innerHTML = state.parentChildren.map(c => '<option value="' + c.id + '">' + esc(c.fio) + '</option>').join("");
+      state.parentSelected = state.parentChildren.some(c => c.id === old) ? old : state.parentChildren[0].id;
+      sel.value = String(state.parentSelected);
+      renderParentSelected();
+      setStatus("Tayyor");
+    } catch (err) {
+      $("parentContent").innerHTML = '<div class="card empty">' + esc(errText(err)) + '</div>';
+      setStatus("Xato", "err");
+    }
+  }
+  function renderParentSelected() {
+    const c = state.parentChildren.find(x => x.id === state.parentSelected);
+    if (!c) return;
+    const scoreCards = c.labels.map((label, i) => {
+      const v = c.scores[i] || 0, color = barColor(v);
+      return '<div class="card score-card"><div class="row"><span class="name">' + esc(label) +
+        '</span><span class="val ' + (v ? '' : 'muted') + '">' + (v ? v + '/100' : '—') +
+        '</span></div><div class="meter"><i style="width:' + v + '%;background:' + color + '"></i></div></div>';
+    }).join("");
+    const attendance = {Keldi:"✅ Keldi",Kelmadi:"❌ Kelmadi",Sababli:"📝 Sababli",Kutilmoqda:"⏳ Kutilmoqda"}[c.davomat] || esc(c.davomat);
+    const payment = c.payment_status === "To'langan" ? "✅ To‘langan" : "⚠️ To‘lanmagan";
+    const history = (c.history || []).map(x => '<div class="card panel"><b>📅 ' + esc(x.date) +
+      '</b><div class="hint" style="margin:5px 0 0">Davomat: ' + esc(x.attendance) +
+      ' · ' + c.labels.map((l,i) => esc(l) + ': ' + (x.scores[i] || 0)).join(' · ') + '</div></div>').join("");
+    $("parentContent").innerHTML =
+      '<div class="card panel"><h3>👤 ' + esc(c.fio) + '</h3><div class="hint">🏫 ' + esc(c.group_name) +
+      ' · 📚 ' + esc(c.subject) + '</div><div class="hint">👩‍🏫 O‘qituvchi: ' + esc(c.teacher_name) + '</div></div>' +
+      '<div class="section-title">📊 Baholar</div><div class="score-cards">' + scoreCards + '</div>' +
+      '<div class="section-title">📌 Umumiy holat</div><div class="facts">' +
+      '<div class="card fact"><small>🏅 Guruhdagi o‘rni</small><b>' + (c.rank ? c.rank + ' / ' + c.class_size : '—') + '</b></div>' +
+      '<div class="card fact"><small>📅 Davomat</small><b>' + attendance + '</b></div>' +
+      '<div class="card fact"><small>💳 To‘lov</small><b>' + payment + '</b></div>' +
+      '<div class="card fact"><small>💰 To‘lov summasi</small><b>' + (c.payment_amount || 0) + ' so‘m</b></div>' +
+      '<div class="card fact"><small>📞 Telefon</small><b>' + esc(c.phone || 'Kiritilmagan') + '</b></div>' +
+      '<div class="card fact"><small>🗓 Oxirgi baho sanasi</small><b>' + esc(c.last_score_date || '—') + '</b></div></div>' +
+      '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
+      '<div class="section-title">📚 Kunlik tarix</div>' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>');
   }
 
   /* ===== O'QUVCHI ===== */

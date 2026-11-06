@@ -3174,6 +3174,8 @@ async def open_parent_cabinet(call: types.CallbackQuery, state: FSMContext):
     rows.append([btn("🖼 Shaxsiy Karta", f"get_student_card_img_{s_id}"), btn("📅 Kunlik Tarix", f"view_full_history_{s_id}")])
     if len(children) < MAX_CHILDREN:
         rows.append([btn("➕ Yana farzand ulash", "reg_enter_code")])
+    if MINIAPP_URL:
+        rows.append([InlineKeyboardButton(text="📱 Ota-ona ilovasini ochish", web_app=WebAppInfo(url=miniapp_role_url("parent")))])
     rows.extend([
         [btn("📞 Telefon raqam", "set_phone_number")],
         [btn("📝 Sababli Ariza", f"send_leave_req_{s_id}"), btn("🔄 Profilni uzish", "reset_account")],
@@ -3597,28 +3599,31 @@ async def api_score(request):
     subj = db_subject(st["subject_id"])
     notification = {"total": 0, "sent": 0, "failed": []}
     if subj and val != prev:
+        name = md(st["fio"])
+        subject_name = md(subj["name"])
+        label = md(subj["labels"][idx - 1])
         if val < 60:
             message_text = (
-                f"⚠️ **O‘QUV NATIJASI BO‘YICHA E’TIBOR**\\n\\n"
-                f"Assalomu alaykum, hurmatli ota-ona!\\n"
-                f"Farzandingiz **{md(st['fio'])}**ning natijasi yangilandi.\\n\\n"
-                f"📚 **Fan:** {md(subj['name'])}\\n"
-                f"📝 **Baholash:** {md(subj['labels'][idx - 1])}\\n"
-                f"📉 **Natija:** {val}/100 ball\\n"
-                f"🎯 **Maqsad:** kamida 60 ball\\n\\n"
-                f"Bu natija mavzuni yana bir bor mustahkamlash kerakligini ko‘rsatadi. Farzandingizni koyimasdan, mavzuni takrorlashiga va qo‘shimcha mashq qilishiga yordam berishingizni tavsiya qilamiz.\\n\\n"
-                f"🤝 Birgalikdagi e’tibor va qo‘llab-quvvatlash natijani yaxshilashga yordam beradi."
+                f"⚠️ **NATIJA: E'TIBOR KERAK**\\n"
+                f"━━━━━━━━━━━━━━\\n"
+                f"👤 **{name}**\\n"
+                f"📚 {subject_name}\\n"
+                f"📝 {label}: **{val}/100**\\n"
+                f"🔴 Holat: 60 balldan past\\n"
+                f"🎯 Maqsad: **60+ ball**\\n"
+                f"💡 Tavsiya: mavzuni takrorlash va mashq qilish.\\n"
+                f"━━━━━━━━━━━━━━"
             )
         else:
             message_text = (
-                f"🌟 **AJOYIB NATIJA!**\\n\\n"
-                f"Assalomu alaykum, hurmatli ota-ona!\\n"
-                f"Farzandingiz **{md(st['fio'])}** yaxshi natija qayd etdi.\\n\\n"
-                f"📚 **Fan:** {md(subj['name'])}\\n"
-                f"📝 **Baholash:** {md(subj['labels'][idx - 1])}\\n"
-                f"🏆 **Natija:** {val}/100 ball\\n\\n"
-                f"👏 Farzandingizni ushbu yutug‘i bilan tabriklaymiz! Mehnati va intilishi o‘z samarasini bermoqda. Shu ruhda davom etishi uchun uni rag‘batlantirib boring.\\n\\n"
-                f"💚 E’tiboringiz va qo‘llab-quvvatlashingiz uchun rahmat!"
+                f"🎉 **AJOYIB NATIJA!**\\n"
+                f"━━━━━━━━━━━━━━\\n"
+                f"👤 **{name}**\\n"
+                f"📚 {subject_name}\\n"
+                f"📝 {label}: **{val}/100**\\n"
+                f"🟢 Holat: Maqsad bajarildi\\n"
+                f"👏 Barakalla! Shu zaylda davom eting!\\n"
+                f"━━━━━━━━━━━━━━"
             )
         notification = await notify_parents_of(sid, message_text)
     return web.json_response({
@@ -3664,28 +3669,37 @@ AI_SESSIONS = {}  # student_id -> MemState (bot qayta ishga tushsa, tozalanadi)
 
 
 def miniapp_identity(request):
-    """Rol URL/header orqali tanlanadi; har bir rol alohida tekshiriladi."""
+    """Telegram WebApp imzosini tekshiradi va teacher/student/parent rolini alohida tasdiqlaydi."""
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
-    if requested_role not in {"", "teacher", "student"}:
+    if requested_role not in {"", "teacher", "student", "parent"}:
         return None, None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
     row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
     st = db_student(row[0]) if row else None
+    parent_ids = db_parent_student_ids(uid)
     if not requested_role:
-        if t and st:
+        roles = (["teacher"] if t else []) + (["student"] if st else []) + (["parent"] if parent_ids else [])
+        if len(roles) > 1:
             return None, None, web.json_response({"error": "role_required"}, status=409)
-        requested_role = "teacher" if t else "student"
+        requested_role = roles[0] if roles else ""
     if requested_role == "teacher":
         if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
             return None, None, web.json_response({"error": "forbidden"}, status=403)
         return "teacher", t, None
-    teacher = db_teacher(st["teacher_id"]) if st else None
-    if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and has_feature(teacher, "mini_app"):
-        return "student", st, None
+    if requested_role == "student":
+        teacher = db_teacher(st["teacher_id"]) if st else None
+        if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and has_feature(teacher, "mini_app"):
+            return "student", st, None
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
+    if requested_role == "parent":
+        if not parent_ids:
+            return None, None, web.json_response({"error": "forbidden"}, status=403)
+        return "parent", uid, None
     return None, None, web.json_response({"error": "forbidden"}, status=403)
+
 
 async def api_me(request):
     kind, obj, err = miniapp_identity(request)
@@ -3694,6 +3708,10 @@ async def api_me(request):
     if kind == "teacher":
         return web.json_response({"role": "teacher", "teacher": {"name": teacher_name(obj)},
                                   "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])]})
+    if kind == "parent":
+        children = [{"id": sid, "fio": child["fio"], "group_name": child["group_name"]}
+                    for sid, child in db_parent_children(obj)]
+        return web.json_response({"role": "parent", "parent": {"children": children}})
     teacher = db_teacher(obj["teacher_id"])
     subj = db_subject(obj["subject_id"])
     return web.json_response({"role": "student", "student": {
@@ -3721,6 +3739,34 @@ async def api_student_overview(request):
         "teacher_note": st["teacher_note"], "rank": rank, "class_size": len(classmates),
         "last_score_date": st["last_score_date"],
     })
+
+
+async def api_parent_overview(request):
+    kind, parent_id, err = miniapp_identity(request)
+    if err or kind != "parent":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    children = []
+    for sid, st in db_parent_children(parent_id):
+        subj = db_subject(st["subject_id"])
+        classmates = list(db_students(st["teacher_id"], st["subject_id"]).values())
+        ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
+        rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == sid), None)
+        teacher = db_teacher(st["teacher_id"])
+        children.append({
+            "id": sid, "fio": st["fio"], "group_name": st["group_name"],
+            "teacher_name": teacher_name(teacher), "subject": subj["name"] if subj else "-",
+            "labels": subj["labels"][:3] if subj else ["Test", "Qo'shimcha", "Uy vazifasi"],
+            "scores": [st["s1"], st["s2"], st["s3"]], "davomat": st["davomat"],
+            "payment_status": st["payment_status"], "payment_amount": st["payment_amount"],
+            "payment_date": st["payment_date"], "phone": st["phone"],
+            "teacher_note": st["teacher_note"], "last_score_date": st["last_score_date"],
+            "rank": rank, "class_size": len(classmates),
+            "history": [{"date": r[0], "attendance": r[1], "scores": [r[2], r[3], r[4]]}
+                        for r in db_get_student_history(sid)]
+        })
+    return web.json_response({"children": children})
+
+
 
 
 async def _ai_student(request):
@@ -3787,6 +3833,7 @@ async def start_web_server():
     app.router.add_post("/api/score", api_score)
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/student/overview", api_student_overview)
+    app.router.add_get("/api/parent/overview", api_parent_overview)
     app.router.add_post("/api/ai/start", api_ai_start)
     app.router.add_post("/api/ai/answer", api_ai_answer)
     app.router.add_post("/api/ai/stop", api_ai_stop)
