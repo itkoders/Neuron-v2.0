@@ -114,12 +114,6 @@ def run(sql, params=(), fetch="none"):
             query = re.sub(r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT", "BIGSERIAL PRIMARY KEY", query, flags=re.I)
             query = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", query, flags=re.I)
             query = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", query, flags=re.I)
-            if "INSERT INTO settings (key, value)" in query:
-                query += " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
-            elif "INSERT INTO student_links (chat_id, student_id)" in query:
-                query += " ON CONFLICT (chat_id) DO UPDATE SET student_id = EXCLUDED.student_id"
-            elif "INSERT INTO super_admins (chat_id)" in query or "INSERT INTO parent_children (parent_chat_id, student_id)" in query:
-                query += " ON CONFLICT DO NOTHING"
             if fetch == "lastid" and query.lstrip().upper().startswith("INSERT") and "RETURNING" not in query.upper():
                 query += " RETURNING id"
             cur.execute(query, params)
