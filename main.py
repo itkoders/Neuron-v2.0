@@ -3597,12 +3597,30 @@ async def api_score(request):
     subj = db_subject(st["subject_id"])
     notification = {"total": 0, "sent": 0, "failed": []}
     if subj and val != prev:
-        notification = await notify_parents_of(
-            sid,
-            f"📊 **Farzandingiz ({md(st['fio'])}) natijasi yangilandi:**\\n"
-            f"📚 Fan: **{md(subj['name'])}**\\n"
-            f"📝 {md(subj['labels'][idx - 1])}: **{val}%**"
-        )
+        if val < 60:
+            message_text = (
+                f"⚠️ **O‘QUV NATIJASI BO‘YICHA E’TIBOR**\\n\\n"
+                f"Assalomu alaykum, hurmatli ota-ona!\\n"
+                f"Farzandingiz **{md(st['fio'])}**ning natijasi yangilandi.\\n\\n"
+                f"📚 **Fan:** {md(subj['name'])}\\n"
+                f"📝 **Baholash:** {md(subj['labels'][idx - 1])}\\n"
+                f"📉 **Natija:** {val}/100 ball\\n"
+                f"🎯 **Maqsad:** kamida 60 ball\\n\\n"
+                f"Bu natija mavzuni yana bir bor mustahkamlash kerakligini ko‘rsatadi. Farzandingizni koyimasdan, mavzuni takrorlashiga va qo‘shimcha mashq qilishiga yordam berishingizni tavsiya qilamiz.\\n\\n"
+                f"🤝 Birgalikdagi e’tibor va qo‘llab-quvvatlash natijani yaxshilashga yordam beradi."
+            )
+        else:
+            message_text = (
+                f"🌟 **AJOYIB NATIJA!**\\n\\n"
+                f"Assalomu alaykum, hurmatli ota-ona!\\n"
+                f"Farzandingiz **{md(st['fio'])}** yaxshi natija qayd etdi.\\n\\n"
+                f"📚 **Fan:** {md(subj['name'])}\\n"
+                f"📝 **Baholash:** {md(subj['labels'][idx - 1])}\\n"
+                f"🏆 **Natija:** {val}/100 ball\\n\\n"
+                f"👏 Farzandingizni ushbu yutug‘i bilan tabriklaymiz! Mehnati va intilishi o‘z samarasini bermoqda. Shu ruhda davom etishi uchun uni rag‘batlantirib boring.\\n\\n"
+                f"💚 E’tiboringiz va qo‘llab-quvvatlashingiz uchun rahmat!"
+            )
+        notification = await notify_parents_of(sid, message_text)
     return web.json_response({
         "ok": True,
         "last": db_student(sid)["last_score_date"],
