@@ -4035,7 +4035,7 @@ async def api_ai_stop(request):
 
 async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
-    app = web.Application()
+    app = web.Application(client_max_size=6 * 1024 * 1024)
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
