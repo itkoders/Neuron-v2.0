@@ -3856,12 +3856,14 @@ async def api_parent_overview(request):
         rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == sid), None)
         teacher = db_teacher(st["teacher_id"])
         card = teacher_payment_method(st["teacher_id"])
+        payment_request = run("SELECT status, method, reference, created_at FROM payment_requests WHERE student_id=? AND parent_chat_id=? ORDER BY id DESC LIMIT 1",
+                              (sid, parent_id), fetch="one")
         children.append({
             "id": sid, "fio": st["fio"], "group_name": st["group_name"],
             "teacher_name": teacher_name(teacher), "subject": subj["name"] if subj else "-",
             "labels": subj["labels"][:3] if subj else ["Test", "Qo'shimcha", "Uy vazifasi"],
             "scores": [st["s1"], st["s2"], st["s3"]], "overall_score": score_average(st), "davomat": st["davomat"],
-            "card": card,
+            "card": card, "payment_request": ({"status": payment_request[0], "method": payment_request[1], "reference": payment_request[2], "created_at": payment_request[3]} if payment_request else None),
             "payment_status": st["payment_status"], "payment_amount": st["payment_amount"],
             "payment_date": st["payment_date"], "phone": st["phone"],
             "teacher_note": st["teacher_note"], "last_score_date": st["last_score_date"],

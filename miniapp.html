@@ -325,6 +325,11 @@
       auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
       role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
+      amount_not_set: "O‘qituvchi oylik to‘lov summasini hali belgilamagan.",
+      card_not_set: "O‘qituvchi karta ma’lumotlarini hali kiritmagan.",
+      reference_required: "Chek raqami yoki to‘lov izohini kiriting.",
+      bad_method: "To‘lov usuli noto‘g‘ri.",
+      payment_pending: "Oldingi to‘lov so‘rovingiz hali ko‘rib chiqilmoqda.",
       subject_limit: "Tarifdagi fanlar soni limiti tugagan.",
       student_limit: "Tarifdagi o‘quvchilar soni limiti tugagan.",
       ai_off: "AI bu o'qituvchi uchun hozircha yoqilmagan.",
@@ -627,8 +632,33 @@
       '<div class="card fact"><small>💰 To‘lov summasi</small><b>' + (c.payment_amount || 0) + ' so‘m</b></div>' +
       '<div class="card fact"><small>📞 Telefon</small><b>' + esc(c.phone || 'Kiritilmagan') + '</b></div>' +
       '<div class="card fact"><small>🗓 Oxirgi baho sanasi</small><b>' + esc(c.last_score_date || '—') + '</b></div></div>' +
+      '<div class="section-title">📊 Umumiy natija</div><div class="card fact"><small>Bahosi kiritilgan bo‘limlar bo‘yicha o‘rtacha</small><b>' + (c.overall_score == null ? 'Hali baho yo‘q' : c.overall_score + '/100') + '</b></div>' +
       '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
+      '<div class="section-title">💳 Oylik to‘lov</div><div class="card panel"><div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
+      (c.card ? '<div class="card panel"><b>💳 Karta orqali</b><div class="hint">Karta: ' + esc(c.card.card_number) + '</div><div class="hint">Egasi: ' + esc(c.card.card_holder) + '</div><div class="hint">' + esc(c.card.bank_name || '') + '</div></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
+      (c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
+       '<label for="parentPayMethod">To‘lov usuli</label><select id="parentPayMethod"><option>Karta orqali</option><option>Naqd pul</option><option>Boshqa usul</option></select>' +
+       '<label for="parentPayRef">Chek raqami yoki izoh</label><input id="parentPayRef" maxlength="300" placeholder="Masalan: tranzaksiya raqami / to‘lov vaqti">' +
+       '<button class="btn" id="parentPaySubmit" ' + (Number(c.payment_amount || 0) <= 0 ? 'disabled' : '') + '>📤 To‘lovni o‘qituvchiga yuborish</button><p class="hint">To‘lov o‘qituvchi tasdiqlagandan keyin qabul qilingan hisoblanadi.</p>') + '</div>' +
       '<div class="section-title">📚 Kunlik tarix</div>' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>');
+    const payBtn = $("parentPaySubmit");
+    if (payBtn) payBtn.addEventListener("click", submitParentPayment);
+  }
+  async function submitParentPayment() {
+    const c = state.parentChildren.find(x => x.id === state.parentSelected);
+    if (!c) return;
+    const btnEl = $("parentPaySubmit");
+    btnEl.disabled = true;
+    try {
+      await api("/api/parent/payment", { method: "POST", body: JSON.stringify({
+        student_id: c.id, method: $("parentPayMethod").value, reference: $("parentPayRef").value.trim()
+      })});
+      toast("✅ So‘rov o‘qituvchiga yuborildi");
+      await loadParentOverview();
+    } catch (err) {
+      toast(errText(err));
+      btnEl.disabled = false;
+    }
   }
 
   /* ===== O'QUVCHI ===== */
