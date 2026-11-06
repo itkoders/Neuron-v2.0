@@ -1740,14 +1740,14 @@ async def tp_paycard_start(call: types.CallbackQuery, state: FSMContext):
     current = teacher_payment_method(st["teacher_id"])
     current_text = ""
     if current:
-        current_text = (f"\\n\\nJoriy karta: **{md(current['card_number'])}**\\n"
-                        f"Egasi: **{md(current['card_holder'])}**\\nBank: **{md(current['bank_name'] or '—')}**")
+        current_text = (f"\n\nJoriy karta: **{md(current['card_number'])}**\n"
+                        f"Egasi: **{md(current['card_holder'])}**\nBank: **{md(current['bank_name'] or '—')}**")
     await state.update_data(paycard_sid=st["id"])
     await state.set_state(TeacherStates.payment_card)
     await call.message.edit_text(
         "💳 **O‘qituvchi karta ma’lumotlari**" + current_text +
-        "\\n\\nQuyidagi shaklda yuboring:\\n8600 1234 5678 9012 | ISM FAMILIYA | BANK" +
-        "\\nKarta raqami, karta egasi va bank nomini | bilan ajrating.",
+        "\n\nQuyidagi shaklda yuboring:\n8600 1234 5678 9012 | ISM FAMILIYA | BANK" +
+        "\nKarta raqami, karta egasi va bank nomini | bilan ajrating.",
         parse_mode="Markdown",
         reply_markup=kb([[btn("❌ Bekor qilish", f"tp_pay_{st['id']}")]]))
 
@@ -1758,7 +1758,7 @@ async def tp_paycard_save(message: types.Message, state: FSMContext):
     if len(parts) < 2:
         await send_and_clean_both(message, "❌ Format xato. Namuna: 8600 1234 5678 9012 | ISM FAMILIYA | BANK", delay=30)
         return
-    digits = re.sub(r"\\D", "", parts[0])
+    digits = re.sub(r"\D", "", parts[0])
     holder = parts[1][:80]
     bank = parts[2][:60] if len(parts) > 2 else ""
     if not 16 <= len(digits) <= 19 or len(holder) < 3:
@@ -1801,16 +1801,16 @@ async def teacher_review_payment(call: types.CallbackQuery):
         (status, datetime.now().strftime("%d.%m.%Y %H:%M"), req_id))
     if approve:
         db_set_payment_status(req[0], PAID)
-        parent_text = (f"✅ **TO‘LOV TASDIQLANDI**\\n👤 O‘quvchi: {md(req[7])}\\n"
-                       f"💰 Summa: **{req[2]:,} so‘m**\\n📅 Sana: {datetime.now().strftime('%d.%m.%Y')}\\n"
+        parent_text = (f"✅ **TO‘LOV TASDIQLANDI**\n👤 O‘quvchi: {md(req[7])}\n"
+                       f"💰 Summa: **{req[2]:,} so‘m**\n📅 Sana: {datetime.now().strftime('%d.%m.%Y')}\n"
                        "Rahmat! To‘lov qabul qilindi.")
         await call.answer("To‘lov tasdiqlandi.")
-        await call.message.edit_text((call.message.text or "") + "\\n\\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
+        await call.message.edit_text((call.message.text or "") + "\n\n✅ **TASDIQLANDI**", parse_mode="Markdown", reply_markup=None)
     else:
-        parent_text = (f"❌ **TO‘LOV RAD ETILDI**\\n👤 O‘quvchi: {md(req[7])}\\n"
+        parent_text = (f"❌ **TO‘LOV RAD ETILDI**\n👤 O‘quvchi: {md(req[7])}\n"
                        "Iltimos, to‘lov ma’lumotlarini tekshirib, qayta yuboring.")
         await call.answer("To‘lov rad etildi.")
-        await call.message.edit_text((call.message.text or "") + "\\n\\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
+        await call.message.edit_text((call.message.text or "") + "\n\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
     try:
         await bot.send_message(req[1], parent_text, parse_mode="Markdown")
     except Exception:
