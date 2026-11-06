@@ -262,7 +262,16 @@
   function setStatus(text, cls) { const el = $("status"); el.textContent = text; el.className = "status " + (cls || ""); }
 
   async function api(path, opts = {}) {
-    const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", "X-Init-Data": INIT, ...(opts.headers || {}) } });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+    let res;
+    try {
+      res = await fetch(path, { ...opts, signal: controller.signal,
+        headers: { "Content-Type": "application/json", "X-Init-Data": INIT, ...(opts.headers || {}) } });
+    } catch (err) {
+      if (err.name === "AbortError") throw new Error("So'rov vaqti tugadi. Qayta urinib ko'ring.");
+      throw err;
+    } finally { clearTimeout(timeout); }
     let data = {};
     try { data = await res.json(); } catch (_) {}
     if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), { status: res.status, data });
@@ -274,6 +283,7 @@
     ai_off: "AI bu o'qituvchi uchun hozircha yoqilmagan.",
     ai_unconfigured: "AI hali sozlanmagan.",
     no_session: "Mashq sessiyasi topilmadi. Mavzuni qayta tanlang.",
+    ai_fail: (err.data && err.data.message) || "AI hozir javob bera olmadi. Keyinroq urinib ko'ring.",
   })[err.data && err.data.error] || err.message || "Xato";
 
   /* ===== Rejim aniqlash ===== */
@@ -392,14 +402,14 @@
     const id = +inp.closest("tr").dataset.id;
     const idx = +inp.dataset.col + 1;
     const raw = inp.value.trim();
+    const key = `${id}:${idx}`;
+    clearTimeout(pendingTimers[key]);
     const val = raw === "" ? 0 : Math.round(Number(raw));
     if (!Number.isFinite(val) || val < 0 || val > 100) {
       inp.closest("td").className = "cell-err";
       setStatus("0–100 oralig'ida", "err");
       return;
     }
-    const key = `${id}:${idx}`;
-    clearTimeout(pendingTimers[key]);
     setStatus("Saqlanmoqda…", "saving");
     pendingTimers[key] = setTimeout(() => saveScore(id, idx, val, inp), 350);
   }
