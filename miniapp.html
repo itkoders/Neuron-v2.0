@@ -643,7 +643,7 @@
     $("parentContent").innerHTML =
       '<div class="card panel"><h3>👤 ' + esc(c.fio) + '</h3><div class="hint">🏫 ' + esc(c.group_name) +
       ' · 📚 ' + esc(c.subject) + '</div><div class="hint">👩‍🏫 O‘qituvchi: ' + esc(c.teacher_name) + '</div></div>' +
-      '<button class="parent-pay-quick" id="parentPayJump" type="button">💳 Shu farzand uchun to‘lov qilish <span>↓</span></button>' ,
+      '<button class="parent-pay-quick" id="parentPayJump" type="button">💳 Shu farzand uchun to‘lov qilish <span>↓</span></button>' +
       '<div class="section-title">📊 Baholar</div><div class="score-cards">' + scoreCards + '</div>' +
       '<div class="section-title">📌 Umumiy holat</div><div class="facts">' +
       '<div class="card fact"><small>🏅 Guruhdagi o‘rni</small><b>' + (c.rank ? c.rank + ' / ' + c.class_size : '—') + '</b></div>' +
@@ -655,7 +655,7 @@
       '<div class="section-title">📊 Umumiy natija</div><div class="card fact"><small>Bahosi kiritilgan bo‘limlar bo‘yicha o‘rtacha</small><b>' + (c.overall_score == null ? 'Hali baho yo‘q' : c.overall_score + '/100') + '</b></div>' +
       '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
       '<div class="section-title" id="parentPaymentSection">💳 Oylik to‘lov — ' + esc(c.fio) + '</div><div class="parent-pay-box"><div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
-      (c.card ? '<div class="parent-card-info"><b>💳 O‘qituvchining to‘lov kartasi</b><span>Karta raqami</span><strong>' + esc(String(c.card.card_number).replace(/(\\d{4})(?=\\d)/g, '$1 ')) + '</strong><span>Karta egasi</span><b>' + esc(c.card.card_holder) + '</b><span>Bank</span><b>' + esc(c.card.bank_name || 'Ko‘rsatilmagan') + '</b></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
+      (c.card ? '<div class="parent-card-info"><b>💳 O‘qituvchining to‘lov kartasi</b><span>Karta raqami</span><strong>' + esc(String(c.card.card_number).replace(/(\d{4})(?=\d)/g, '$1 ')) + '</strong><span>Karta egasi</span><b>' + esc(c.card.card_holder) + '</b><span>Bank</span><b>' + esc(c.card.bank_name || 'Ko‘rsatilmagan') + '</b></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
       (c.payment_status === "To'langan" ? '<div class="card panel">✅ Bu oy uchun to‘lov qabul qilingan.</div>' :
        c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
        (c.payment_request && c.payment_request.status === 'rejected' ? '<div class="card panel">❌ Oxirgi so‘rov rad etilgan. Ma’lumotni tekshirib, qayta yuborishingiz mumkin.</div>' : '') +
