@@ -293,7 +293,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
 
   function applyTheme() {
     const saved = localStorage.getItem("neuron-theme") || "system";
@@ -602,7 +602,8 @@
     }
     const sel = $("parentChildSelect");
     sel.innerHTML = state.parentChildren.map(c => '<option value="' + c.id + '">' + esc(c.fio) + '</option>').join("");
-    state.parentSelected = state.parentChildren[0].id;
+    state.parentSelected = state.parentChildren.some(c => c.id === state.parentSelected) ? state.parentSelected : state.parentChildren[0].id;
+    sel.value = String(state.parentSelected);
     sel.addEventListener("change", () => { state.parentSelected = Number(sel.value); renderParentSelected(); });
     loadParentOverview();
   }
