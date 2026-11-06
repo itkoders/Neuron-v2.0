@@ -3604,25 +3604,25 @@ async def api_score(request):
         label = md(subj["labels"][idx - 1])
         if val < 60:
             message_text = (
-                f"⚠️ **NATIJA: E'TIBOR KERAK**\\n"
-                f"━━━━━━━━━━━━━━\\n"
-                f"👤 **{name}**\\n"
-                f"📚 {subject_name}\\n"
-                f"📝 {label}: **{val}/100**\\n"
-                f"🔴 Holat: 60 balldan past\\n"
-                f"🎯 Maqsad: **60+ ball**\\n"
-                f"💡 Tavsiya: mavzuni takrorlash va mashq qilish.\\n"
+                f"⚠️ **NATIJA: E'TIBOR KERAK**\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"👤 **{name}**\n"
+                f"📚 {subject_name}\n"
+                f"📝 {label}: **{val}/100**\n"
+                f"🔴 Holat: 60 balldan past\n"
+                f"🎯 Maqsad: **60+ ball**\n"
+                f"💡 Tavsiya: mavzuni takrorlash va mashq qilish.\n"
                 f"━━━━━━━━━━━━━━"
             )
         else:
             message_text = (
-                f"🎉 **AJOYIB NATIJA!**\\n"
-                f"━━━━━━━━━━━━━━\\n"
-                f"👤 **{name}**\\n"
-                f"📚 {subject_name}\\n"
-                f"📝 {label}: **{val}/100**\\n"
-                f"🟢 Holat: Maqsad bajarildi\\n"
-                f"👏 Barakalla! Shu zaylda davom eting!\\n"
+                f"🎉 **AJOYIB NATIJA!**\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"👤 **{name}**\n"
+                f"📚 {subject_name}\n"
+                f"📝 {label}: **{val}/100**\n"
+                f"🟢 Holat: Maqsad bajarildi\n"
+                f"👏 Barakalla! Shu zaylda davom eting!\n"
                 f"━━━━━━━━━━━━━━"
             )
         notification = await notify_parents_of(sid, message_text)
