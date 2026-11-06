@@ -2638,8 +2638,13 @@ async def sa_sub_channel_save(message: types.Message, state: FSMContext):
         return
     try:
         await bot.get_chat(raw)
+        me = await bot.get_me()
+        bot_member = await bot.get_chat_member(raw, me.id)
+        if bot_member.status not in ("administrator", "creator"):
+            await send_and_clean_both(message, "❌ Bot bu kanalda admin emas. Avval botni kanalga administrator qiling.", delay=30)
+            return
     except Exception:
-        await send_and_clean_both(message, "❌ Kanal topilmadi yoki bot unga kira olmaydi. Botni kanalga admin qiling.", delay=30)
+        await send_and_clean_both(message, "❌ Kanal topilmadi yoki bot kanalga kira olmaydi. Botni kanalga admin qilib, qayta urinib ko'ring.", delay=30)
         return
     db_set_setting("required_channel", raw)
     SUB_CACHE.clear()
