@@ -157,6 +157,28 @@
   .toast.show { opacity: 1; }
   .hidden { display: none !important; }
   @media (min-width: 720px) { .grid-wrap { max-height: calc(100vh - 270px); } .score-cards { grid-template-columns: 1fr 1fr; } }
+
+  /* NEURON SMART JOURNAL — Premium SaaS layer */
+  :root { color-scheme:light; --bg:#f5f7fc;--card:#fff;--text:#172033;--muted:#748096;--line:#e7ebf3;--soft:#f0f3fa;--accent:#5145e5;--accent-2:#7867f5;--ok:#16845d;--warn:#bd7815;--bad:#c34452;--ok-bg:#e2f5ec;--warn-bg:#fff2d9;--bad-bg:#fde8eb;--shadow:0 8px 26px rgba(27,39,75,.055);--radius:19px; }
+  :root[data-theme="dark"],:root[data-theme="system"] { }
+  :root[data-theme="dark"] { color-scheme:dark;--bg:#0b1020;--card:#151d30;--text:#edf1fb;--muted:#9aa7bf;--line:#28334b;--soft:#1c2740;--accent:#8b83ff;--accent-2:#6d63e8;--ok:#42c99a;--warn:#f0b75e;--bad:#ff7888;--ok-bg:#183a34;--warn-bg:#3a3020;--bad-bg:#3b252f;--shadow:0 8px 26px rgba(0,0,0,.2); }
+  @media(prefers-color-scheme:dark){:root[data-theme="system"]{color-scheme:dark;--bg:#0b1020;--card:#151d30;--text:#edf1fb;--muted:#9aa7bf;--line:#28334b;--soft:#1c2740;--accent:#8b83ff;--accent-2:#6d63e8;--ok:#42c99a;--warn:#f0b75e;--bad:#ff7888;--ok-bg:#183a34;--warn-bg:#3a3020;--bad-bg:#3b252f;--shadow:0 8px 26px rgba(0,0,0,.2);}}
+  body{background:var(--bg)} header{color:var(--text);background:var(--card);border-bottom:1px solid var(--line);box-shadow:0 5px 24px rgba(30,40,80,.04);padding:18px clamp(14px,3vw,34px) 14px}
+  .title-row,.controls,.tabs{max-width:1240px;margin-left:auto;margin-right:auto}.who .label{color:var(--accent);opacity:1;font-weight:800;letter-spacing:.13em;font-size:10px}.who h1{font-size:20px;letter-spacing:-.04em}
+  .status{color:var(--muted);background:var(--soft)}.status.saving{color:#9b650d;background:var(--warn-bg)}.status.ok{color:var(--ok);background:var(--ok-bg)}.status.err{color:var(--bad);background:var(--bad-bg)}
+  .controls{margin-top:16px} select,input[type="search"],.field{border:1px solid var(--line);border-radius:13px;background:var(--card);color:var(--text);min-height:44px}header select,header input{background:var(--soft);color:var(--text);border:1px solid var(--line)}
+  .tabs{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px}.tab{color:var(--muted)}.tab.active{background:var(--card);color:var(--accent);box-shadow:0 2px 9px rgba(25,35,75,.09)}
+  main{max-width:1240px;padding:24px clamp(12px,3vw,34px) 110px}.card{border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line)}.section-title{color:var(--muted);letter-spacing:.09em;font-size:11px}
+  .grid-wrap{max-height:calc(100vh - 310px);border-radius:18px}table{min-width:540px}thead th{padding:14px 9px}td input{height:50px}.stat{padding:15px 9px}.stat b{font-size:22px;letter-spacing:-.04em}.panel{padding:20px}
+  .btn{border-radius:13px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 5px 14px rgba(81,69,229,.18)}.btn.ghost{box-shadow:none}
+  .theme-switch{display:flex;gap:3px;padding:4px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}.theme-switch button{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:7px 9px;font-size:12px;font-weight:750;cursor:pointer}.theme-switch button.active{color:var(--accent);background:var(--card);box-shadow:0 2px 8px rgba(20,30,60,.09)}
+  .teacher-hero{max-width:1240px;margin:18px auto 0;padding:19px;border-radius:20px;color:#fff;background:linear-gradient(120deg,#202b53,#3c3c8c 58%,#6255d9);position:relative;overflow:hidden}
+  .teacher-hero:after{content:"";position:absolute;width:190px;height:190px;right:-45px;top:-90px;border-radius:50%;border:1px solid rgba(255,255,255,.15);box-shadow:0 0 0 24px rgba(255,255,255,.035),0 0 0 48px rgba(255,255,255,.025)}
+  .hero-kicker{font-size:10px;letter-spacing:.16em;font-weight:800;opacity:.75}.hero-title{font-size:21px;font-weight:800;letter-spacing:-.04em;margin:5px 0 3px}.hero-sub{font-size:12px;opacity:.76}
+  .hero-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:17px;max-width:560px}.hero-stat{padding:10px 11px;border:1px solid rgba(255,255,255,.16);border-radius:13px;background:rgba(255,255,255,.1);backdrop-filter:blur(8px)}.hero-stat b{display:block;font-size:21px;line-height:1.2}.hero-stat span{font-size:10px;opacity:.76}
+  @media(min-width:900px){header{padding-top:22px}.teacher-hero{padding:25px 28px}.hero-title{font-size:26px}.tab{padding:11px}.grid-wrap{max-height:calc(100vh - 340px)}}
+  @media(max-width:480px){.who h1{font-size:17px}.theme-switch button{padding:7px 6px;font-size:11px}.teacher-hero{margin-top:13px;padding:16px}.hero-title{font-size:19px}.hero-stat{padding:9px 7px}.hero-stat b{font-size:19px}.hero-stat span{font-size:9px}.summary{gap:6px}.stat b{font-size:17px}.stat span{font-size:10px}}
+
 </style>
 </head>
 <body>
@@ -166,13 +188,14 @@
       <div class="label" id="roleLabel">Yuklanmoqda…</div>
       <h1 id="who">Maktab jurnali</h1>
     </div>
-    <span id="status" class="status">Tayyor</span>
+    <div style="display:flex;align-items:center;gap:8px"><div class="theme-switch" id="themeSwitch" aria-label="Rang rejimi"><button type="button" data-theme-choice="light">☀️</button><button type="button" data-theme-choice="dark">🌙</button><button type="button" data-theme-choice="system">Auto</button></div><span id="status" class="status">Tayyor</span></div>
   </div>
 
   <div id="teacherControls" class="controls hidden">
     <select id="subject" aria-label="Fan"></select>
     <input id="search" type="search" placeholder="Qidirish…" aria-label="Qidirish">
   </div>
+  <div id="teacherHero" class="teacher-hero hidden"><div class="hero-kicker">NEURON • SMART JOURNAL</div><div class="hero-title">Darslaringiz nazorat ostida</div><div class="hero-sub" id="heroSubject">O‘quvchilar natijalarini boshqaring va rivojlanishni kuzating</div><div class="hero-stats"><div class="hero-stat"><b id="heroStudents">—</b><span>O‘QUVCHILAR</span></div><div class="hero-stat"><b id="heroAverage">—</b><span>O‘RTACHA BALL</span></div><div class="hero-stat"><b id="heroAttendance">—</b><span>BUGUN KELDI</span></div></div></div>
   <div class="tabs" id="tabsTeacher" role="tablist">
     <button class="tab active" data-tab="grades">📝 Ballar</button>
     <button class="tab" data-tab="attendance">✅ Davomat</button>
@@ -248,11 +271,22 @@
   const state = { role: null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
 
   function applyTheme() {
-    const p = tg.themeParams || {};
-    const root = document.documentElement.style;
-    const map = { bg_color: "--bg", text_color: "--text", hint_color: "--muted", secondary_bg_color: "--soft",
-      section_bg_color: "--card", section_separator_color: "--line" };
-    Object.entries(map).forEach(([k, v]) => { if (p[k]) root.setProperty(v, p[k]); });
+    const saved = localStorage.getItem("neuron-theme") || "system";
+    document.documentElement.dataset.theme = saved;
+    document.querySelectorAll("[data-theme-choice]").forEach(b => b.classList.toggle("active", b.dataset.themeChoice === saved));
+  }
+  function renderTeacherHero() {
+    const hero = $("teacherHero");
+    if (!state.subject) { hero.classList.add("hidden"); return; }
+    const n = state.students.length;
+    const vals = state.students.flatMap(s => [s.s1,s.s2,s.s3]).filter(v => v > 0);
+    const avg = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+    const came = state.students.filter(s => s.davomat === "Keldi").length;
+    $("heroSubject").textContent = state.subject.name + " · O‘quvchilar rivojini kuzating";
+    $("heroStudents").textContent = n;
+    $("heroAverage").textContent = avg == null ? "—" : avg + "%";
+    $("heroAttendance").textContent = n ? came + "/" + n : "—";
+    hero.classList.remove("hidden");
   }
 
   function toast(msg) {
@@ -336,6 +370,7 @@
     try {
       const data = await api(`/api/subject/${sid}`);
       state.subject = data.subject; state.students = data.students;
+      renderTeacherHero();
       renderTeacherTab();
       setStatus("Tayyor");
     } catch (err) {
@@ -462,10 +497,12 @@
     const prev = s.davomat;
     s.davomat = status;
     renderAttendance();
+    renderTeacherHero();
     setStatus("Saqlanmoqda…", "saving");
     try {
       await api("/api/attendance", { method: "POST", body: JSON.stringify({ student_id: id, status }) });
       setStatus("Saqlandi ✓", "ok");
+      renderTeacherHero();
     } catch (err) {
       s.davomat = prev;
       renderAttendance();
@@ -635,6 +672,7 @@
     if (state.stab === "mine") loadOverview();
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener("click", () => { localStorage.setItem("neuron-theme", b.dataset.themeChoice); applyTheme(); }));
   $("search").addEventListener("input", e => { state.query = e.target.value; renderTeacherTab(); });
   $("topicBtn").addEventListener("click", startAi);
   $("topicInput").addEventListener("keydown", e => { if (e.key === "Enter") startAi(); });
