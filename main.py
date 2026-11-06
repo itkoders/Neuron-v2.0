@@ -616,6 +616,7 @@ class SuperStates(StatesGroup):
     verify_reason = State()
     sub_channel = State()
     support_value = State()
+    support_label = State()
 
 
 class ParentStates(StatesGroup):
@@ -2635,7 +2636,7 @@ def sa_menu_kb():
         [btn("🪪 Tasdiqlash navbati", "sa_vqueue"),
          btn(f"🔁 Rejim: {'hujjat' if verify_mode() == 'manual' else 'telefon'}", "sa_vmode")],
         [btn("📜 Audit jurnali", "sa_audit")],
-        [btn("🔔 Majburiy obuna", "sa_sub"), btn("🆘 Yordam kontakti", "sa_support")],
+        [btn("🔔 Majburiy obuna", "sa_sub"), btn("🆘 Yordam tugmasi", "sa_support")],
         [btn("🤖 AI sozlamalari", "sa_ai")],
         [btn("🔑 Super parolni almashtirish", "sa_pass")],
         [btn("🔙 Asosiy Menyu", "back_home")],
@@ -2803,15 +2804,22 @@ async def sa_sub_channel_save(message: types.Message, state: FSMContext):
 
 
 def sa_support_text():
-    raw = db_get_setting("support_contact")
-    return (f"🆘 **Pullik yordam kontakti**\n\nHozirgi: `{raw or 'ulanmagan'}`\n\n"
-            "_O'qituvchi panelidagi \"💰 Pullik yordam\" tugmasi shu odamning profiliga olib boradi._")
+    raw = db_get_setting("support_contact") or "ulanmagan"
+    label = db_get_setting("support_label") or "Yordam"
+    enabled = db_get_setting("support_enabled") == "1"
+    return (f"🆘 **Ilovadagi yordam tugmasi**\n\n"
+            f"Holati: {'🟢 Yoqilgan' if enabled else '🔴 O‘chirilgan'}\n"
+            f"Tugma nomi: **{md(label)}**\nTelegram: **{md(raw)}**\n\n"
+            "_Tugma barcha foydalanuvchilarning Mini App oynasida ko‘rinadi._")
 
 
 def sa_support_kb():
+    enabled = db_get_setting("support_enabled") == "1"
     return kb([
-        [btn("✏️ Kontaktni o'zgartirish", "sa_supset")],
-        [btn("🗑 O'chirish", "sa_supdel")],
+        [btn("✏️ Telegram manzilini o'zgartirish", "sa_supset")],
+        [btn("✏️ Tugma nomini o'zgartirish", "sa_suplabel")],
+        [btn("🔴 O'chirish" if enabled else "🟢 Yoqish", "sa_suptoggle")],
+        [btn("🗑 Sozlamalarni tozalash", "sa_supdel")],
         [btn("🔙 Super panel", "sa_menu")],
     ])
 
@@ -2842,15 +2850,49 @@ async def sa_support_save(message: types.Message, state: FSMContext):
         await send_and_clean_both(message, "❌ Noto'g'ri format. Masalan: @yordamchi yoki 123456789", delay=20)
         return
     db_set_setting("support_contact", value)
+    db_set_setting("support_enabled", "1")
     audit(message.chat.id, "support_contact", "", value)
     await state.clear()
     await message.answer(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data == "sa_suplabel")
+async def sa_support_label_start(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.set_state(SuperStates.support_label)
+    await call.message.edit_text("✏️ Ilovadagi tugma nomini kiriting (masalan: Yordam, Administrator bilan bog‘lanish):",
+                                 reply_markup=kb([[btn("❌ Bekor qilish", "sa_support")]]))
+
+
+@dp.message(SuperStates.support_label, F.chat.type == "private")
+async def sa_support_label_save(message: types.Message, state: FSMContext):
+    label = " ".join((message.text or "").split())[:32]
+    if len(label) < 2:
+        await send_and_clean_both(message, "❌ Tugma nomi kamida 2 ta belgidan iborat bo‘lsin.", delay=20)
+        return
+    db_set_setting("support_label", label)
+    audit(message.chat.id, "support_label", "", label)
+    await state.clear()
+    await message.answer(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data == "sa_suptoggle")
+async def sa_support_toggle(call: types.CallbackQuery):
+    enabled = db_get_setting("support_enabled") == "1"
+    if not enabled and not support_url():
+        await call.answer("Avval Telegram manzilini kiriting.", show_alert=True)
+        return
+    db_set_setting("support_enabled", "0" if enabled else "1")
+    audit(call.from_user.id, "support_enabled", "", "off" if enabled else "on")
+    await call.answer("Yordam tugmasi yangilandi.")
+    await call.message.edit_text(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data == "sa_supdel")
 async def sa_support_delete(call: types.CallbackQuery):
     await call.answer()
     db_set_setting("support_contact", "")
+    db_set_setting("support_enabled", "0")
     audit(call.from_user.id, "support_contact", "", "deleted")
     await call.message.edit_text(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
 
@@ -3844,6 +3886,13 @@ def miniapp_identity(request):
     return None, None, web.json_response({"error": "forbidden"}, status=403)
 
 
+async def api_public_settings(request):
+    url = support_url()
+    enabled = db_get_setting("support_enabled") == "1" and bool(url)
+    label = (db_get_setting("support_label") or "Yordam")[:32]
+    return web.json_response({"support": {"enabled": enabled, "label": label, "url": url if enabled else ""}})
+
+
 async def api_me(request):
     kind, obj, err = miniapp_identity(request)
     if err:
@@ -4062,6 +4111,7 @@ async def start_web_server():
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
+    app.router.add_get("/api/public-settings", api_public_settings)
     app.router.add_get("/api/me", api_me)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
