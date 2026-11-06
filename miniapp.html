@@ -139,6 +139,10 @@
   .bubble .tag { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
   .composer { display: flex; gap: 8px; margin-top: 12px; position: sticky; bottom: 10px; }
   .composer input { flex: 1; border: 1px solid var(--line); background: var(--card); }
+  .help-wrap{max-width:1240px;margin:14px auto 0;padding:0 clamp(12px,3vw,34px) 24px}
+  .help-btn{display:none;width:100%;min-height:48px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--accent);font-weight:800;font-size:14px;box-shadow:var(--shadow);cursor:pointer}
+  .help-btn.visible{display:block}
+  .help-btn:active{transform:scale(.99)}
   .btn { border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 700; cursor: pointer; background: var(--accent); color: #fff; }
   .btn.ghost { background: var(--soft); color: var(--text); }
   .btn:disabled { opacity: .5; cursor: default; }
@@ -280,6 +284,7 @@
   </section>
 </main>
 
+<div class="help-wrap" id="helpButtonWrap"><button class="help-btn" id="helpButton" type="button">🆘 Yordam</button></div>
 <div id="toast" class="toast" role="status"></div>
 
 <script>
@@ -319,6 +324,23 @@
     clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), 1900);
   }
   function setStatus(text, cls) { const el = $("status"); el.textContent = text; el.className = "status " + (cls || ""); }
+
+  async function loadHelpButton() {
+    const button = $("helpButton");
+    try {
+      const response = await fetch("/api/public-settings", { headers: { "Accept": "application/json" } });
+      const data = await response.json();
+      const support = data && data.support;
+      if (!response.ok || !support || !support.enabled || !support.url) return;
+      button.textContent = "🆘 " + (support.label || "Yordam");
+      button.classList.add("visible");
+      button.onclick = () => {
+        if (tg && tg.openTelegramLink && support.url.startsWith("https://t.me/")) tg.openTelegramLink(support.url);
+        else if (tg && tg.openLink && support.url.startsWith("https://")) tg.openLink(support.url);
+        else window.open(support.url, "_blank");
+      };
+    } catch (_) { button.classList.remove("visible"); }
+  }
 
   async function api(path, opts = {}) {
     const controller = new AbortController();
@@ -375,6 +397,7 @@
 
   /* ===== Rejim aniqlash ===== */
   async function init() {
+    loadHelpButton();
     if (!INIT) {
       $("who").textContent = "Telegram ichida oching";
       $("roleLabel").textContent = "Maktab jurnali";
