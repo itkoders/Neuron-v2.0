@@ -671,7 +671,7 @@ def student_cabinet_kb(s_id):
         [btn("🖼 Shaxsiy Karta", f"get_student_card_img_{s_id}"), btn("📅 Kunlik Tarix", f"view_full_history_{s_id}")],
         [btn("📞 Telefon raqam", "set_student_phone")],
         [btn("🤖 AI bilan mashq", "stu_ai")],
-        *([[InlineKeyboardButton(text="📱 Kabinet ilovasi", web_app=WebAppInfo(url=miniapp_role_url("teacher")))]] if MINIAPP_URL else []),
+        *([[InlineKeyboardButton(text="📱 Kabinet ilovasi", web_app=WebAppInfo(url=miniapp_role_url("student")))]] if MINIAPP_URL else []),
         [btn("🔄 Boshqa kod bilan kirish", "student_login_prompt")],
         [btn("🔙 Asosiy Menyu", "back_home")],
     ])
@@ -3415,6 +3415,8 @@ def miniapp_teacher(request):
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
+    if request.headers.get("X-App-Role", "").strip().lower() == "student":
+        return None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
     if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
         return None, web.json_response({"error": "forbidden"}, status=403)
