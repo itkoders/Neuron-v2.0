@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Maktab jurnali</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #f4f5fb; --card: #ffffff; --text: #151826; --muted: #6b7280; --line: #e6e8f0;
+    --accent: #4f46e5; --accent-2: #7c3aed; --accent-text: #ffffff; --soft: #f1f2fa;
+    --ok: #059669; --warn: #d97706; --bad: #dc2626;
+    --ok-bg: #d1fae5; --warn-bg: #fef3c7; --bad-bg: #fee2e2;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 14px rgba(16,24,40,.06);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0e14; --card: #161a24; --text: #e7e9f2; --muted: #98a2b3; --line: #262c3a; --soft: #1d2230;
+      --accent: #6366f1; --accent-2: #8b5cf6; --ok-bg: #0f3324; --warn-bg: #3a2c0c; --bad-bg: #3b1616;
+      --shadow: 0 1px 2px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0e14; --card: #161a24; --text: #e7e9f2; --muted: #98a2b3; --line: #262c3a; --soft: #1d2230;
+    --accent: #6366f1; --accent-2: #8b5cf6; --ok-bg: #0f3324; --warn-bg: #3a2c0c; --bad-bg: #3b1616;
+    --shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  button { font: inherit; }
+
+  header { position: sticky; top: 0; z-index: 30; padding: 14px 16px 12px; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 6px 20px rgba(79,70,229,.25); }
+  .title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .who { min-width: 0; }
+  .who .label { font-size: 12px; opacity: .85; }
+  .who h1 { margin: 2px 0 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,.18);
+    white-space: nowrap; transition: background .2s; }
+  .status.saving { background: rgba(251,191,36,.35); }
+  .status.ok { background: rgba(16,185,129,.35); }
+  .status.err { background: rgba(239,68,68,.45); }
+  .controls { display: flex; gap: 8px; margin-top: 12px; }
+  select, input[type="search"], .field {
+    font: inherit; color: var(--text); background: var(--card); border: 1px solid transparent;
+    border-radius: 12px; padding: 10px 12px; min-width: 0; outline: none; }
+  header select, header input { background: rgba(255,255,255,.95); color: #151826; border: 0; }
+  select { flex: 1.2; }
+  input[type="search"] { flex: 1; }
+
+  .tabs { display: flex; gap: 6px; margin-top: 12px; background: rgba(0,0,0,.14); padding: 4px; border-radius: 14px; }
+  .tab { flex: 1; border: 0; background: transparent; color: rgba(255,255,255,.85); font-weight: 600; font-size: 14px;
+    padding: 9px 6px; border-radius: 10px; cursor: pointer; transition: background .15s, color .15s; }
+  .tab.active { background: #fff; color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+
+  main { padding: 14px 12px 28px; max-width: 900px; margin: 0 auto; }
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 4px 12px; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 4px 8px; }
+
+  /* Jurnal jadvali */
+  .grid-wrap { overflow: auto; max-height: calc(100vh - 250px); border-radius: var(--radius);
+    border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 440px; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; text-align: center; }
+  th:last-child, td:last-child { border-right: 0; }
+  thead th { position: sticky; top: 0; z-index: 3; background: var(--soft); font-size: 12px; color: var(--muted);
+    font-weight: 700; padding: 10px 6px; }
+  th.name, td.name { position: sticky; left: 0; z-index: 2; background: var(--card); text-align: left; min-width: 160px;
+    max-width: 200px; padding: 9px 12px; }
+  thead th.name { z-index: 4; background: var(--soft); }
+  td.name .fio { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+  td.name .grp { font-size: 11px; color: var(--muted); }
+  td input { width: 100%; min-width: 60px; height: 44px; border: 0; background: transparent; text-align: center;
+    font: inherit; font-weight: 700; color: var(--text); outline: none; }
+  td input::placeholder { color: var(--muted); font-weight: 400; }
+  td input:focus { background: var(--soft); box-shadow: inset 0 0 0 2px var(--accent); }
+  td.cell-ok { background: var(--ok-bg); }
+  td.cell-warn { background: var(--warn-bg); }
+  td.cell-bad { background: var(--bad-bg); }
+  td.cell-err { background: var(--bad-bg); }
+  td.cell-err input { color: var(--bad); }
+  td.total { font-weight: 800; min-width: 70px; font-size: 15px; }
+  tfoot td { font-weight: 700; background: var(--soft); position: sticky; bottom: 0; z-index: 2; height: 42px; font-size: 13px; }
+  tfoot td.name { z-index: 3; }
+  .sort-btn { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+
+  /* Davomat */
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .stat { padding: 12px 6px; text-align: center; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .att-list { display: grid; gap: 10px; }
+  .att-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; }
+  .att-item .fio { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .att-item .grp { font-size: 12px; color: var(--muted); }
+  .seg { display: inline-flex; background: var(--soft); border-radius: 12px; padding: 3px; flex-shrink: 0; }
+  .seg button { border: 0; background: transparent; font-size: 13px; font-weight: 600; padding: 7px 9px; border-radius: 9px;
+    color: var(--muted); cursor: pointer; }
+  .seg button.on-keldi { background: var(--ok); color: #fff; }
+  .seg button.on-kelmadi { background: var(--bad); color: #fff; }
+  .seg button.on-sababli { background: var(--warn); color: #fff; }
+  .seg button.on-kut { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+
+  /* Tahlil */
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .panel { padding: 16px; margin-bottom: 12px; }
+  .panel h3 { margin: 0 0 10px; font-size: 15px; }
+  .bar-row { display: grid; grid-template-columns: 100px 1fr 46px; gap: 10px; align-items: center; margin: 10px 0; font-size: 13px; }
+  .bar { height: 10px; background: var(--soft); border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .4s; }
+  .top li { margin: 6px 0; }
+
+  /* O'quvchi kartalari */
+  .score-cards { display: grid; gap: 12px; }
+  .score-card { padding: 16px; }
+  .score-card .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .score-card .name { font-weight: 700; }
+  .score-card .val { font-size: 26px; font-weight: 800; }
+  .score-card .val.muted { color: var(--muted); font-size: 18px; }
+  .score-card .meter { height: 8px; background: var(--soft); border-radius: 999px; margin: 10px 0 6px; overflow: hidden; position: relative; }
+  .score-card .meter > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+  .score-card .meta { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .fact { padding: 14px; }
+  .fact small { color: var(--muted); font-size: 12px; display: block; }
+  .fact b { font-size: 16px; }
+  .note { padding: 14px; color: var(--text); }
+
+  /* AI chat */
+  .chat { display: flex; flex-direction: column; gap: 10px; min-height: 240px; }
+  .bubble { max-width: 88%; padding: 11px 14px; border-radius: 16px; font-size: 14.5px; white-space: pre-wrap; word-wrap: break-word; }
+  .bubble.ai { background: var(--card); border: 1px solid var(--line); border-top-left-radius: 4px; box-shadow: var(--shadow); align-self: flex-start; }
+  .bubble.me { background: var(--accent); color: #fff; border-top-right-radius: 4px; align-self: flex-end; }
+  .bubble.q { font-weight: 600; }
+  .bubble .tag { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+  .composer { display: flex; gap: 8px; margin-top: 12px; position: sticky; bottom: 10px; }
+  .composer input { flex: 1; border: 1px solid var(--line); background: var(--card); }
+  .btn { border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 700; cursor: pointer; background: var(--accent); color: #fff; }
+  .btn.ghost { background: var(--soft); color: var(--text); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .topic-row { display: flex; gap: 8px; margin-top: 4px; }
+  .topic-row input { flex: 1; border: 1px solid var(--line); background: var(--card); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .chip { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: var(--soft); color: var(--muted); }
+  .chip.good { background: var(--ok-bg); color: var(--ok); }
+
+  .empty, .loading { text-align: center; color: var(--muted); padding: 44px 16px; }
+  .skeleton { height: 56px; margin: 8px 0; border-radius: 12px; background: var(--soft); animation: pulse 1.2s infinite ease-in-out; }
+  @keyframes pulse { 50% { opacity: .5; } }
+  .toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 11px 16px; border-radius: 12px; font-size: 14px; box-shadow: var(--shadow);
+    opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; text-align: center; }
+  .toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+  @media (min-width: 720px) { .grid-wrap { max-height: calc(100vh - 270px); } .score-cards { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="title-row">
+    <div class="who">
+      <div class="label" id="roleLabel">Yuklanmoqda…</div>
+      <h1 id="who">Maktab jurnali</h1>
+    </div>
+    <span id="status" class="status">Tayyor</span>
+  </div>
+
+  <div id="teacherControls" class="controls hidden">
+    <select id="subject" aria-label="Fan"></select>
+    <input id="search" type="search" placeholder="Qidirish…" aria-label="Qidirish">
+  </div>
+  <div class="tabs" id="tabsTeacher" role="tablist">
+    <button class="tab active" data-tab="grades">📝 Ballar</button>
+    <button class="tab" data-tab="attendance">✅ Davomat</button>
+    <button class="tab" data-tab="stats">📊 Tahlil</button>
+  </div>
+  <div class="tabs hidden" id="tabsStudent" role="tablist">
+    <button class="tab active" data-stab="mine">🎓 Natijalarim</button>
+    <button class="tab" data-stab="ai">🤖 AI mashq</button>
+  </div>
+</header>
+
+<main>
+  <!-- O'qituvchi -->
+  <section id="teacherView" class="hidden">
+    <section data-pane="grades">
+      <p class="hint">Katakka ball yozing (0–100). Enter: pastdagi o'quvchiga o'tadi. Saqlash avtomatik.</p>
+      <div class="grid-wrap" id="grid"></div>
+    </section>
+    <section data-pane="attendance" class="hidden">
+      <div class="summary" id="attSummary"></div>
+      <div class="att-list" id="attList"></div>
+    </section>
+    <section data-pane="stats" class="hidden">
+      <div id="stats"></div>
+    </section>
+  </section>
+
+  <!-- O'quvchi -->
+  <section id="studentView" class="hidden">
+    <section data-spane="mine">
+      <div id="mine"></div>
+    </section>
+    <section data-spane="ai" class="hidden">
+      <div class="card panel" id="aiTopicCard">
+        <h3>Mavzuni tanlang</h3>
+        <p class="hint" style="margin-top:0">AI mavzu bo'yicha savol beradi, javobingizni baholaydi va yordam beradi. Javoblaringiz Google Gemini yoki ChatGPT ga yuboriladi.</p>
+        <div class="topic-row">
+          <input class="field" id="topicInput" maxlength="100" placeholder="Masalan: Kasrlar, Fotosintez…" aria-label="Mavzu">
+          <button class="btn" id="topicBtn">Boshlash</button>
+        </div>
+      </div>
+      <div id="aiSession" class="hidden">
+        <div class="card panel" style="padding:12px 14px">
+          <div class="chips">
+            <span class="chip" id="aiSubjectChip"></span>
+            <span class="chip good" id="aiScoreChip">To'g'ri: 0/0</span>
+            <button class="chip" id="aiStop" style="cursor:pointer;border:0">⏹ Tugatish</button>
+          </div>
+        </div>
+        <div class="chat" id="chat"></div>
+        <div class="composer">
+          <input class="field" id="answerInput" maxlength="500" placeholder="Javobingizni yozing…" aria-label="Javob">
+          <button class="btn" id="answerBtn">Yuborish</button>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { tg.ready(); tg.expand(); applyTheme(); }
+  const INIT = tg ? tg.initData : "";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const total = (s) => (s.s1 || 0) + (s.s2 || 0) + (s.s3 || 0);
+  const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
+  const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
+
+  const state = { role: null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+
+  function applyTheme() {
+    const p = tg.themeParams || {};
+    const root = document.documentElement.style;
+    const map = { bg_color: "--bg", text_color: "--text", hint_color: "--muted", secondary_bg_color: "--soft",
+      section_bg_color: "--card", section_separator_color: "--line" };
+    Object.entries(map).forEach(([k, v]) => { if (p[k]) root.setProperty(v, p[k]); });
+  }
+
+  function toast(msg) {
+    const el = $("toast"); el.textContent = msg; el.classList.add("show");
+    clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), 1900);
+  }
+  function setStatus(text, cls) { const el = $("status"); el.textContent = text; el.className = "status " + (cls || ""); }
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", "X-Init-Data": INIT, ...(opts.headers || {}) } });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), { status: res.status, data });
+    return data;
+  }
+  const errText = (err) => ({
+    auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
+    forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
+    ai_off: "AI bu o'qituvchi uchun hozircha yoqilmagan.",
+    ai_unconfigured: "AI hali sozlanmagan.",
+    no_session: "Mashq sessiyasi topilmadi. Mavzuni qayta tanlang.",
+  })[err.data && err.data.error] || err.message || "Xato";
+
+  /* ===== Rejim aniqlash ===== */
+  async function init() {
+    if (!INIT) {
+      $("who").textContent = "Telegram ichida oching";
+      $("roleLabel").textContent = "Maktab jurnali";
+      $("teacherView").classList.remove("hidden");
+      showEmpty("grid", "Bu sahifa faqat Telegram ichida ochiladi.");
+      return;
+    }
+    try {
+      const me = await api("/api/me");
+      state.role = me.role;
+      if (me.role === "teacher") initTeacher(me);
+      else initStudent(me.student);
+    } catch (err) {
+      $("who").textContent = "Kirish imkonsiz";
+      $("roleLabel").textContent = "Xato";
+      $("teacherView").classList.remove("hidden");
+      showEmpty("grid", errText(err));
+      setStatus("Xato", "err");
+    }
+  }
+  function showEmpty(where, text) {
+    const el = where === "mine" ? $("mine") : $("grid");
+    el.innerHTML = `<div class="card empty">${esc(text)}</div>`;
+  }
+
+  /* ===== O'QITUVCHI ===== */
+  function initTeacher(me) {
+    $("roleLabel").textContent = "O'qituvchi";
+    $("who").textContent = me.teacher.name;
+    $("teacherView").classList.remove("hidden");
+    $("teacherControls").classList.remove("hidden");
+    $("tabsTeacher").classList.remove("hidden");
+    state.subjects = me.subjects;
+    $("subject").innerHTML = state.subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("")
+      || '<option value="">Fanlar yo\'q</option>';
+    if (state.subjects.length) loadSubject(state.subjects[0].id);
+    else $("grid").innerHTML = '<div class="card empty">Hali fan yo\'q. Botda fan qo\'shing.</div>';
+  }
+
+  async function loadSubject(sid) {
+    $("grid").innerHTML = '<div class="loading">Yuklanmoqda…</div>';
+    try {
+      const data = await api(`/api/subject/${sid}`);
+      state.subject = data.subject; state.students = data.students;
+      renderTeacherTab();
+      setStatus("Tayyor");
+    } catch (err) {
+      $("grid").innerHTML = `<div class="card empty">${esc(errText(err))}</div>`;
+      setStatus("Xato", "err");
+    }
+  }
+
+  function visibleStudents() {
+    const q = state.query.trim().toLowerCase();
+    let list = state.students.filter(s => !q || s.fio.toLowerCase().includes(q) || (s.group_name || "").toLowerCase().includes(q));
+    return state.sort === "total"
+      ? list.slice().sort((a, b) => total(b) - total(a) || a.fio.localeCompare(b.fio))
+      : list.slice().sort((a, b) => a.fio.localeCompare(b.fio));
+  }
+
+  function renderTeacherTab() {
+    if (state.tab === "grades") renderGrid();
+    if (state.tab === "attendance") renderAttendance();
+    if (state.tab === "stats") renderStats();
+  }
+
+  function renderGrid() {
+    const wrap = $("grid");
+    if (!state.subject) { wrap.innerHTML = '<div class="card empty">Fan tanlang</div>'; return; }
+    if (!state.students.length) { wrap.innerHTML = '<div class="card empty">Bu fanda o\'quvchi yo\'q. Botda o\'quvchi qo\'shing.</div>'; return; }
+    const labels = state.subject.labels;
+    const list = visibleStudents();
+    const head = `<tr>
+      <th class="name"><button class="sort-btn" id="sortFio">O'quvchi${state.sort === "fio" ? " ▲" : ""}</button></th>
+      ${labels.map(l => `<th>${esc(l)}</th>`).join("")}
+      <th><button class="sort-btn" id="sortTotal">Jami${state.sort === "total" ? " ▼" : ""}</button></th></tr>`;
+    const rows = list.map((s, i) => `<tr data-id="${s.id}">
+      <td class="name"><div class="fio" title="${esc(s.fio)}">${esc(s.fio)}</div><div class="grp">${esc(s.group_name)}</div></td>
+      ${[1, 2, 3].map(idx => `<td class="${tone(s["s" + idx])}"><input type="number" inputmode="numeric" min="0" max="100" step="1"
+          placeholder="—" value="${s["s" + idx] || ""}" data-row="${i}" data-col="${idx - 1}" aria-label="${esc(s.fio)} ${esc(labels[idx - 1])}"></td>`).join("")}
+      <td class="total" data-total="${s.id}">${total(s) || "—"}</td></tr>`).join("");
+    const avg = labels.map((_, k) => {
+      const vals = list.map(s => s["s" + (k + 1)]).filter(v => v > 0);
+      return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
+    });
+    wrap.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody>
+      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}<td>—</td></tr></tfoot></table>`;
+    $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
+    $("sortTotal").onclick = () => { state.sort = "total"; renderGrid(); };
+    wrap.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("input", onScoreInput);
+      inp.addEventListener("keydown", onScoreKey);
+      inp.addEventListener("focus", () => inp.select());
+    });
+  }
+
+  const cellInput = (row, col) => document.querySelector(`input[data-row="${row}"][data-col="${col}"]`);
+
+  function onScoreKey(e) {
+    const row = +e.target.dataset.row, col = +e.target.dataset.col;
+    const go = (r, c) => { const n = cellInput(r, c); if (n) n.focus(); };
+    if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); go(row + 1, col); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); go(row - 1, col); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); go(row, col + 1); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); go(row, col - 1); }
+    else if (e.key === "Tab" && !e.shiftKey && col < 2) { e.preventDefault(); go(row, col + 1); }
+  }
+
+  const pendingTimers = {};
+  function onScoreInput(e) {
+    const inp = e.target;
+    const id = +inp.closest("tr").dataset.id;
+    const idx = +inp.dataset.col + 1;
+    const raw = inp.value.trim();
+    const val = raw === "" ? 0 : Math.round(Number(raw));
+    if (!Number.isFinite(val) || val < 0 || val > 100) {
+      inp.closest("td").className = "cell-err";
+      setStatus("0–100 oralig'ida", "err");
+      return;
+    }
+    const key = `${id}:${idx}`;
+    clearTimeout(pendingTimers[key]);
+    setStatus("Saqlanmoqda…", "saving");
+    pendingTimers[key] = setTimeout(() => saveScore(id, idx, val, inp), 350);
+  }
+
+  async function saveScore(id, idx, val, inp) {
+    try {
+      const r = await api("/api/score", { method: "POST", body: JSON.stringify({ student_id: id, idx, value: val }) });
+      const s = state.students.find(x => x.id === id);
+      if (s) s["s" + idx] = val;
+      inp.closest("td").className = tone(val);
+      const t = document.querySelector(`[data-total="${id}"]`);
+      if (t && s) t.textContent = total(s) || "—";
+      setStatus("Saqlandi ✓", "ok");
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+    } catch (err) {
+      inp.closest("td").className = "cell-err";
+      setStatus(err.status === 403 ? "Ruxsat yo'q" : "Xato — qayta urining", "err");
+    }
+  }
+
+  const ATT = [
+    { v: "Keldi", label: "Keldi", cls: "on-keldi" },
+    { v: "Kelmadi", label: "Kelmadi", cls: "on-kelmadi" },
+    { v: "Sababli", label: "Sababli", cls: "on-sababli" },
+    { v: "Kutilmoqda", label: "—", cls: "on-kut" },
+  ];
+
+  function renderAttendance() {
+    const c = { Keldi: 0, Kelmadi: 0, Sababli: 0, Kutilmoqda: 0 };
+    state.students.forEach(s => { c[s.davomat] = (c[s.davomat] || 0) + 1; });
+    $("attSummary").innerHTML = [["✅", c.Keldi, "Keldi"], ["❌", c.Kelmadi, "Kelmadi"], ["📝", c.Sababli, "Sababli"], ["⏳", c.Kutilmoqda, "Kutilmoqda"]]
+      .map(([i, n, l]) => `<div class="card stat"><b>${i} ${n}</b><span>${l}</span></div>`).join("");
+    const list = visibleStudents();
+    if (!state.students.length) { $("attList").innerHTML = '<div class="card empty">O\'quvchi yo\'q</div>'; return; }
+    $("attList").innerHTML = list.map(s => `<div class="card att-item" data-id="${s.id}">
+      <div style="min-width:0"><div class="fio">${esc(s.fio)}</div><div class="grp">${esc(s.group_name)}</div></div>
+      <div class="seg" role="group">${ATT.map(a => `<button data-att="${a.v}" class="${s.davomat === a.v ? a.cls : ""}"
+        aria-pressed="${s.davomat === a.v}">${a.label}</button>`).join("")}</div></div>`).join("");
+    $("attList").querySelectorAll("button[data-att]").forEach(b => b.addEventListener("click", () =>
+      setAttendance(+b.closest(".att-item").dataset.id, b.dataset.att)));
+  }
+
+  async function setAttendance(id, status) {
+    const s = state.students.find(x => x.id === id);
+    if (!s || s.davomat === status) return;
+    const prev = s.davomat;
+    s.davomat = status;
+    renderAttendance();
+    setStatus("Saqlanmoqda…", "saving");
+    try {
+      await api("/api/attendance", { method: "POST", body: JSON.stringify({ student_id: id, status }) });
+      setStatus("Saqlandi ✓", "ok");
+    } catch (err) {
+      s.davomat = prev;
+      renderAttendance();
+      setStatus("Xato — qayta urining", "err");
+    }
+  }
+
+  function renderStats() {
+    const el = $("stats");
+    if (!state.subject || !state.students.length) { el.innerHTML = '<div class="card empty">Ma\'lumot yo\'q</div>'; return; }
+    const labels = state.subject.labels;
+    const n = state.students.length;
+    const came = state.students.filter(s => s.davomat === "Keldi").length;
+    const absent = state.students.filter(s => s.davomat === "Kelmadi").length;
+    const bars = labels.map((l, k) => {
+      const vals = state.students.map(s => s["s" + (k + 1)]).filter(v => v > 0);
+      const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      const low = vals.filter(v => v < 50).length;
+      return `<div class="bar-row"><span>${esc(l)}</span><div class="bar"><i style="width:${Math.min(100, avg).toFixed(0)}%;background:${barColor(avg)}"></i></div>
+        <b>${vals.length ? Math.round(avg) + "%" : "—"}</b></div>
+        <div class="hint" style="margin:-4px 0 4px 110px">Baholangan: ${vals.length} · 50% dan past: ${low}</div>`;
+    }).join("");
+    const top = state.students.slice().sort((a, b) => total(b) - total(a)).slice(0, 3)
+      .map(s => `<li>${esc(s.fio)} — <b>${total(s)}</b></li>`).join("");
+    el.innerHTML = `
+      <div class="kpis">
+        <div class="card stat"><b>${n}</b><span>O'quvchi</span></div>
+        <div class="card stat"><b>${came}</b><span>Bugun keldi</span></div>
+        <div class="card stat"><b>${absent}</b><span>Bugun kelmadi</span></div>
+      </div>
+      <div class="card panel"><h3>Bo'limlar bo'yicha o'rtacha</h3>${bars}</div>
+      <div class="card panel"><h3>Eng yaxshi natijalar</h3><ol class="top">${top || "<li>—</li>"}</ol></div>`;
+  }
+
+  /* ===== O'QUVCHI ===== */
+  function initStudent(st) {
+    $("roleLabel").textContent = "O'quvchi";
+    $("who").textContent = st.fio;
+    $("studentView").classList.remove("hidden");
+    $("tabsStudent").classList.remove("hidden");
+    state.aiLive = !!st.ai;
+    $("aiTopicCard").querySelector(".hint").textContent = st.ai
+      ? "AI mavzu bo'yicha savol beradi, javobingizni baholaydi va yordam beradi. Javoblaringiz Google Gemini yoki ChatGPT ga yuboriladi."
+      : "AI mashq hozircha o'qituvchingiz tomonidan yoqilmagan.";
+    if (!st.ai) { $("topicBtn").disabled = true; $("topicInput").disabled = true; }
+    loadOverview();
+  }
+
+  async function loadOverview() {
+    $("mine").innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
+    try {
+      const o = await api("/api/student/overview");
+      renderOverview(o);
+      setStatus("Tayyor");
+    } catch (err) {
+      $("mine").innerHTML = `<div class="card empty">${esc(errText(err))}</div>`;
+      setStatus("Xato", "err");
+    }
+  }
+
+  function renderOverview(o) {
+    const scores = o.labels.map((l, i) => {
+      const v = o.scores[i] || 0, avg = o.class_avg[i];
+      const color = barColor(v);
+      return `<div class="card score-card">
+        <div class="row"><span class="name">${esc(l)}</span>
+          <span class="val ${v ? "" : "muted"}" style="${v ? "color:" + color : ""}">${v ? v + "%" : "—"}</span></div>
+        <div class="meter"><i style="width:${v}%;background:${color}" class="meter-fill"></i></div>
+        <div class="meta"><span>Sinf o'rtachasi: ${avg == null ? "—" : avg + "%"}</span>
+          <span>${v && avg != null ? (v >= avg ? "▲ o'rtachadan yuqori" : "▼ o'rtachadan past") : ""}</span></div>
+      </div>`;
+    }).join("");
+    const total = o.scores.reduce((a, b) => a + (b || 0), 0);
+    const davomat = { Keldi: "✅ Keldi", Kelmadi: "❌ Kelmadi", Sababli: "📝 Sababli" }[o.davomat] || "⏳ Kutilmoqda";
+    const paid = o.payment_status === "To'langan" ? "✅ To'langan" : "❗ To'lanmagan";
+    $("mine").innerHTML = `
+      <div class="card panel" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><div style="font-weight:700">${esc(o.subject)}</div><div class="hint" style="margin:2px 0 0">${esc(o.group_name)}</div></div>
+        <div style="text-align:right"><div class="hint" style="margin:0">Jami ball</div><div style="font-size:22px;font-weight:800">${total}</div></div>
+      </div>
+      <div class="section-title">Ballar</div>
+      <div class="score-cards">${scores}</div>
+      <div class="section-title">Holat</div>
+      <div class="facts">
+        <div class="card fact"><small>Sinf ichidagi o'rin</small><b>${o.rank ? o.rank + " / " + o.class_size : "—"}</b></div>
+        <div class="card fact"><small>Bugungi davomat</small><b>${davomat}</b></div>
+        <div class="card fact"><small>To'lov</small><b>${paid}</b></div>
+        <div class="card fact"><small>Oxirgi ball sanasi</small><b>${esc(o.last_score_date || "—")}</b></div>
+      </div>
+      <div class="section-title">O'qituvchi izohi</div>
+      <div class="card note">${esc(o.teacher_note)}</div>`;
+  }
+
+  function addBubble(kind, html, tag) {
+    const d = document.createElement("div");
+    d.className = "bubble " + kind;
+    d.innerHTML = (tag ? `<span class="tag">${esc(tag)}</span>` : "") + html;
+    $("chat").appendChild(d);
+    d.scrollIntoView({ behavior: "smooth", block: "end" });
+    return d;
+  }
+
+  function showAiTurn(p) {
+    state.aiStats = p.stats;
+    $("aiScoreChip").textContent = `To'g'ri: ${p.stats.ok}/${p.stats.all}`;
+    if (p.feedback) addBubble("ai", esc(p.feedback), "Fikr");
+    addBubble("ai q", esc(p.next_question), "Savol");
+  }
+
+  async function startAi() {
+    const topic = $("topicInput").value.trim();
+    if (!topic || state.aiBusy) return;
+    state.aiBusy = true; $("topicBtn").disabled = true;
+    try {
+      const p = await api("/api/ai/start", { method: "POST", body: JSON.stringify({ topic }) });
+      $("aiTopicCard").classList.add("hidden");
+      $("aiSession").classList.remove("hidden");
+      $("aiSubjectChip").textContent = `${p.subject} · ${p.topic}`;
+      $("chat").innerHTML = "";
+      addBubble("me", esc(topic), "Mavzu");
+      showAiTurn(p);
+      setStatus("Tayyor");
+    } catch (err) {
+      toast(errText(err));
+      setStatus("Xato", "err");
+    } finally { state.aiBusy = false; $("topicBtn").disabled = false; }
+  }
+
+  async function sendAnswer() {
+    const answer = $("answerInput").value.trim();
+    if (!answer || state.aiBusy) return;
+    state.aiBusy = true; $("answerBtn").disabled = true;
+    $("answerInput").value = "";
+    addBubble("me", esc(answer), "Siz");
+    const typing = addBubble("ai", "…", "AI");
+    try {
+      const p = await api("/api/ai/answer", { method: "POST", body: JSON.stringify({ answer }) });
+      typing.remove();
+      showAiTurn(p);
+    } catch (err) {
+      typing.remove();
+      addBubble("ai", esc(errText(err)), "Xato");
+      if (err.status === 409) { $("aiSession").classList.add("hidden"); $("aiTopicCard").classList.remove("hidden"); }
+    } finally { state.aiBusy = false; $("answerBtn").disabled = false; $("answerInput").focus(); }
+  }
+
+  async function stopAi() {
+    try { await api("/api/ai/stop", { method: "POST", body: "{}" }); } catch (_) {}
+    $("aiSession").classList.add("hidden");
+    $("aiTopicCard").classList.remove("hidden");
+    $("topicInput").value = "";
+    $("aiScoreChip").textContent = "To'g'ri: 0/0";
+    $("chat").innerHTML = "";
+  }
+
+  /* ===== Tablar va hodisalar ===== */
+  document.querySelectorAll("#tabsTeacher .tab").forEach(btn => btn.addEventListener("click", () => {
+    state.tab = btn.dataset.tab;
+    document.querySelectorAll("#tabsTeacher .tab").forEach(b => b.classList.toggle("active", b === btn));
+    document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== state.tab));
+    renderTeacherTab();
+  }));
+  document.querySelectorAll("#tabsStudent .tab").forEach(btn => btn.addEventListener("click", () => {
+    state.stab = btn.dataset.stab;
+    document.querySelectorAll("#tabsStudent .tab").forEach(b => b.classList.toggle("active", b === btn));
+    document.querySelectorAll("[data-spane]").forEach(p => p.classList.toggle("hidden", p.dataset.spane !== state.stab));
+    if (state.stab === "mine") loadOverview();
+  }));
+  $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  $("search").addEventListener("input", e => { state.query = e.target.value; renderTeacherTab(); });
+  $("topicBtn").addEventListener("click", startAi);
+  $("topicInput").addEventListener("keydown", e => { if (e.key === "Enter") startAi(); });
+  $("answerBtn").addEventListener("click", sendAnswer);
+  $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
+  $("aiStop").addEventListener("click", stopAi);
+
+  init();
+})();
+</script>
+</body>
+</html>
