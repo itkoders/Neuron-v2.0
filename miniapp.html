@@ -179,6 +179,24 @@
   @media(min-width:900px){header{padding-top:22px}.teacher-hero{padding:25px 28px}.hero-title{font-size:26px}.tab{padding:11px}.grid-wrap{max-height:calc(100vh - 340px)}}
   @media(max-width:480px){.who h1{font-size:17px}.theme-switch button{padding:7px 6px;font-size:11px}.teacher-hero{margin-top:13px;padding:16px}.hero-title{font-size:19px}.hero-stat{padding:9px 7px}.hero-stat b{font-size:19px}.hero-stat span{font-size:9px}.summary{gap:6px}.stat b{font-size:17px}.stat span{font-size:10px}}
 
+  /* Ota-ona kabineti: mobil ekranda siqilmaydigan tartibli ko‘rinish */
+  #parentView{max-width:780px;margin:0 auto}
+  #parentView .panel{padding:clamp(14px,3vw,22px);margin-bottom:14px}
+  #parentView .section-title{margin:20px 3px 10px}
+  #parentChildSelect{width:100%;margin-top:8px}
+  #parentContent{display:grid;gap:12px;min-width:0}
+  #parentContent .facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  #parentContent .fact{min-width:0;padding:14px;overflow-wrap:anywhere}
+  #parentContent .fact b{display:block;margin-top:5px;line-height:1.35;overflow-wrap:anywhere}
+  #parentContent .score-cards{grid-template-columns:1fr;gap:10px}
+  #parentContent .btn{width:100%;min-height:48px;white-space:normal;line-height:1.35;margin-top:8px}
+  #parentContent label{display:block;font-weight:700;font-size:13px;margin:14px 2px 6px}
+  #parentContent input,#parentContent select{width:100%;min-height:48px;margin:0}
+  .parent-pay-quick{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:50px;padding:12px 16px;border:0;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:800;font-size:15px;box-shadow:0 6px 18px rgba(81,69,229,.18);cursor:pointer}
+  .parent-card-info{display:grid;gap:8px;padding:14px;border:1px solid var(--line);border-radius:15px;background:var(--soft);overflow-wrap:anywhere}
+  .parent-card-info strong{font-size:17px;letter-spacing:.03em;word-break:break-word}
+  .parent-pay-box{padding:16px;border:1px solid var(--line);border-radius:17px;background:var(--card);min-width:0}
+  @media(max-width:480px){#parentContent .facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#parentContent .fact{padding:11px}#parentContent .fact small{font-size:11px}#parentContent .fact b{font-size:14px}.parent-card-info strong{font-size:15px}}
 </style>
 </head>
 <body>
@@ -625,6 +643,7 @@
     $("parentContent").innerHTML =
       '<div class="card panel"><h3>👤 ' + esc(c.fio) + '</h3><div class="hint">🏫 ' + esc(c.group_name) +
       ' · 📚 ' + esc(c.subject) + '</div><div class="hint">👩‍🏫 O‘qituvchi: ' + esc(c.teacher_name) + '</div></div>' +
+      '<button class="parent-pay-quick" id="parentPayJump" type="button">💳 Shu farzand uchun to‘lov qilish <span>↓</span></button>' ,
       '<div class="section-title">📊 Baholar</div><div class="score-cards">' + scoreCards + '</div>' +
       '<div class="section-title">📌 Umumiy holat</div><div class="facts">' +
       '<div class="card fact"><small>🏅 Guruhdagi o‘rni</small><b>' + (c.rank ? c.rank + ' / ' + c.class_size : '—') + '</b></div>' +
@@ -635,8 +654,8 @@
       '<div class="card fact"><small>🗓 Oxirgi baho sanasi</small><b>' + esc(c.last_score_date || '—') + '</b></div></div>' +
       '<div class="section-title">📊 Umumiy natija</div><div class="card fact"><small>Bahosi kiritilgan bo‘limlar bo‘yicha o‘rtacha</small><b>' + (c.overall_score == null ? 'Hali baho yo‘q' : c.overall_score + '/100') + '</b></div>' +
       '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
-      '<div class="section-title">💳 Oylik to‘lov</div><div class="card panel"><div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
-      (c.card ? '<div class="card panel"><b>💳 Karta orqali</b><div class="hint">Karta: ' + esc(c.card.card_number) + '</div><div class="hint">Egasi: ' + esc(c.card.card_holder) + '</div><div class="hint">' + esc(c.card.bank_name || '') + '</div></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
+      '<div class="section-title" id="parentPaymentSection">💳 Oylik to‘lov — ' + esc(c.fio) + '</div><div class="parent-pay-box"><div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
+      (c.card ? '<div class="parent-card-info"><b>💳 O‘qituvchining to‘lov kartasi</b><span>Karta raqami</span><strong>' + esc(String(c.card.card_number).replace(/(\\d{4})(?=\\d)/g, '$1 ')) + '</strong><span>Karta egasi</span><b>' + esc(c.card.card_holder) + '</b><span>Bank</span><b>' + esc(c.card.bank_name || 'Ko‘rsatilmagan') + '</b></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
       (c.payment_status === "To'langan" ? '<div class="card panel">✅ Bu oy uchun to‘lov qabul qilingan.</div>' :
        c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
        (c.payment_request && c.payment_request.status === 'rejected' ? '<div class="card panel">❌ Oxirgi so‘rov rad etilgan. Ma’lumotni tekshirib, qayta yuborishingiz mumkin.</div>' : '') +
@@ -646,6 +665,8 @@
       '<div class="section-title">📚 Kunlik tarix</div>' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>');
     const payBtn = $("parentPaySubmit");
     if (payBtn) payBtn.addEventListener("click", submitParentPayment);
+    const jump = $("parentPayJump");
+    if (jump) jump.addEventListener("click", () => $("parentPaymentSection").scrollIntoView({behavior:"smooth", block:"start"}));
   }
   async function submitParentPayment() {
     const c = state.parentChildren.find(x => x.id === state.parentSelected);
