@@ -3889,6 +3889,8 @@ async def api_parent_payment(request):
     st = db_student(sid)
     if not st or st["payment_amount"] <= 0:
         return web.json_response({"error": "amount_not_set"}, status=400)
+    if st["payment_status"] == PAID:
+        return web.json_response({"error": "already_paid"}, status=409)
     method = str(body.get("method", "")).strip()
     reference = str(body.get("reference", "")).strip()[:300]
     if method not in {"Karta orqali", "Naqd pul", "Boshqa usul"}:

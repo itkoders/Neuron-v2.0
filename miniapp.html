@@ -326,6 +326,7 @@
       role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
       amount_not_set: "O‘qituvchi oylik to‘lov summasini hali belgilamagan.",
+      already_paid: "Bu oy uchun to‘lov allaqachon qabul qilingan.",
       card_not_set: "O‘qituvchi karta ma’lumotlarini hali kiritmagan.",
       reference_required: "Chek raqami yoki to‘lov izohini kiriting.",
       bad_method: "To‘lov usuli noto‘g‘ri.",
@@ -636,7 +637,9 @@
       '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
       '<div class="section-title">💳 Oylik to‘lov</div><div class="card panel"><div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
       (c.card ? '<div class="card panel"><b>💳 Karta orqali</b><div class="hint">Karta: ' + esc(c.card.card_number) + '</div><div class="hint">Egasi: ' + esc(c.card.card_holder) + '</div><div class="hint">' + esc(c.card.bank_name || '') + '</div></div>' : '<div class="hint">O‘qituvchi karta ma’lumotini hali kiritmagan.</div>') +
-      (c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
+      (c.payment_status === "To'langan" ? '<div class="card panel">✅ Bu oy uchun to‘lov qabul qilingan.</div>' :
+       c.payment_request && c.payment_request.status === 'pending' ? '<div class="card panel">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
+       (c.payment_request && c.payment_request.status === 'rejected' ? '<div class="card panel">❌ Oxirgi so‘rov rad etilgan. Ma’lumotni tekshirib, qayta yuborishingiz mumkin.</div>' : '') +
        '<label for="parentPayMethod">To‘lov usuli</label><select id="parentPayMethod">' + (c.card ? '<option>Karta orqali</option>' : '') + '<option>Naqd pul</option><option>Boshqa usul</option></select>' +
        '<label for="parentPayRef">Chek raqami yoki izoh</label><input id="parentPayRef" maxlength="300" placeholder="Masalan: tranzaksiya raqami / to‘lov vaqti">' +
        '<button class="btn" id="parentPaySubmit" ' + (Number(c.payment_amount || 0) <= 0 ? 'disabled' : '') + '>📤 To‘lovni o‘qituvchiga yuborish</button><p class="hint">To‘lov o‘qituvchi tasdiqlagandan keyin qabul qilingan hisoblanadi.</p>') + '</div>' +
