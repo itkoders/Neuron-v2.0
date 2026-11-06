@@ -671,7 +671,7 @@ def student_cabinet_kb(s_id):
         [btn("🖼 Shaxsiy Karta", f"get_student_card_img_{s_id}"), btn("📅 Kunlik Tarix", f"view_full_history_{s_id}")],
         [btn("📞 Telefon raqam", "set_student_phone")],
         [btn("🤖 AI bilan mashq", "stu_ai")],
-        *([[InlineKeyboardButton(text="📱 Kabinet ilovasi", web_app=WebAppInfo(url=MINIAPP_URL))]] if MINIAPP_URL else []),
+        *([[InlineKeyboardButton(text="📱 Kabinet ilovasi", web_app=WebAppInfo(url=miniapp_role_url("teacher")))]] if MINIAPP_URL else []),
         [btn("🔄 Boshqa kod bilan kirish", "student_login_prompt")],
         [btn("🔙 Asosiy Menyu", "back_home")],
     ])
@@ -705,7 +705,7 @@ def teacher_panel_kb():
         [btn("🔙 Chiqish", "back_home")],
     ]
     if MINIAPP_URL:
-        rows.insert(-1, [InlineKeyboardButton(text="📱 Ballar jurnali (ilova)", web_app=WebAppInfo(url=MINIAPP_URL))])
+        rows.insert(-1, [InlineKeyboardButton(text="📱 Ballar jurnali (ilova)", web_app=WebAppInfo(url=miniapp_role_url("teacher")))])
     url = support_url()
     if url:
         rows.insert(-1, [InlineKeyboardButton(text="💰 Pullik yordam", url=url)])
@@ -3377,6 +3377,13 @@ async def health(request):
 
 # --- Mini ilova (Telegram WebApp): ballar jurnali va davomat ---
 MINIAPP_URL = os.environ.get("MINIAPP_URL", "").strip()  # masalan: https://domen.uz/app
+
+def miniapp_role_url(role):
+    if not MINIAPP_URL:
+        return ""
+    sep = "&" if "?" in MINIAPP_URL else "?"
+    return f"{MINIAPP_URL}{sep}role={role}"
+
 MINIAPP_HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "miniapp.html")
 ATT_VALUES = {"Keldi", "Kelmadi", "Sababli", "Kutilmoqda"}
 
@@ -3516,22 +3523,28 @@ AI_SESSIONS = {}  # student_id -> MemState (bot qayta ishga tushsa, tozalanadi)
 
 
 def miniapp_identity(request):
-    """Qaytaradi: (rol, obyekt, xato_javobi). Rol: 'teacher' yoki 'student'."""
+    """Rol URL/header orqali tanlanadi; har bir rol alohida tekshiriladi."""
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
+    requested_role = request.headers.get("X-App-Role", "").strip().lower()
+    if requested_role not in {"", "teacher", "student"}:
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
-    if t:
-        if not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
-            return None, None, web.json_response({"error": "forbidden"}, status=403)
-        return "teacher", t, None
     row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
     st = db_student(row[0]) if row else None
+    if not requested_role:
+        if t and st:
+            return None, None, web.json_response({"error": "role_required"}, status=409)
+        requested_role = "teacher" if t else "student"
+    if requested_role == "teacher":
+        if not t or not t["active"] or t["verify_status"] != "approved" or not has_feature(t, "mini_app"):
+            return None, None, web.json_response({"error": "forbidden"}, status=403)
+        return "teacher", t, None
     teacher = db_teacher(st["teacher_id"]) if st else None
     if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and has_feature(teacher, "mini_app"):
         return "student", st, None
     return None, None, web.json_response({"error": "forbidden"}, status=403)
-
 
 async def api_me(request):
     kind, obj, err = miniapp_identity(request)
