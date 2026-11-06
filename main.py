@@ -302,7 +302,8 @@ TEACHER_COLS = ("id, first_name, last_name, phone, plan_key, plan_expires, activ
 TEACHER_KEYS = ["id", "first_name", "last_name", "phone", "plan_key", "plan_expires", "active", "channel_id", "chat_id",
                 "created_at", "verify_status", "doc_file_id", "verify_note"]
 VERIFY_TEXT = {
-    "approved": "✅ Tasdiqlangan",
+    "approved": "✅ Super Admin tasdiqlagan",
+    "admin_pending": "⏳ Super Admin tasdig‘i kutilmoqda",
     "doc_pending": "⏳ Hujjat tekshirilmoqda",
     "rejected": "❌ Hujjat rad etilgan",
 }
@@ -547,7 +548,12 @@ def teacher_payment_method(teacher_id):
 
 
 def db_parent_student_ids(parent_chat_id):
-    return {r[0] for r in run("SELECT student_id FROM parent_children WHERE parent_chat_id = ?", (parent_chat_id,), fetch="all")}
+    # Ota-ona ruxsati farzandining o'qituvchisi Super Admin tomonidan tasdiqlanganiga bog'liq.
+    return {r[0] for r in run("""SELECT pc.student_id FROM parent_children pc
+        JOIN students s ON s.id = pc.student_id
+        JOIN teachers t ON t.id = s.teacher_id
+        WHERE pc.parent_chat_id = ? AND t.active = 1 AND t.verify_status = 'approved'""",
+        (parent_chat_id,), fetch="all")}
 
 
 def db_parent_children(parent_chat_id):
@@ -764,7 +770,7 @@ def main_menu_kb():
     return kb([
         [btn("🎓 O'quvchi Kabineti", "student_login_prompt"), btn("👨‍👩‍👧‍👦 Ota-ona Kabineti", "auth_parent")],
         [btn("👩‍🏫 O'qituvchi Kabineti", "teacher_login_prompt"), btn("🆕 O'qituvchi bo'lish", "t_reg")],
-        [btn("💼 Tariflar", "public_plans"), btn("❓ FAQ", "faq_menu")],
+        [btn("💼 Tariflar", "public_plans"), btn("❓ Ko'p so'raladigan savollar", "faq_menu")],
         [btn("⚙️ Super Admin", "super_admin_login_prompt")],
     ])
 
@@ -1207,14 +1213,14 @@ async def _finish_phone(message: types.Message, state: FSMContext):
                              reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
         return
     await state.clear()
-    t, code = create_teacher(message.chat.id, data, "approved")
+    t, code = create_teacher(message.chat.id, data, "admin_pending")
     await message.answer("✅ Raqam tasdiqlandi.", reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
 
 async def _send_code(message, t, code):
-    status_line = ("✅ Hisobingiz tasdiqlangan." if t["verify_status"] == "approved"
-                   else "⏳ Hujjatingiz tekshirilmoqda. Tasdiqlangunga qadar fan va o'quvchi qo'sha olmaysiz.")
+    status_line = ("✅ Hisobingiz Super Admin tomonidan tasdiqlangan." if t["verify_status"] == "approved"
+                   else "⏳ Hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangunga qadar asosiy funksiyalar yopiq bo‘ladi.")
     await message.answer(
         f"✅ **Xush kelibsiz, {md(teacher_name(t))}!**\n\n🔑 Sizning kodingiz: `{code}`\n\n"
         "⚠️ Kodni saqlab qo'ying. Boshqa qurilmadan kirish uchun shu kod kerak.\n\n"
@@ -3120,10 +3126,10 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
 @dp.callback_query(F.data == "sa_vqueue")
 async def sa_verify_queue(call: types.CallbackQuery):
     await call.answer()
-    rows = run("SELECT id, first_name, last_name FROM teachers WHERE verify_status = 'doc_pending' ORDER BY id", fetch="all")
+    rows = run("SELECT id, first_name, last_name FROM teachers WHERE verify_status IN ('admin_pending', 'doc_pending') ORDER BY id", fetch="all")
     buttons = [[btn(f"🪪 {f} {l}"[:40], f"sa_vt_{i}")] for i, f, l in rows]
     buttons.append([btn("🔙 Super panel", "sa_menu")])
-    text = "🪪 **Tekshiruv kutayotgan hujjatlar:**" if rows else "_Tekshiruv kutayotgan hujjat yo'q._"
+    text = "🛡 **Super Admin tasdig‘ini kutayotgan o‘qituvchilar:**" if rows else "_Tasdiq kutayotgan o‘qituvchi yo‘q._"
     await call.message.edit_text(text, reply_markup=kb(buttons), parse_mode="Markdown")
 
 
@@ -3236,6 +3242,10 @@ async def check_student_login_code(message: types.Message, state: FSMContext):
         return
     reset_fails(cid)
     s_id, st = matched
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved":
+        await send_and_clean_both(message, "⛔ O'qituvchi hisobi Super Admin tomonidan hali tasdiqlanmagan. Tasdiqlangach kirishingiz mumkin.", delay=45)
+        return
     run("INSERT OR REPLACE INTO student_links (chat_id, student_id) VALUES (?, ?)", (cid, s_id))  # ilova uchun
     await state.clear()
     await state.update_data(student_id=s_id)
@@ -3354,6 +3364,10 @@ async def check_parent_code(message: types.Message, state: FSMContext):
         return
     reset_fails(cid)
     _, st = matched
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved":
+        await send_and_clean_both(message, "⛔ O'qituvchi hisobi hali Super Admin tomonidan tasdiqlanmagan. Keyinroq urinib ko'ring.", delay=45)
+        return
     await state.clear()
     await _request_link(st, cid, message.from_user.full_name)
     await send_and_clean_both(message, "⏳ **So'rov o'qituvchiga yuborildi!** Tasdiqlangach kabinet faollashadi.",
