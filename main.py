@@ -551,12 +551,19 @@ def teacher_payment_method(teacher_id):
 
 
 def db_parent_student_ids(parent_chat_id):
-    # Ota-ona ruxsati farzandining o'qituvchisi Super Admin tomonidan tasdiqlanganiga bog'liq.
-    return {r[0] for r in run("""SELECT pc.student_id FROM parent_children pc
+    # Ota-ona kirishi farzandining o'qituvchisi tasdig'i VA tarifidagi mini_app huquqiga bog'liq.
+    rows = run("""SELECT pc.student_id, t.id, t.active, t.verify_status, t.admin_approved
+        FROM parent_children pc
         JOIN students s ON s.id = pc.student_id
         JOIN teachers t ON t.id = s.teacher_id
-        WHERE pc.parent_chat_id = ? AND t.active = 1 AND t.verify_status = 'approved' AND t.admin_approved = 1""",
-        (parent_chat_id,), fetch="all")}
+        WHERE pc.parent_chat_id = ?""", (parent_chat_id,), fetch="all")
+    allowed = set()
+    for student_id, teacher_id, active, verify_status, admin_approved in rows:
+        teacher = db_teacher(teacher_id)
+        if (teacher and active and verify_status == "approved" and admin_approved
+                and has_feature(teacher, "mini_app")):
+            allowed.add(student_id)
+    return allowed
 
 
 def db_parent_children(parent_chat_id):
