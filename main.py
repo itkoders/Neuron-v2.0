@@ -1733,7 +1733,61 @@ async def tp_pay_custom_value(message: types.Message, state: FSMContext):
         await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
 
 
-NaN@dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
+
+
+# GLOBAL TEACHER PAYMENT CARD SETTINGS
+@dp.callback_query(F.data == "tp_paycard_global")
+async def tp_paycard_start(call: types.CallbackQuery, state: FSMContext):
+    t = _me(call)
+    if not t:
+        await call.answer("O‘qituvchi ruxsati kerak.", show_alert=True)
+        return
+    await call.answer()
+    current = teacher_payment_method(t["id"])
+    current_text = ""
+    if current:
+        current_text = f"\n\nJoriy karta: {current['card_number']}\nEgasi: {current['card_holder']}\nBank: {current['bank_name']}"
+    await state.clear()
+    await state.set_state(TeacherStates.payment_card_number)
+    await call.message.edit_text("💳 Umumiy to‘lov kartasi sozlamalari\n\nBu karta barcha o‘quvchilaringizga ishlaydi.\n\n1/3 — Karta raqamini yuboring. Masalan: 8600 1234 5678 9012" + current_text, reply_markup=kb([[btn("❌ Bekor qilish", "back_home")]]))
+
+@dp.message(TeacherStates.payment_card_number, F.chat.type == "private")
+async def tp_paycard_number(message: types.Message, state: FSMContext):
+    digits = re.sub(r"\D", "", message.text or "")
+    if not 16 <= len(digits) <= 19:
+        await send_and_clean_both(message, "❌ Karta raqami 16–19 ta raqam bo‘lsin. Qayta kiriting:", delay=30)
+        return
+    await state.update_data(card_number=digits)
+    await state.set_state(TeacherStates.payment_card_holder)
+    await send_and_clean_both(message, "2/3 — Karta egasining ism-familiyasini kiriting:", delay=45)
+
+@dp.message(TeacherStates.payment_card_holder, F.chat.type == "private")
+async def tp_paycard_holder(message: types.Message, state: FSMContext):
+    holder = (message.text or "").strip()[:80]
+    if len(holder) < 3:
+        await send_and_clean_both(message, "Ism-familiya kamida 3 belgi bo‘lsin:", delay=30)
+        return
+    await state.update_data(card_holder=holder)
+    await state.set_state(TeacherStates.payment_card_bank)
+    await send_and_clean_both(message, "3/3 — Bank nomini kiriting (masalan: Kapitalbank). Bank ko‘rsatilmasa - yuboring:", delay=45)
+
+@dp.message(TeacherStates.payment_card_bank, F.chat.type == "private")
+async def tp_paycard_save(message: types.Message, state: FSMContext):
+    bank = (message.text or "").strip()[:60]
+    if not bank:
+        await send_and_clean_both(message, "Bank nomini kiriting yoki - yuboring:", delay=30)
+        return
+    data = await state.get_data()
+    t = _me(message)
+    if not t:
+        await state.clear()
+        return
+    run("INSERT INTO teacher_payment_methods (teacher_id, card_number, card_holder, bank_name, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(teacher_id) DO UPDATE SET card_number=excluded.card_number, card_holder=excluded.card_holder, bank_name=excluded.bank_name, updated_at=excluded.updated_at", (t["id"], data["card_number"], data["card_holder"], "" if bank == "-" else bank, datetime.now().strftime("%d.%m.%Y %H:%M")))
+    await state.clear()
+    await send_and_clean_both(message, "✅ Umumiy karta saqlandi. Barcha farzandlar uchun bitta joydan ishlaydi!", delay=45)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+
+@dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
 async def teacher_review_payment(call: types.CallbackQuery):
     t = _me(call)
     if not t:
