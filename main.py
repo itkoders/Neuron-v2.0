@@ -1659,7 +1659,7 @@ async def tp_subj_name(message: types.Message, state: FSMContext):
     await state.update_data(subj_name=name)
     await state.set_state(TeacherStates.subj_labels)
     await send_and_clean_both(message, "🏷 **Kerakli ball ustunlari nomini vergul bilan yozing (1–3 ta):**\n\n"
-                                       "_Masalan: Test, Yozma ish, Uy vazifasi_\n\nYoki \"standart\" deb yozing.", delay=120)
+                                       "_Masalan: Test, Yozma ish_\n\nYoki \"standart\" deb yozing.", delay=120)
 
 
 @dp.message(TeacherStates.subj_labels, F.chat.type == "private")
@@ -1845,7 +1845,7 @@ async def tp_scores_menu(call: types.CallbackQuery):
     if not st:
         return
     subj = db_subject(st["subject_id"])
-    rows = [[btn(f"{subj['labels'][i]} ({st[f's{i + 1}']}%)", f"tp_scf_{st['id']}_{i + 1}")] for i in range(3)]
+    rows = [[btn(f"{label} ({st[f's{i + 1}']}%)", f"tp_scf_{st['id']}_{i + 1}")] for i, label in enumerate(subj["labels"])]
     rows.append([btn("⬅️ O'quvchilar", f"tp_list_sc_{subj['id']}")])
     await call.message.edit_text(f"📝 **{md(st['fio'])}**\nQaysi bo'limga ball qo'yasiz?", reply_markup=kb(rows), parse_mode="Markdown")
 
