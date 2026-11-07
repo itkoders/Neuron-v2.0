@@ -146,6 +146,11 @@
   .btn { border: 0; border-radius: 12px; padding: 11px 16px; font-weight: 700; cursor: pointer; background: var(--accent); color: #fff; }
   .btn.ghost { background: var(--soft); color: var(--text); }
   .btn:disabled { opacity: .5; cursor: default; }
+  .report-actions{margin-top:14px;padding:15px;border:1px solid var(--line);border-radius:17px;background:var(--card);box-shadow:var(--shadow)}
+  .report-info{font-size:13px;color:var(--muted);font-weight:650;margin-bottom:11px}
+  .report-buttons{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .report-buttons .btn{min-height:48px;white-space:normal;line-height:1.3}
+  @media(max-width:560px){.report-buttons{grid-template-columns:1fr}}
   .topic-row { display: flex; gap: 8px; margin-top: 4px; }
   .topic-row input { flex: 1; border: 1px solid var(--line); background: var(--card); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
@@ -298,7 +303,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", pendingScores: new Set(), sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
 
   function applyTheme() {
     const saved = localStorage.getItem("neuron-theme") || "system";
@@ -452,7 +457,8 @@
     $("grid").innerHTML = '<div class="loading">Yuklanmoqda…</div>';
     try {
       const data = await api(`/api/subject/${sid}`);
-      state.subject = data.subject; state.students = data.students;
+      state.subject = data.subject; state.students = data.students; state.today = data.today || "";
+      state.pendingScores.clear();
       renderTeacherHero();
       renderTeacherTab();
       setStatus("Tayyor");
@@ -496,8 +502,10 @@
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
     });
     wrap.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody>
-      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>`;
+      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>
+      <div id="reportActions" class="report-actions"></div>`;
     $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
+    renderReportActions();
     wrap.querySelectorAll("input").forEach(inp => {
       inp.addEventListener("input", onScoreInput);
       inp.addEventListener("keydown", onScoreKey);
@@ -531,28 +539,65 @@
       setStatus("0–100 oralig'ida", "err");
       return;
     }
+    state.pendingScores.add(key);
+    renderReportActions();
     setStatus("Saqlanmoqda…", "saving");
     pendingTimers[key] = setTimeout(() => saveScore(id, idx, val, inp), 350);
   }
 
   async function saveScore(id, idx, val, inp) {
+    const key = `${id}:${idx}`;
     try {
       const r = await api("/api/score", { method: "POST", body: JSON.stringify({ student_id: id, idx, value: val }) });
       const s = state.students.find(x => x.id === id);
-      if (s) s["s" + idx] = val;
+      if (s) { s["s" + idx] = val; s.last_score_date = r.last || r.today; }
+      state.today = r.today || state.today;
       inp.closest("td").className = tone(val);
-      const notice = r.parent_notifications || {total:0,sent:0,failed:[]};
-      if (notice.sent > 0) {
-        setStatus("Saqlandi ✓ · ota-onaga xabar yuborildi", "ok");
-      } else if (notice.total === 0) {
-        setStatus("Saqlandi ✓ · ota-ona akkaunti bog'lanmagan", "err");
-      } else {
-        setStatus("Saqlandi ✓ · ota-onaga xabar yetmadi", "err");
-      }
+      setStatus("Baho saqlandi ✓ · xabar hali yuborilmadi", "ok");
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
     } catch (err) {
       inp.closest("td").className = "cell-err";
       setStatus(err.status === 403 ? "Ruxsat yo'q" : "Xato — qayta urining", "err");
+    } finally {
+      state.pendingScores.delete(key);
+      renderReportActions();
+    }
+  }
+
+  function renderReportActions() {
+    const panel = $("reportActions");
+    if (!panel) return;
+    const ready = state.students.length > 0 && state.pendingScores.size === 0 &&
+      state.students.every(s => s.last_score_date === state.today && !!state.today);
+    panel.innerHTML = `
+      <div class="report-info">${ready ? "✅ Barcha o‘quvchilarning bugungi ballari kiritildi." : "ℹ️ Avval barcha o‘quvchilarga bugungi ballarni kiriting."}</div>
+      <div class="report-buttons">
+        <button class="btn" id="sendGroupReport" type="button" ${ready ? "" : "disabled"}>📢 Guruhga kunlik hisobot yuborish</button>
+        <button class="btn ghost" id="sendParentReports" type="button" ${ready ? "" : "disabled"}>👨‍👩‍👧 Ota-onalarga yuborish</button>
+      </div>`;
+    const groupBtn = $("sendGroupReport");
+    const parentBtn = $("sendParentReports");
+    if (groupBtn) groupBtn.addEventListener("click", () => sendDailyReport("group", groupBtn));
+    if (parentBtn) parentBtn.addEventListener("click", () => sendDailyReport("parents", parentBtn));
+  }
+
+  async function sendDailyReport(type, button) {
+    if (!state.subject || button.disabled) return;
+    button.disabled = true;
+    const old = button.textContent;
+    button.textContent = "⏳ Yuborilmoqda…";
+    try {
+      const r = await api("/api/report/send", {method:"POST", body:JSON.stringify({subject_id:state.subject.id,type})});
+      if (type === "group") toast("✅ Kunlik hisobot guruhga yuborildi.");
+      else toast(`✅ Ota-onalarga ${r.sent}/${r.total} ta xabar yuborildi.`);
+      button.textContent = "✅ Yuborildi";
+    } catch (err) {
+      const missing = err.data && err.data.missing;
+      if (missing && missing.length) toast("Ball kiritilmagan: " + missing.slice(0,3).join(", "));
+      else if (err.data && err.data.error === "group_not_configured") toast("Avval o‘qituvchi panelida guruh/kanalni ulang.");
+      else toast(errText(err));
+      button.disabled = false;
+      button.textContent = old;
     }
   }
 
