@@ -414,6 +414,44 @@ def teacher_subject(sid: int, authorization: str = Header(default="")):
     finally:
         conn.close()
 
+
+@app.get("/api/teacher/subject/{sid}/report")
+def journal_period_report(sid:int,period:str="quarter",authorization:str=Header(default="")):
+    uid,_=require_role(authorization,{"teacher"})
+    if period not in {"quarter","year"}: raise HTTPException(400,"Hisobot davri noto‘g‘ri")
+    now=datetime.now()
+    if period=="year":
+        start=f"{now.year}-01-01"; end=f"{now.year+1}-01-01"
+    else:
+        q=(now.month-1)//3
+        sm=q*3+1
+        start=f"{now.year}-{sm:02d}-01"
+        if sm==10: end=f"{now.year+1}-01-01"
+        else: end=f"{now.year}-{sm+3:02d}-01"
+    conn=db()
+    try:
+        ensure_journal_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid)
+            cur.execute("SELECT id,name FROM subjects WHERE id=%s AND teacher_id=%s",(sid,tid))
+            subject=cur.fetchone()
+            if not subject: raise HTTPException(404,"Fan topilmadi")
+            cur.execute("""SELECT s.id,s.fio,s.group_name,COUNT(js.score) AS lessons,
+                ROUND(AVG(js.score)::numeric,2) AS average_score,
+                COUNT(*) FILTER (WHERE js.score=5) AS fives,
+                COUNT(*) FILTER (WHERE js.score=4) AS fours,
+                COUNT(*) FILTER (WHERE js.score=3) AS threes,
+                COUNT(*) FILTER (WHERE js.score=2) AS twos,
+                COUNT(*) FILTER (WHERE js.score=1) AS ones
+                FROM students s LEFT JOIN journal_lessons jl ON jl.subject_id=s.subject_id
+                    AND jl.teacher_id=s.teacher_id AND jl.lesson_date >= %s AND jl.lesson_date < %s
+                LEFT JOIN journal_scores js ON js.lesson_id=jl.id AND js.student_id=s.id
+                WHERE s.teacher_id=%s AND s.subject_id=%s
+                GROUP BY s.id,s.fio,s.group_name ORDER BY s.group_name,s.fio""",(start,end,tid,sid))
+            rows=cur.fetchall()
+            return {"subject":subject,"period":period,"start":start,"end":end,"students":rows}
+    finally: conn.close()
+
 @app.post("/api/teacher/subject")
 async def add_subject(request: Request, authorization: str = Header(default="")):
     uid, _ = require_role(authorization, {"teacher"})
@@ -715,7 +753,9 @@ function logout(show=true){token='';role='';me=null;localStorage.removeItem('neu
 async function refresh(){try{me=await api('/api/me');home();toast('Ma’lumotlar yangilandi')}catch(e){toast(e.message)}}
 function home(){if(!me){load();return}if(role==='teacher')teacherHome();else if(role==='student')studentHome();else if(role==='parent')parentHome();else adminHome()}
 function teacherHome(){shell('Xush kelibsiz, '+(me.name||'ustoz'),'Tarif: '+(me.plan||'—')+' • O‘quvchilar: '+(me.student_count||0));let c=document.getElementById('content');c.innerHTML='<div class="grid"><div class="card"><div class="label">O‘quvchilar</div><div class="stat">'+(me.student_count||0)+'</div></div><div class="card"><div class="label">Fanlar</div><div class="stat">'+me.subjects.length+'</div></div></div><div class="section-title">Fanlar jurnali</div><div id="subjects"></div><button class="btn full" onclick="addSubject()">＋ Yangi fan qo‘shish</button>';let s=document.getElementById('subjects');if(!me.subjects.length)s.innerHTML='<div class="card muted">Hozircha fan qo‘shilmagan.</div>';me.subjects.forEach(x=>{s.innerHTML+='<button class="subject" onclick="openSubject('+x.id+')"><span>📘 '+esc(x.name)+'</span><span>›</span></button>'})}
-async function openSubject(id){try{activeSubject=id;subjectData=await api('/api/teacher/subject/'+id);let c=document.getElementById('content');let sub=subjectData.subject;c.innerHTML='<button class="btn secondary" onclick="teacherHome()">← Fanlar</button><div class="section-title">'+esc(sub.name)+' — elektron jurnal</div><div class="muted small">Excel kabi jadval: har bir dars alohida ustun, har bir o‘quvchi alohida satr. Baholar 1–5.</div><div class="row" style="margin-top:12px"><button class="btn" onclick="addJournalLesson('+id+')">＋ Dars ustuni</button><button class="btn secondary" onclick="addStudent('+id+')">＋ O‘quvchi</button></div><div class="row"><button class="btn secondary" onclick="sendParentReports()">Ota-onalarga kunlik hisobot</button><button class="btn secondary" onclick="exportJournalCsv()">Excel/CSV yuklash</button></div><input id="journalSearch" placeholder="O‘quvchini qidirish..." oninput="renderGroupJournal(window.activeGroup||\'Barchasi\')" style="width:100%;margin-top:12px;background:#0d172b;border:1px solid #35496c;border-radius:12px;padding:12px;color:white"><div class="groupbar" id="groupbar"></div><div id="journalMeta" class="muted small"></div><div class="journal-scroll"><table class="journal-table" id="journalTable"></table></div><div class="section-title">O‘quvchi boshqaruvi</div><div id="studentTools"></div>';renderGroupJournal('Barchasi')}catch(e){toast(e.message)}}
+async function openSubject(id){try{activeSubject=id;subjectData=await api('/api/teacher/subject/'+id);let c=document.getElementById('content');let sub=subjectData.subject;c.innerHTML='<button class="btn secondary" onclick="teacherHome()">← Fanlar</button><div class="section-title">'+esc(sub.name)+' — elektron jurnal</div><div class="muted small">Excel kabi jadval: har bir dars alohida ustun, har bir o‘quvchi alohida satr. Baholar 1–5.</div><div class="row" style="margin-top:12px"><button class="btn" onclick="addJournalLesson('+id+')">＋ Dars ustuni</button><button class="btn secondary" onclick="addStudent('+id+')">＋ O‘quvchi</button></div><div class="row"><button class="btn secondary" onclick="sendParentReports()">Ota-onalarga kunlik hisobot</button><button class="btn secondary" onclick="exportJournalCsv()">Excel/CSV yuklash</button><button class="btn secondary" onclick="showPeriodReport()">Chorak/yil hisoboti</button></div><input id="journalSearch" placeholder="O‘quvchini qidirish..." oninput="renderGroupJournal(window.activeGroup||\'Barchasi\')" style="width:100%;margin-top:12px;background:#0d172b;border:1px solid #35496c;border-radius:12px;padding:12px;color:white"><div class="groupbar" id="groupbar"></div><div id="journalMeta" class="muted small"></div><div class="journal-scroll"><table class="journal-table" id="journalTable"></table></div><div class="section-title">O‘quvchi boshqaruvi</div><div id="studentTools"></div>';renderGroupJournal('Barchasi')}catch(e){toast(e.message)}}
+
+async function showPeriodReport(){let period=prompt('Hisobot davri: quarter — chorak, year — yil','quarter');if(!period)return;if(!['quarter','year'].includes(period)){toast('quarter yoki year deb kiriting');return}try{let d=await api('/api/teacher/subject/'+activeSubject+'/report?period='+period);let c=document.getElementById('content');c.innerHTML='<button class="btn secondary" onclick="openSubject('+activeSubject+')">← Jurnalga qaytish</button><div class="section-title">'+esc(d.subject.name)+' — '+(period==='year'?'Yillik':'Choraklik')+' hisobot</div><div class="muted small">'+esc(d.start)+' — '+esc(d.end)+'</div><div class="journal-scroll"><table class="journal-table"><thead><tr><th>O‘quvchi</th><th>Guruh</th><th>Baholangan dars</th><th>O‘rtacha</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th></tr></thead><tbody>'+d.students.map(s=>'<tr><td>'+esc(s.fio)+'</td><td>'+esc(s.group_name||'—')+'</td><td>'+s.lessons+'</td><td><b>'+(s.average_score??'—')+'</b></td><td>'+s.fives+'</td><td>'+s.fours+'</td><td>'+s.threes+'</td><td>'+s.twos+'</td><td>'+s.ones+'</td></tr>').join('')+'</tbody></table></div>'}catch(e){toast(e.message)}}
 async function addJournalLesson(sid){let title=prompt('Dars mavzusi yoki ustun nomi:');if(!title)return;let date=prompt('Sana (YYYY-MM-DD):',new Date().toISOString().slice(0,10));if(!date)return;try{await api('/api/teacher/lesson',{method:'POST',body:JSON.stringify({subject_id:sid,title,lesson_date:date})});await openSubject(sid);toast('Jurnalga yangi dars ustuni qo‘shildi')}catch(e){toast(e.message)}}
 function journalScore(studentId,lessonId){let x=(subjectData.journal_scores||[]).find(v=>Number(v.student_id)===Number(studentId)&&Number(v.lesson_id)===Number(lessonId));return x&&x.score!==null?String(x.score):''}
 async function saveJournalScore(studentId,lessonId,value,el){try{await api('/api/teacher/journal-score',{method:'POST',body:JSON.stringify({student_id:studentId,lesson_id:lessonId,score:value||null})});let x=(subjectData.journal_scores||[]).find(v=>Number(v.student_id)===Number(studentId)&&Number(v.lesson_id)===Number(lessonId));if(x)x.score=value?Number(value):null;else subjectData.journal_scores.push({student_id:studentId,lesson_id:lessonId,score:value?Number(value):null});if(el){el.classList.toggle('graded',!!value)}toast(value?'Baho saqlandi':'Baho tozalandi')}catch(e){toast(e.message);if(el)el.value=''}}
