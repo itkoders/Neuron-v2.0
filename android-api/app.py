@@ -168,6 +168,21 @@ def ensure_journal_schema(conn):
         cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_lessons_subject_date ON journal_lessons(subject_id,lesson_date)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_scores_student ON journal_scores(student_id,lesson_id)")
 
+
+def enforce_teacher_quota(cur, tid, resource):
+    field = "subject_limit" if resource == "subjects" else "student_limit"
+    cur.execute("""SELECT t.plan_key,t.plan_expires,p.active,p.subject_limit,p.student_limit
+        FROM teachers t LEFT JOIN plans p ON p.key=t.plan_key WHERE t.id=%s""",(tid,))
+    plan=cur.fetchone()
+    if not plan: raise HTTPException(403,"Tarif ma’lumoti topilmadi")
+    if plan["active"] is False: raise HTTPException(403,"Tarif hozir faol emas")
+    limit=int(plan[field] or 0)
+    if limit <= 0: return
+    cur.execute("SELECT COUNT(*) AS n FROM "+resource+" WHERE teacher_id=%s",(tid,))
+    count=cur.fetchone()["n"]
+    if count >= limit:
+        raise HTTPException(403,"Tarif limitingiz tugagan. Tarifni yangilang.")
+
 def teacher_id_for(cur, uid):
     cur.execute("SELECT id FROM teachers WHERE chat_id=%s AND active=1 AND verify_status='approved' AND admin_approved=1", (uid,))
     row = cur.fetchone()
@@ -323,11 +338,13 @@ def me(authorization: str = Header(default="")):
                 tid = teacher_id_for(cur, uid)
                 cur.execute("SELECT id,name,label1,label2,label3 FROM subjects WHERE teacher_id=%s ORDER BY id", (tid,))
                 subjects = cur.fetchall()
-                cur.execute("SELECT first_name,last_name,plan_key,plan_expires FROM teachers WHERE id=%s", (tid,))
+                cur.execute("""SELECT t.first_name,t.last_name,t.plan_key,t.plan_expires,
+                    COALESCE(p.student_limit,0) AS student_limit,COALESCE(p.subject_limit,0) AS subject_limit
+                    FROM teachers t LEFT JOIN plans p ON p.key=t.plan_key WHERE t.id=%s""", (tid,))
                 t = cur.fetchone()
                 cur.execute("SELECT COUNT(*) AS total FROM students WHERE teacher_id=%s", (tid,))
                 count = cur.fetchone()["total"]
-                return {"role": role, "name": (t["first_name"] + " " + (t["last_name"] or "")).strip(), "plan": t["plan_key"], "expires": t["plan_expires"], "subjects": subjects, "student_count": count}
+                return {"role": role, "name": (t["first_name"] + " " + (t["last_name"] or "")).strip(), "plan": t["plan_key"], "expires": t["plan_expires"], "student_limit":t["student_limit"],"subject_limit":t["subject_limit"], "subjects": subjects, "student_count": count}
             if role == "student":
                 ensure_journal_schema(conn)
                 cur.execute("""SELECT s.id,s.fio,s.group_name,s.s1,s.s2,s.s3,s.davomat,s.payment_status,s.teacher_note,s.last_score_date,sub.name AS subject
@@ -410,6 +427,7 @@ async def add_subject(request: Request, authorization: str = Header(default=""))
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             tid = teacher_id_for(cur, uid)
+            enforce_teacher_quota(cur, tid, "subjects")
             cur.execute("INSERT INTO subjects(teacher_id,name,label1,label2,label3) VALUES(%s,%s,%s,%s,%s) RETURNING id", (tid, name, labels[0], labels[1], labels[2]))
             sid = cur.fetchone()["id"]
         conn.commit()
@@ -433,6 +451,7 @@ async def add_student(request: Request, authorization: str = Header(default=""))
             cur.execute("SELECT id FROM subjects WHERE id=%s AND teacher_id=%s", (sid, tid))
             if not cur.fetchone():
                 raise HTTPException(404, "Fan topilmadi")
+            enforce_teacher_quota(cur, tid, "students")
             code = None
             for _ in range(100):
                 candidate = str(random.randint(1000, 9999))
