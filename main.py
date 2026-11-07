@@ -546,7 +546,13 @@ def check_and_reset_daily_data():
 def _subject(row):
     if not row:
         return None
-    return {"id": row[0], "teacher_id": row[1], "name": row[2], "labels": [x for x in (row[3], row[4], row[5]) if x and str(x).strip()]}
+    # Uchta ball ustuni doim mavjud. Eski bazadagi bo'sh nomlar
+    # ro'yxatni qisqartirib, jurnal oynasida IndexError chiqarardi.
+    labels = []
+    for i, value in enumerate(row[3:6]):
+        label = str(value).strip() if value is not None else ""
+        labels.append(label or DEFAULT_LABELS[i])
+    return {"id": row[0], "teacher_id": row[1], "name": row[2], "labels": labels}
 
 
 def db_subject(sid):
@@ -858,7 +864,13 @@ def student_grid(students, prefix, back_cb, icon=lambda s: "", name_limit=22):
 
 
 def score_text(st, labels):
-    return f"📜 {labels[0]}: **{st['s1']}%**\n🌍 {labels[1]}: **{st['s2']}%**\n📑 {labels[2]}: **{st['s3']}%**"
+    # Eski yoki noto'liq fan nomlari jurnalni to'xtatib qo'ymasligi uchun.
+    labels = list(labels or [])
+    labels = [
+        (str(labels[i]).strip() if i < len(labels) and labels[i] else DEFAULT_LABELS[i])
+        for i in range(3)
+    ]
+    return f"📜 {labels[0]}: **{st['s1']}%**\\n🌍 {labels[1]}: **{st['s2']}%**\\n📑 {labels[2]}: **{st['s3']}%**"
 
 
 def cabinet_text(st, subject, subj_students, header):
