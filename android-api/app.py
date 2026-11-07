@@ -148,6 +148,23 @@ async def notify_score_parents(student_id, idx, value):
         if conn:
             conn.close()
 
+
+def ensure_journal_schema(conn):
+    with conn.cursor() as cur:
+        cur.execute("""CREATE TABLE IF NOT EXISTS journal_lessons (
+            id BIGSERIAL PRIMARY KEY, teacher_id BIGINT NOT NULL, subject_id BIGINT NOT NULL,
+            title TEXT NOT NULL, lesson_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS journal_scores (
+            id BIGSERIAL PRIMARY KEY, lesson_id BIGINT NOT NULL REFERENCES journal_lessons(id) ON DELETE CASCADE,
+            student_id BIGINT NOT NULL, score SMALLINT CHECK (score BETWEEN 1 AND 5),
+            note TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(lesson_id,student_id))""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS journal_score_history (
+            id BIGSERIAL PRIMARY KEY, lesson_id BIGINT NOT NULL, student_id BIGINT NOT NULL,
+            old_score SMALLINT, new_score SMALLINT, changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_lessons_subject_date ON journal_lessons(subject_id,lesson_date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_journal_scores_student ON journal_scores(student_id,lesson_id)")
+
 def teacher_id_for(cur, uid):
     cur.execute("SELECT id FROM teachers WHERE chat_id=%s AND active=1 AND verify_status='approved' AND admin_approved=1", (uid,))
     row = cur.fetchone()
@@ -340,6 +357,7 @@ def teacher_subject(sid: int, authorization: str = Header(default="")):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             tid = teacher_id_for(cur, uid)
+            ensure_journal_schema(conn)
             cur.execute("SELECT id,name,label1,label2,label3 FROM subjects WHERE id=%s AND teacher_id=%s", (sid, tid))
             subject = cur.fetchone()
             if not subject:
@@ -351,7 +369,15 @@ def teacher_subject(sid: int, authorization: str = Header(default="")):
             cur.execute("""SELECT group_name,COUNT(*) AS student_count FROM students
                 WHERE teacher_id=%s AND subject_id=%s GROUP BY group_name ORDER BY group_name""", (tid, sid))
             groups = cur.fetchall()
-            return {"subject": subject, "students": students, "groups": groups}
+            cur.execute("""SELECT id,title,TO_CHAR(lesson_date,'YYYY-MM-DD') AS lesson_date
+                FROM journal_lessons WHERE teacher_id=%s AND subject_id=%s
+                ORDER BY lesson_date DESC,id DESC LIMIT 20""",(tid,sid))
+            lessons = cur.fetchall()
+            cur.execute("""SELECT js.lesson_id,js.student_id,js.score,js.note
+                FROM journal_scores js JOIN journal_lessons jl ON jl.id=js.lesson_id
+                WHERE jl.teacher_id=%s AND jl.subject_id=%s""",(tid,sid))
+            scores = cur.fetchall()
+            return {"subject": subject, "students": students, "groups": groups, "lessons": lessons, "journal_scores": scores}
     finally:
         conn.close()
 
@@ -428,6 +454,112 @@ async def teacher_score(request: Request, authorization: str = Header(default=""
         return {"ok": True}
     finally:
         conn.close()
+
+
+@app.post("/api/teacher/lesson")
+async def add_journal_lesson(request: Request, authorization: str = Header(default="")):
+    uid, _ = require_role(authorization, {"teacher"})
+    body = await request.json()
+    sid = int(body.get("subject_id", 0))
+    title = str(body.get("title", "")).strip()[:80]
+    lesson_date = str(body.get("lesson_date", datetime.now().strftime("%Y-%m-%d")))
+    if len(title) < 2: raise HTTPException(400, "Dars mavzusini kiriting")
+    try: datetime.strptime(lesson_date, "%Y-%m-%d")
+    except ValueError: raise HTTPException(400, "Sana formati noto‘g‘ri")
+    conn=db()
+    try:
+        ensure_journal_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid)
+            cur.execute("SELECT id FROM subjects WHERE id=%s AND teacher_id=%s",(sid,tid))
+            if not cur.fetchone(): raise HTTPException(404,"Fan topilmadi")
+            cur.execute("INSERT INTO journal_lessons(teacher_id,subject_id,title,lesson_date) VALUES(%s,%s,%s,%s) RETURNING id",(tid,sid,title,lesson_date))
+            lesson_id=cur.fetchone()["id"]
+        conn.commit()
+        return {"ok":True,"id":lesson_id}
+    finally: conn.close()
+
+@app.post("/api/teacher/journal-score")
+async def save_journal_score(request: Request, authorization: str = Header(default="")):
+    uid,_=require_role(authorization,{"teacher"})
+    body=await request.json()
+    lesson_id=int(body.get("lesson_id",0)); student_id=int(body.get("student_id",0))
+    raw=body.get("score")
+    score=None if raw in (None,"","—") else int(raw)
+    note=str(body.get("note","")).strip()[:500]
+    if score is not None and score not in (1,2,3,4,5): raise HTTPException(400,"Baho 1 dan 5 gacha bo‘lsin")
+    conn=db()
+    try:
+        ensure_journal_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid)
+            cur.execute("""SELECT jl.id FROM journal_lessons jl JOIN students s ON s.subject_id=jl.subject_id
+                WHERE jl.id=%s AND s.id=%s AND jl.teacher_id=%s AND s.teacher_id=%s""",(lesson_id,student_id,tid,tid))
+            if not cur.fetchone(): raise HTTPException(404,"Dars yoki o‘quvchi topilmadi")
+            cur.execute("SELECT score FROM journal_scores WHERE lesson_id=%s AND student_id=%s",(lesson_id,student_id))
+            old=cur.fetchone()
+            old_score=old["score"] if old else None
+            if old_score != score:
+                cur.execute("INSERT INTO journal_score_history(lesson_id,student_id,old_score,new_score) VALUES(%s,%s,%s,%s)",(lesson_id,student_id,old_score,score))
+            cur.execute("""INSERT INTO journal_scores(lesson_id,student_id,score,note)
+                VALUES(%s,%s,%s,%s) ON CONFLICT(lesson_id,student_id)
+                DO UPDATE SET score=EXCLUDED.score,note=EXCLUDED.note,updated_at=NOW()""",(lesson_id,student_id,score,note))
+        conn.commit()
+        return {"ok":True,"score":score}
+    finally: conn.close()
+
+@app.get("/api/teacher/journal-history/{student_id}")
+def journal_history(student_id:int,authorization:str=Header(default="")):
+    uid,_=require_role(authorization,{"teacher"})
+    conn=db()
+    try:
+        ensure_journal_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid)
+            cur.execute("""SELECT jl.title,TO_CHAR(jl.lesson_date,'DD.MM.YYYY') AS lesson_date,
+                h.old_score,h.new_score,TO_CHAR(h.changed_at,'DD.MM.YYYY HH24:MI') AS changed_at
+                FROM journal_score_history h JOIN journal_lessons jl ON jl.id=h.lesson_id
+                JOIN students s ON s.id=h.student_id WHERE h.student_id=%s AND jl.teacher_id=%s
+                ORDER BY h.id DESC LIMIT 100""",(student_id,tid))
+            return {"history":cur.fetchall()}
+    finally: conn.close()
+
+@app.post("/api/teacher/journal/send-parent-reports")
+async def send_journal_parent_reports(request:Request,authorization:str=Header(default="")):
+    uid,_=require_role(authorization,{"teacher"})
+    if not BOT_TOKEN: raise HTTPException(503,"BOT_TOKEN sozlanmagan")
+    body=await request.json()
+    sid=int(body.get("subject_id",0)); group_name=str(body.get("group_name","")).strip()
+    date=str(body.get("date",datetime.now().strftime("%Y-%m-%d")))
+    try: datetime.strptime(date,"%Y-%m-%d")
+    except ValueError: raise HTTPException(400,"Sana noto‘g‘ri")
+    conn=db()
+    try:
+        ensure_journal_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid)
+            cur.execute("""SELECT s.id,s.fio,pc.parent_chat_id,jl.title,js.score,
+                TO_CHAR(jl.lesson_date,'DD.MM.YYYY') AS lesson_date
+                FROM students s JOIN parent_children pc ON pc.student_id=s.id
+                JOIN journal_lessons jl ON jl.subject_id=s.subject_id AND jl.teacher_id=s.teacher_id
+                LEFT JOIN journal_scores js ON js.lesson_id=jl.id AND js.student_id=s.id
+                WHERE s.teacher_id=%s AND s.subject_id=%s AND s.group_name=%s AND jl.lesson_date=%s
+                ORDER BY s.fio,jl.id""",(tid,sid,group_name,date))
+            rows=cur.fetchall()
+        if not rows: raise HTTPException(404,"Tanlangan guruhda bu sana uchun jurnal baholari topilmadi")
+        grouped={}
+        for row in rows:
+            item=grouped.setdefault((row["id"],row["fio"],row["parent_chat_id"]),[])
+            item.append((row["title"],row["score"]))
+        sent=0
+        async with httpx.AsyncClient(timeout=12) as client:
+            for (_,fio,parent_id),items in grouped.items():
+                lines=[f"📚 {title}: {'—' if score is None else str(score)}" for title,score in items]
+                message="📊 NEURON — kunlik natija\\n👤 "+fio+"\\n\\n"+"\\n".join(lines)+"\\n\\nO‘qituvchingiz yubordi."
+                response=await client.post("https://api.telegram.org/bot"+BOT_TOKEN+"/sendMessage",json={"chat_id":parent_id,"text":message})
+                if response.is_success and response.json().get("ok"): sent+=1
+        return {"ok":True,"sent":sent,"children":len(grouped)}
+    finally: conn.close()
 
 @app.get("/api/teacher/student/{student_id}/history")
 def student_history(student_id: int, authorization: str = Header(default="")):
