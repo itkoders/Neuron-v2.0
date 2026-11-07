@@ -27,8 +27,7 @@ def db():
 def verified_user(data):
     if not BOT_TOKEN or not JWT_SECRET:
         raise HTTPException(503, "Telegram login server sozlanmagan")
-    data = {k: str(v) for k, v in data.items() if k != "hash" and v is not None}
-    received = str(data.get("hash", ""))
+    data = {k: str(v) for k, v in data.items() if v is not None}
     # Telegram Login Widget HMAC verification
     check_data = dict(data)
     received = check_data.pop("hash", "")
