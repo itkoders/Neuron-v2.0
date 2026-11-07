@@ -898,36 +898,56 @@ def teacher_panel_text(t):
             f"📢 Kanal: `{t['channel_id'] or 'Ulanmagan'}`")
 
 
-def teacher_panel_kb():
-    rows = [
-        [btn("📚 Fanlarim", "tp_subjects"), btn("🔍 Qidirish", "tp_search")],
-        [btn("📅 Taqvim", "tp_cal"), btn("📝 Eslatmalar", "tp_notes")],
-        [btn("📊 Dashboard", "tp_dash"), btn("👁 Kirganlar", "tp_logs")],
-        [btn("📢 E'lon yuborish", "tp_bcast"), btn("📢 Kanalni sozlash", "tp_chan")],
-        [btn("📊 Kunlik hisobotni kanalga", "tp_post"), btn("🏆 Reytingni kanalga", "tp_post_lb")],
-        [btn("⏰ Rejalashtirilgan e'lon", "tp_sbc")],
-        [btn("🤖 AI tutor", "tp_ai")],
-        [btn("🪪 Tasdiqlash holati", "tp_verify")],
-        [btn("💳 To‘lov kartalarini sozlash", "tp_paycard_global")],
-        [btn("🔙 Chiqish", "back_home")],
+def teacher_panel_kb(t=None):
+    # Tarif ruxsatiga ega bo'lmagan tugmalar menyuga umuman qo'shilmaydi.
+    if t is None:
+        rows = [[btn("📚 Fanlarim", "tp_subjects"), btn("🔍 Qidirish", "tp_search")],
+                [btn("🪪 Tasdiqlash holati", "tp_verify")],
+                [btn("🔙 Chiqish", "back_home")]]
+        return kb(rows)
+    rows = [[btn("📚 Fanlarim", "tp_subjects"), btn("🔍 Qidirish", "tp_search")]]
+    feature_rows = [
+        ("calendar", [btn("📅 Taqvim", "tp_cal")]),
+        ("notes", [btn("📝 Eslatmalar", "tp_notes")]),
+        ("reports", [btn("📊 Dashboard", "tp_dash"), btn("👁 Kirganlar", "tp_logs")]),
+        ("broadcast", [btn("📢 E'lon yuborish", "tp_bcast")]),
+        ("channel", [btn("📢 Kanalni sozlash", "tp_chan"), btn("📊 Kunlik hisobotni kanalga", "tp_post")]),
+        ("reports", [btn("🏆 Reytingni kanalga", "tp_post_lb")]),
+        ("scheduled_broadcast", [btn("⏰ Rejalashtirilgan e'lon", "tp_sbc")]),
+        ("ai_tutor", [btn("🤖 AI tutor", "tp_ai")]),
+        ("payments", [btn("💳 To‘lov kartalarini sozlash", "tp_paycard_global")]),
     ]
-    if MINIAPP_URL:
-        rows.insert(-1, [InlineKeyboardButton(text="📱 Ballar jurnali (ilova)", web_app=WebAppInfo(url=miniapp_role_url("teacher")))])
+    for feature, row in feature_rows:
+        if has_feature(t, feature):
+            rows.append(row)
+    rows.append([btn("🪪 Tasdiqlash holati", "tp_verify")])
+    if has_feature(t, "mini_app") and MINIAPP_URL:
+        rows.append([InlineKeyboardButton(text="📱 Ballar jurnali (ilova)", web_app=WebAppInfo(url=miniapp_role_url("teacher")))])
     url = support_url()
     if url:
-        rows.insert(-1, [InlineKeyboardButton(text="💰 Pullik yordam", url=url)])
+        rows.append([InlineKeyboardButton(text="💰 Pullik yordam", url=url)])
+    rows.append([btn("🔙 Chiqish", "back_home")])
     return kb(rows)
 
 
-def subject_menu_kb(sid):
-    return kb([
-        [btn("➕ O'quvchi qo'shish", f"tp_stadd_{sid}"), btn("👥 O'quvchilar", f"tp_list_stu_{sid}")],
-        [btn("📝 Ballar", f"tp_list_sc_{sid}"), btn("📌 Davomat", f"tp_list_att_{sid}")],
-        [btn("💳 To'lovlar", f"tp_list_pay_{sid}"), btn("💬 Izohlar", f"tp_list_nt_{sid}")],
-        [btn("🏆 Reyting rasmi", f"tp_lb_{sid}"), btn("📅 Kunlik hisobot", f"tp_day_{sid}")],
-        [btn("📥 Excel (CSV)", f"tp_export_{sid}"), btn("📈 Tahlil", f"tp_stats_{sid}")],
-        [btn("🗑 Fanni o'chirish", f"tp_subdel_{sid}"), btn("⬅️ Fanlar", "tp_subjects")],
-    ])
+def subject_menu_kb(sid, t=None):
+    rows = [[btn("➕ O'quvchi qo'shish", f"tp_stadd_{sid}"), btn("👥 O'quvchilar", f"tp_list_stu_{sid}")]]
+    if t is None or has_feature(t, "scores"):
+        rows.append([btn("📝 Ballar", f"tp_list_sc_{sid}")])
+    if t is None or has_feature(t, "attendance"):
+        rows.append([btn("📌 Davomat", f"tp_list_att_{sid}")])
+    if t is None or has_feature(t, "payments"):
+        rows.append([btn("💳 To'lovlar", f"tp_list_pay_{sid}")])
+    if t is None or has_feature(t, "notes"):
+        rows.append([btn("💬 Izohlar", f"tp_list_nt_{sid}")])
+    if t is None or has_feature(t, "reports"):
+        rows.append([btn("🏆 Reyting rasmi", f"tp_lb_{sid}"), btn("📅 Kunlik hisobot", f"tp_day_{sid}")])
+    if t is None or has_feature(t, "export"):
+        rows.append([btn("📥 Excel (CSV)", f"tp_export_{sid}")])
+    if t is None or has_feature(t, "analytics"):
+        rows.append([btn("📈 Tahlil", f"tp_stats_{sid}")])
+    rows.append([btn("🗑 Fanni o'chirish", f"tp_subdel_{sid}"), btn("⬅️ Fanlar", "tp_subjects")])
+    return kb(rows)
 
 
 def main_menu_kb():
@@ -1072,6 +1092,9 @@ async def is_subscribed(uid):
 
 class SubGuard(BaseMiddleware):
     async def __call__(self, handler, event, data):
+        # Bot faqat shaxsiy chatda ishlaydi; guruhdagi xabarlarni jim o'tkazib yuboradi.
+        if isinstance(event, types.Message) and event.chat.type != "private":
+            return None
         user = getattr(event, "from_user", None)
         if user is None or await is_subscribed(user.id):
             return await handler(event, data)
@@ -1374,7 +1397,7 @@ async def t_reg_start(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     t = teacher_by_chat(call.from_user.id)
     if t:
-        await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
+        await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
         return
     await state.set_state(TeacherStates.reg_first)
     await call.message.edit_text("🆕 **O'qituvchi sifatida ro'yxatdan o'tish**\n\n👤 Ismingizni kiriting:",
@@ -1462,7 +1485,7 @@ async def _send_code(message, t, code):
         "⚠️ Kodni saqlab qo'ying. Boshqa qurilmadan kirish uchun shu kod kerak.\n\n"
         f"{status_line}\n📦 Tarif: **Bepul** — 50 tagacha o'quvchi.",
         parse_mode="Markdown")
-    await message.answer(teacher_panel_text(t), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
+    await message.answer(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
 
 
 @dp.message(TeacherStates.reg_doc, F.photo)
@@ -1519,7 +1542,7 @@ async def teacher_login_prompt(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     t = teacher_by_chat(call.from_user.id)
     if t:
-        await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
+        await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
         return
     await state.set_state(TeacherStates.login_code)
     await call.message.edit_text(
@@ -1555,7 +1578,7 @@ async def check_teacher_code(message: types.Message, state: FSMContext):
     if expired_now:
         await bot.send_message(cid, f"⚠️ Tarif muddatingiz tugadi ({t['plan_expires']}). Hisob Bepul tarifga o'tkazildi. "
                                     "Tarifni yangilash uchun super admin bilan bog'laning.")
-    await send_auto_clean_message(cid, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(cid, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- O'qituvchi paneli ---
@@ -1572,7 +1595,7 @@ async def tp_menu(call: types.CallbackQuery, state: FSMContext):
     if not t:
         await call.message.edit_text("O‘qituvchi hisobi topilmadi.", reply_markup=main_menu_kb())
         return
-    await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(), parse_mode="Markdown")
+    await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data == "tp_subjects")
@@ -1631,7 +1654,7 @@ async def tp_subj_labels(message: types.Message, state: FSMContext):
         return
     db_add_subject(t["id"], name, labels)
     await send_and_clean_both(message, f"✅ **{md(name)}** fani qo'shildi.\nBall nomlari: {', '.join(labels)}", delay=60)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 @dp.callback_query(F.data.startswith("tp_sub_"))
@@ -1646,7 +1669,7 @@ async def tp_subject_menu(call: types.CallbackQuery):
     count = len(db_students(t["id"], sid))
     await call.message.edit_text(
         f"📚 **{md(subj['name'])}**\n👥 O'quvchilar: **{count}**\n🏷 Ballar: {', '.join(subj['labels'])}",
-        reply_markup=subject_menu_kb(sid), parse_mode="Markdown")
+        reply_markup=subject_menu_kb(sid, t), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data.startswith("tp_subdel_"))
@@ -1719,7 +1742,7 @@ async def tp_stu_group(message: types.Message, state: FSMContext):
     code = db_add_student(t["id"], sid, data["new_fio"], group)
     audit(message.chat.id, "student_add", str(sid), data["new_fio"])
     await send_and_clean_both(message, f"✅ **{md(data['new_fio'])}** ({md(group)}) qo'shildi!\n🔑 O'quvchi kodi: `{code}`", delay=90)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 @dp.callback_query(F.data.startswith("tp_list_"))
@@ -1980,7 +2003,7 @@ async def tp_pay_custom_value(message: types.Message, state: FSMContext):
         run("UPDATE students SET payment_amount = ? WHERE id = ?", (int(raw), st["id"]))
         await send_and_clean_both(message, f"✅ Oylik to'lov **{int(raw):,} so'm** qilib belgilandi!", delay=45)
     if t:
-        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 
@@ -2035,7 +2058,7 @@ async def tp_paycard_save(message: types.Message, state: FSMContext):
     run("INSERT INTO teacher_payment_methods (teacher_id, card_number, card_holder, bank_name, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(teacher_id) DO UPDATE SET card_number=excluded.card_number, card_holder=excluded.card_holder, bank_name=excluded.bank_name, updated_at=excluded.updated_at", (t["id"], data["card_number"], data["card_holder"], "" if bank == "-" else bank, datetime.now().strftime("%d.%m.%Y %H:%M")))
     await state.clear()
     await send_and_clean_both(message, "✅ Umumiy karta saqlandi. Barcha farzandlar uchun bitta joydan ishlaydi!", delay=45)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 @dp.callback_query(F.data.startswith("payreq_ok_") | F.data.startswith("payreq_no_"))
 async def teacher_review_payment(call: types.CallbackQuery):
@@ -2108,7 +2131,7 @@ async def tp_note_save(message: types.Message, state: FSMContext):
     run("UPDATE students SET teacher_note = ? WHERE id = ?", (text, st["id"]))
     await notify_parents_of(st["id"], f"💬 **O'qituvchidan farzandingizga ({md(st['fio'])}) izoh:**\n\n_{md(text)}_")
     await send_and_clean_both(message, "✅ Izoh saqlandi va ota-onaga yuborildi!", delay=45)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- Hisobotlar ---
@@ -2186,7 +2209,7 @@ async def tp_search_run(message: types.Message, state: FSMContext):
             subj = db_subject(s["subject_id"])
             text += f"🔹 **{md(s['fio'])}** — {md(subj['name'])} ({md(s['group_name'])})\n   🔑 `{s['code']}` | {s['davomat']} | {s['payment_status']}\n\n"
         await send_and_clean_both(message, text, delay=120)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- Taqvim ---
@@ -2230,7 +2253,7 @@ async def tp_cal_date(message: types.Message, state: FSMContext):
     if t:
         run("INSERT INTO calendar_events (teacher_id, title, event_date) VALUES (?, ?, ?)", (t["id"], title, (message.text or "").strip()))
         await send_and_clean_both(message, f"✅ **{md(title)}** qo'shildi.", delay=45)
-        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- Shaxsiy eslatmalar ---
@@ -2267,7 +2290,7 @@ async def tp_note_new_save(message: types.Message, state: FSMContext):
     if t and text:
         run("INSERT INTO admin_notes (teacher_id, note_text) VALUES (?, ?)", (t["id"], text))
         await send_and_clean_both(message, "✅ Eslatma saqlandi!", delay=30)
-        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+        await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- Kanal ---
@@ -2286,7 +2309,7 @@ async def tp_channel_save(message: types.Message, state: FSMContext):
     await state.clear()
     if t:
         run("UPDATE teachers SET channel_id = ? WHERE id = ?", (ch, t["id"]))
-        await send_auto_clean_message(message.chat.id, teacher_panel_text(db_teacher(t["id"])), reply_markup=teacher_panel_kb(), delay=300)
+        await send_auto_clean_message(message.chat.id, teacher_panel_text(db_teacher(t["id"])), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 @dp.callback_query(F.data == "tp_post_lb")
@@ -2791,7 +2814,7 @@ async def tp_sbc_time(message: types.Message, state: FSMContext):
     run("INSERT INTO scheduled_broadcasts (teacher_id, text, send_at, sent) VALUES (?, ?, ?, 0)",
         (t["id"], data["sched_text"], when.strftime("%Y-%m-%d %H:%M")))
     await send_and_clean_both(message, f"✅ E'lon {when.strftime('%d.%m.%Y %H:%M')} da yuboriladi.", delay=45)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # --- Ota-onalarga e'lon ---
@@ -2821,7 +2844,7 @@ async def tp_bcast_send(message: types.Message, state: FSMContext):
             pass
     audit(message.chat.id, "broadcast", str(t["id"]), f"{sent} ta")
     await send_and_clean_both(message, f"✅ Xabar **{sent} ta** ota-onaga yuborildi.", delay=45)
-    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(), delay=300)
+    await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
 # ============================================================
