@@ -604,7 +604,19 @@
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
     } catch (err) {
       inp.closest("td").className = "cell-err";
-      setStatus(err.status === 403 ? "Ruxsat yo'q" : "Xato — qayta urining", "err");
+      const code = err.data && err.data.error;
+      const message = code === "feature_locked"
+        ? "Ball qo‘yish tarifingizda yoqilmagan (scores)."
+        : code === "forbidden"
+          ? "O‘qituvchi yoki Mini App ruxsati tasdiqlanmagan."
+          : code === "auth"
+            ? "Telegram tasdiqlashi eskirgan. Mini App'ni botdan qayta oching."
+            : code === "not_found"
+              ? "O‘quvchi topilmadi yoki ushbu fanga tegishli emas."
+              : code === "bad"
+                ? "Ball yoki ustun ma’lumoti noto‘g‘ri."
+                : (err.message || "Xato — qayta urining");
+      setStatus(message, "err");
     } finally {
       if (!pendingTimers[key]) state.pendingScores.delete(key);
       renderReportActions();
