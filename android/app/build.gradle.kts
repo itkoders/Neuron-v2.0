@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val neuronBotUrl = providers.gradleProperty("NEURON_BOT_URL").orElse("").get()
+val neuronApiUrl = providers.gradleProperty("NEURON_API_URL").orElse("https://neuron-android-api.onrender.com").get()
 
 android {
     namespace = "uz.itkoders.neuron"
@@ -16,7 +16,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        buildConfigField("String", "NEURON_BOT_URL", "\"$neuronBotUrl\"")
+        buildConfigField("String", "NEURON_API_URL", "\"$neuronApiUrl\"")
     }
 
     buildFeatures {
