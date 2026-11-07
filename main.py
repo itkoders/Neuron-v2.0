@@ -32,6 +32,8 @@ logging.basicConfig(level=logging.INFO)
 # ============================================================
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "").strip()
+# Yagona egasi: Super Admin huquqi faqat shu Telegram ID ga beriladi.
+OWNER_TELEGRAM_ID = 6359925487
 # Maxfiy qiymatlar Render Environment bo'limiga keyin kiritilishi mumkin.
 # BOT_TOKEN bo'lmasa web server ishga tushadi, bot polling esa kutadi.
 PEPPER = os.environ.get("PEPPER", "").strip() or TOKEN or "neuron-v2-initial-pepper-change-me"
@@ -387,7 +389,7 @@ def reset_fails(chat_id):
 
 
 def is_super(chat_id):
-    return bool(run("SELECT 1 FROM super_admins WHERE chat_id = ?", (chat_id,), fetch="one"))
+    return int(chat_id or 0) == OWNER_TELEGRAM_ID
 
 
 # --- Tariflar ---
@@ -883,7 +885,8 @@ def student_cabinet_kb(s_id):
 
 def plan_line(t):
     p, expired_now = effective_plan(t)
-    until = "cheksiz" if not t["plan_expires"] or p["key"] == "free" else t["plan_expires"]
+    # Muddat tarif nomidan mustaqil ko'rsatiladi; 7 kunlik bepul sinov ham ko'rinadi.
+    until = t["plan_expires"] or "cheksiz"
     if expired_now:
         until = f"muddati tugagan ({t['plan_expires']})"
     limit = p["student_limit"] or "cheksiz"
@@ -950,13 +953,15 @@ def subject_menu_kb(sid, t=None):
     return kb(rows)
 
 
-def main_menu_kb():
-    return kb([
+def main_menu_kb(user_id=None):
+    rows = [
         [btn("🎓 O'quvchi Kabineti", "student_login_prompt"), btn("👨‍👩‍👧‍👦 Ota-ona Kabineti", "auth_parent")],
         [btn("👩‍🏫 O'qituvchi Kabineti", "teacher_login_prompt"), btn("🆕 O'qituvchi bo'lish", "t_reg")],
         [btn("💼 Tariflar", "public_plans"), btn("❓ Ko'p so'raladigan savollar", "faq_menu")],
-        [btn("⚙️ Super Admin", "super_admin_login_prompt")],
-    ])
+    ]
+    if user_id is not None and is_super(user_id):
+        rows.append([btn("⚙️ Super Admin", "super_admin_login_prompt")])
+    return kb(rows)
 
 
 def owned_subject(t, sid):
@@ -1134,7 +1139,7 @@ async def check_sub(call: types.CallbackQuery):
     await call.answer("✅ Rahmat! Endi botdan foydalanishingiz mumkin.", show_alert=True)
     try:
         await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
-                                     reply_markup=main_menu_kb(), parse_mode="Markdown")
+                                     reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
     except Exception:
         pass
 
@@ -1347,7 +1352,7 @@ def create_leaderboard_image(students, subject_name, labels):
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await send_and_clean_both(message, "✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
-                              reply_markup=main_menu_kb(), delay=120)
+                              reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
 
 @dp.callback_query(F.data == "back_home")
@@ -1596,7 +1601,7 @@ async def tp_menu(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     t = teacher_by_chat(call.from_user.id)
     if not t:
-        await call.message.edit_text("O‘qituvchi hisobi topilmadi.", reply_markup=main_menu_kb())
+        await call.message.edit_text("O‘qituvchi hisobi topilmadi.", reply_markup=main_menu_kb(call.from_user.id))
         return
     await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
 
@@ -2855,12 +2860,18 @@ async def tp_bcast_send(message: types.Message, state: FSMContext):
 # ============================================================
 @dp.message(Command("superadmin"), F.chat.type == "private")
 async def superadmin_cmd(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await message.answer("⛔ Bu buyruq faqat loyiha egasi uchun.")
+        return
     await state.set_state(SuperStates.login)
     await send_and_clean_both(message, "⚙️ **Super Admin parolini kiriting:**", delay=60)
 
 
 @dp.callback_query(F.data == "super_admin_login_prompt")
 async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Faqat loyiha egasi uchun.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.login)
     await call.message.edit_text("⚙️ **Super Admin parolini kiriting:**",
@@ -2870,6 +2881,10 @@ async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext)
 @dp.message(SuperStates.login, F.chat.type == "private")
 async def check_super_password(message: types.Message, state: FSMContext):
     cid = message.chat.id
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Super Admin huquqi faqat loyiha egasiga berilgan.")
+        return
     if is_blocked(cid):
         await send_and_clean_both(message, "⛔ Juda ko'p noto'g'ri urinish. Keyinroq urinib ko'ring.", delay=30)
         return
@@ -3346,7 +3361,7 @@ async def sa_set_plan(call: types.CallbackQuery):
     if not p or not t:
         await call.answer("Topilmadi", show_alert=True)
         return
-    expires = (datetime.now() + timedelta(days=p["duration_days"])).strftime("%d.%m.%Y") if p["duration_days"] else None
+    expires = (datetime.now().date() + timedelta(days=p["duration_days"])).strftime("%d.%m.%Y") if p["duration_days"] else None
     run("UPDATE teachers SET plan_key = ?, plan_expires = ? WHERE id = ?", (key, expires, tid))
     audit(call.from_user.id, "plan_assign", str(tid), f"{key} until {expires or 'cheksiz'}")
     await call.answer("Tarif berildi")
