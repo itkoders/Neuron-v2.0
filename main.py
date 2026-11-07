@@ -1221,11 +1221,11 @@ def create_daily_report_images(students, subject_name, labels):
 def create_group_daily_report_images(students, subject_name, labels, report_date):
     """Guruh uchun NEURON v2.0 uslubidagi jadval-hisobot rasmlari."""
     items = list(students)
-    page_size = 12
+    page_size = 10
     pages = []
     W, H = 1600, 980
-    widths = [70, 390, 170, 160, 190, 190, 150, 150]
-    headers = ["T/R", "F.I.O", "DAVOMAT", "TEST", "QO‘SHIMCHA", "UY VAZIFASI", "JAMI", "O‘RTACHA"]
+    widths = [80, 470, 220, 250, 270, 250]
+    headers = ["T/R", "F.I.O", "DAVOMAT", labels[0].upper(), labels[1].upper(), labels[2].upper()]
     for page_idx in range(max(1, (len(items) + page_size - 1) // page_size)):
         chunk = items[page_idx * page_size:(page_idx + 1) * page_size]
         img = Image.new("RGB", (W, H), "#F4F7FC")
@@ -1252,13 +1252,8 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
         for idx, st in enumerate(chunk, page_idx * page_size + 1):
             scored_today = st.get("last_score_date") == report_date
             vals = [st.get(f"s{k}", 0) for k in (1, 2, 3)] if scored_today else [None, None, None]
-            nums = [v for v in vals if v is not None]
-            avg = round(sum(nums) / len(nums)) if nums else None
-            total_score = sum(nums) if nums else None
             row = [str(idx), st.get("fio", "—"), st.get("davomat", "Kutilmoqda"),
-                   *[f"{v}/100" if v is not None else "—" for v in vals],
-                   str(total_score) if total_score is not None else "—",
-                   f"{avg}/100" if avg is not None else "—"]
+                   *[f"{v}/100" if v is not None else "—" for v in vals]]
             x = x0
             base = "#FFFFFF" if idx % 2 else "#F0F4FB"
             for col, (value, cw) in enumerate(zip(row, widths)):
@@ -1268,8 +1263,6 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
                 elif 3 <= col <= 5 and value != "—":
                     n = vals[col - 3]
                     fill = "#DCFCE7" if n >= 80 else ("#FEF3C7" if n >= 50 else "#FEE2E2")
-                elif col == 7 and value != "—":
-                    fill = "#E0E7FF"
                 d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
                 if col == 1:
                     shown = value
@@ -4034,6 +4027,8 @@ async def api_score(request):
         sid, idx, val = int(body.get("student_id")), int(body.get("idx")), int(body.get("value"))
     except (TypeError, ValueError, AttributeError):
         return web.json_response({"error": "bad"}, status=400)
+    if not has_feature(t, "scores"):
+        return web.json_response({"error": "feature_locked", "feature": "scores"}, status=403)
     if idx not in (1, 2, 3) or not 0 <= val <= 100:
         return web.json_response({"error": "bad"}, status=400)
     st = owned_student(t, sid)
@@ -4065,6 +4060,9 @@ async def api_daily_report(request):
     report_type = str(body.get("type", "")).strip().lower()
     if report_type not in {"group", "parents"}:
         return web.json_response({"error": "bad_type"}, status=400)
+    required_feature = "reports" if report_type == "group" else "auto_notify"
+    if not has_feature(t, required_feature):
+        return web.json_response({"error": "feature_locked", "feature": required_feature}, status=403)
     subj = owned_subject(t, subject_id)
     if not subj:
         return web.json_response({"error": "not_found"}, status=404)
@@ -4137,6 +4135,8 @@ async def api_attendance(request):
         sid = int(body.get("student_id"))
     except (TypeError, ValueError, AttributeError):
         return web.json_response({"error": "bad"}, status=400)
+    if not has_feature(t, "attendance"):
+        return web.json_response({"error": "feature_locked", "feature": "attendance"}, status=403)
     status = body.get("status")
     if status not in ATT_VALUES:
         return web.json_response({"error": "bad"}, status=400)
@@ -4209,7 +4209,12 @@ async def api_me(request):
         return err
     if kind == "teacher":
         return web.json_response({"role": "teacher", "teacher": {"name": teacher_name(obj)},
-                                  "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])]})
+                                  "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])],
+                                  "plan": (lambda p: {"key": p["key"], "name": p["name"],
+                                      "student_limit": p["student_limit"], "subject_limit": p["subject_limit"],
+                                      "features": sorted(p["features"]) })(effective_plan(obj)[0]),
+                                  "student_count": teacher_student_count(obj["id"]),
+                                  "subject_count": teacher_subject_count(obj["id"])})
     if kind == "parent":
         children = [{"id": sid, "fio": child["fio"], "group_name": child["group_name"]}
                     for sid, child in db_parent_miniapp_children(obj)]
