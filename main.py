@@ -1217,6 +1217,79 @@ def create_daily_report_images(students, subject_name, labels):
     return images
 
 
+
+def create_group_daily_report_images(students, subject_name, labels, report_date):
+    """Guruh uchun NEURON v2.0 uslubidagi jadval-hisobot rasmlari."""
+    items = list(students)
+    page_size = 12
+    pages = []
+    W, H = 1600, 980
+    widths = [70, 390, 170, 160, 190, 190, 150, 150]
+    headers = ["T/R", "F.I.O", "DAVOMAT", "TEST", "QO‘SHIMCHA", "UY VAZIFASI", "JAMI", "O‘RTACHA"]
+    for page_idx in range(max(1, (len(items) + page_size - 1) // page_size)):
+        chunk = items[page_idx * page_size:(page_idx + 1) * page_size]
+        img = Image.new("RGB", (W, H), "#F4F7FC")
+        d = ImageDraw.Draw(img)
+        title_f, sub_f = get_font(34, True), get_font(21, True)
+        head_f, cell_f, small_f = get_font(19, True), get_font(21), get_font(17)
+        # Header
+        d.rounded_rectangle((28, 24, W - 28, 155), radius=24, fill="#173B8F")
+        d.text((W // 2, 66), "NEURON  •  SMART JOURNAL", fill="#DCE8FF", font=sub_f, anchor="mm")
+        d.text((W // 2, 115), "KUNLIK GURUH HISOBOTI", fill="#FFFFFF", font=title_f, anchor="mm")
+        # Metadata strip
+        d.rounded_rectangle((28, 175, W - 28, 255), radius=18, fill="#E5EDFF")
+        d.text((55, 215), f"FAN: {subject_name}", fill="#173B8F", font=sub_f, anchor="lm")
+        d.text((W // 2, 215), f"SANA: {report_date}", fill="#173B8F", font=sub_f, anchor="mm")
+        d.text((W - 55, 215), f"O‘QUVCHILAR: {len(items)}", fill="#173B8F", font=sub_f, anchor="rm")
+        # Table header
+        x0, y0, row_h = 28, 285, 54
+        x = x0
+        for label, cw in zip(headers, widths):
+            d.rectangle((x, y0, x + cw, y0 + row_h), fill="#DCE8FF", outline="#31549B", width=2)
+            d.text((x + cw // 2, y0 + row_h // 2), label, fill="#172B55", font=head_f, anchor="mm")
+            x += cw
+        y = y0 + row_h
+        for idx, st in enumerate(chunk, page_idx * page_size + 1):
+            scored_today = st.get("last_score_date") == report_date
+            vals = [st.get(f"s{k}", 0) for k in (1, 2, 3)] if scored_today else [None, None, None]
+            nums = [v for v in vals if v is not None]
+            avg = round(sum(nums) / len(nums)) if nums else None
+            total_score = sum(nums) if nums else None
+            row = [str(idx), st.get("fio", "—"), st.get("davomat", "Kutilmoqda"),
+                   *[f"{v}/100" if v is not None else "—" for v in vals],
+                   str(total_score) if total_score is not None else "—",
+                   f"{avg}/100" if avg is not None else "—"]
+            x = x0
+            base = "#FFFFFF" if idx % 2 else "#F0F4FB"
+            for col, (value, cw) in enumerate(zip(row, widths)):
+                fill = base
+                if col == 2:
+                    fill = "#DDF7E8" if value == "Keldi" else ("#FFE3E3" if value == "Kelmadi" else "#FFF3C4")
+                elif 3 <= col <= 5 and value != "—":
+                    n = vals[col - 3]
+                    fill = "#DCFCE7" if n >= 80 else ("#FEF3C7" if n >= 50 else "#FEE2E2")
+                elif col == 7 and value != "—":
+                    fill = "#E0E7FF"
+                d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
+                if col == 1:
+                    shown = value
+                    while d.textbbox((0, 0), shown, font=cell_f)[2] > cw - 24 and len(shown) > 4:
+                        shown = shown[:-2] + "…"
+                    d.text((x + 16, y + row_h // 2), shown, fill="#18243A", font=head_f, anchor="lm")
+                else:
+                    d.text((x + cw // 2, y + row_h // 2), value, fill="#18243A", font=cell_f, anchor="mm")
+                x += cw
+            y += row_h
+        # Summary footer
+        d.rounded_rectangle((28, 930, W - 28, 966), radius=12, fill="#E5EDFF")
+        d.text((48, 948), "NEURON SMART JOURNAL  •  Natijalar o‘qituvchi jurnalidan shakllantirildi",
+               fill="#31549B", font=small_f, anchor="lm")
+        d.text((W - 48, 948), f"{page_idx + 1}-sahifa / {max(1, (len(items) + page_size - 1) // page_size)}",
+               fill="#31549B", font=small_f, anchor="rm")
+        pages.append(_png(img))
+    return pages
+
+
 def create_leaderboard_image(students, subject_name, labels):
     img = Image.new("RGB", (950, 602), color="#FFFFFF")
     draw = ImageDraw.Draw(img)
@@ -4004,33 +4077,27 @@ async def api_daily_report(request):
         target = t.get("channel_id")
         if not target:
             return web.json_response({"error": "group_not_configured"}, status=400)
-        lines = [f"📊 KUNLIK GURUH HISOBOTI", f"📚 Fan: {md(subj['name'])}",
-                 f"📅 Sana: {today}", f"👥 O‘quvchilar: {len(students)}", "━━━━━━━━━━━━━━"]
-        for i, st in enumerate(students, 1):
-            vals = [st[f"s{k}"] for k in (1, 2, 3)]
-            avg = score_average(st)
-            lines.append(f"{i}. {md(st['fio'])} — " +
-                         " | ".join(f"{md(labels[k])}: {vals[k]}/100" for k in range(3)) +
-                         f" | Jami: {sum(vals)} | O‘rtacha: {avg if avg is not None else 0}/100")
-        lines.append("━━━━━━━━━━━━━━\nNEURON SMART JOURNAL")
-        text = "\n".join(lines)
-        chunks, current = [], ""
-        for line in text.splitlines():
-            if len(current) + len(line) + 1 > 3500:
-                chunks.append(current)
-                current = ""
-            current = (current + "\n" + line).strip()
-        if current:
-            chunks.append(current)
         try:
-            for chunk in chunks:
-                await bot.send_message(target, chunk, parse_mode="Markdown")
+            images = create_group_daily_report_images(
+                students, subj["name"], labels, today
+            )
+            for page_no, image_bytes in enumerate(images, 1):
+                caption = (
+                    f"📊 {md(subj['name'])} — kunlik guruh hisoboti\n"
+                    f"📅 {today} · {len(students)} nafar o‘quvchi · {page_no}/{len(images)}-sahifa"
+                )
+                await bot.send_photo(
+                    target,
+                    BufferedInputFile(image_bytes, filename=f"neuron_group_report_{page_no}.png"),
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
         except Exception as exc:
             logging.exception("Kunlik guruh hisoboti yuborilmadi: teacher_id=%s subject_id=%s", t["id"], subject_id)
             return web.json_response({"error": "group_send_failed", "detail": str(exc)[:180]}, status=502)
-        audit(t["chat_id"], "daily_group_report", str(subject_id), today)
-        return web.json_response({"ok": True, "type": "group", "sent": len(chunks),
-                                  "students": len(students), "date": today})
+        audit(t["chat_id"], "daily_group_report_image", str(subject_id), f"{today}; pages={len(images)}")
+        return web.json_response({"ok": True, "type": "group", "sent": len(images),
+                                  "students": len(students), "date": today, "format": "image_table"})
 
     total_parents = sent_parents = 0
     failed_students = []
