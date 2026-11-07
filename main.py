@@ -3979,7 +3979,7 @@ def miniapp_teacher(request):
 async def miniapp_page(request):
     try:
         with open(MINIAPP_HTML, encoding="utf-8") as f:
-            return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+            return web.Response(text=f.read(), content_type="text/html", charset="utf-8", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
     except OSError:
         return web.Response(text="miniapp.html topilmadi", status=500)
 
