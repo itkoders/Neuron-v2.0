@@ -535,14 +535,19 @@
     clearTimeout(pendingTimers[key]);
     const val = raw === "" ? 0 : Math.round(Number(raw));
     if (!Number.isFinite(val) || val < 0 || val > 100) {
+      state.pendingScores.delete(key);
       inp.closest("td").className = "cell-err";
+      renderReportActions();
       setStatus("0–100 oralig'ida", "err");
       return;
     }
     state.pendingScores.add(key);
     renderReportActions();
     setStatus("Saqlanmoqda…", "saving");
-    pendingTimers[key] = setTimeout(() => saveScore(id, idx, val, inp), 350);
+    pendingTimers[key] = setTimeout(() => {
+      delete pendingTimers[key];
+      saveScore(id, idx, val, inp);
+    }, 350);
   }
 
   async function saveScore(id, idx, val, inp) {
@@ -559,7 +564,7 @@
       inp.closest("td").className = "cell-err";
       setStatus(err.status === 403 ? "Ruxsat yo'q" : "Xato — qayta urining", "err");
     } finally {
-      state.pendingScores.delete(key);
+      if (!pendingTimers[key]) state.pendingScores.delete(key);
       renderReportActions();
     }
   }
