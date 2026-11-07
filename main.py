@@ -1257,8 +1257,9 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
     page_size = 10
     pages = []
     W, H = 1600, 980
-    widths = [80, 470, 220, 250, 270, 250]
-    headers = ["T/R", "F.I.O", "DAVOMAT", labels[0].upper(), labels[1].upper(), labels[2].upper()]
+    labels = [x for x in labels if x][:3]
+    widths = [80, 470, 220] + [int(800 / max(1, len(labels)))] * len(labels)
+    headers = ["T/R", "F.I.O", "DAVOMAT"] + [x.upper() for x in labels]
     for page_idx in range(max(1, (len(items) + page_size - 1) // page_size)):
         chunk = items[page_idx * page_size:(page_idx + 1) * page_size]
         img = Image.new("RGB", (W, H), "#F4F7FC")
@@ -1284,7 +1285,7 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
         y = y0 + row_h
         for idx, st in enumerate(chunk, page_idx * page_size + 1):
             scored_today = st.get("last_score_date") == report_date
-            vals = [st.get(f"s{k}", 0) for k in (1, 2, 3)] if scored_today else [None, None, None]
+            vals = [st.get(f"s{k}", 0) for k in range(1, len(labels) + 1)] if scored_today else [None] * len(labels)
             row = [str(idx), st.get("fio", "—"), st.get("davomat", "Kutilmoqda"),
                    *[f"{v}/100" if v is not None else "—" for v in vals]]
             x = x0
@@ -1293,7 +1294,7 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
                 fill = base
                 if col == 2:
                     fill = "#DDF7E8" if value == "Keldi" else ("#FFE3E3" if value == "Kelmadi" else "#FFF3C4")
-                elif 3 <= col <= 5 and value != "—":
+                elif col >= 3 and value != "—":
                     n = vals[col - 3]
                     fill = "#DCFCE7" if n >= 80 else ("#FEF3C7" if n >= 50 else "#FEE2E2")
                 d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
@@ -4075,11 +4076,12 @@ async def api_score(request):
         return web.json_response({"error": "bad"}, status=400)
     if not has_feature(t, "scores"):
         return web.json_response({"error": "feature_locked", "feature": "scores"}, status=403)
-    if idx not in (1, 2, 3) or not 0 <= val <= 100:
-        return web.json_response({"error": "bad"}, status=400)
     st = owned_student(t, sid)
     if not st:
         return web.json_response({"error": "not_found"}, status=404)
+    subj = owned_subject(t, st["subject_id"])
+    if not subj or idx < 1 or idx > len(subj["labels"]) or not 0 <= val <= 100:
+        return web.json_response({"error": "bad"}, status=400)
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
     today = datetime.now().strftime("%d.%m.%Y")
