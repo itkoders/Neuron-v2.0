@@ -229,6 +229,7 @@
     <input id="search" type="search" placeholder="Qidirish…" aria-label="Qidirish">
     <button class="btn mini-action" id="addSubjectBtn" type="button">＋ Fan</button>
     <button class="btn mini-action" id="addStudentBtn" type="button">＋ O‘quvchi</button>
+    <button class="btn mini-action" id="deleteSubjectBtn" type="button" style="background:#b4233a;color:#fff">🗑 Fanni o‘chirish</button>
   </div>
   <div id="teacherHero" class="teacher-hero hidden"><div class="hero-kicker">NEURON • SMART JOURNAL</div><div class="hero-title">Darslaringiz nazorat ostida</div><div class="hero-sub" id="heroSubject">O‘quvchilar natijalarini boshqaring va rivojlanishni kuzating</div><div class="hero-stats"><div class="hero-stat"><b id="heroStudents">—</b><span>O‘QUVCHILAR</span></div><div class="hero-stat"><b id="heroAverage">—</b><span>O‘RTACHA BALL</span></div><div class="hero-stat"><b id="heroAttendance">—</b><span>BUGUN KELDI</span></div></div></div>
   <div class="tabs hidden" id="tabsTeacher" role="tablist">
@@ -503,10 +504,11 @@
     const list = visibleStudents();
     const head = `<tr>
       <th class="name"><button class="sort-btn" id="sortFio">O'quvchi${state.sort === "fio" ? " ▲" : ""}</button></th>
-      ${labels.map(l => `<th>${esc(l)}</th>`).join("")}
+      ${labels.map(l => `<th>${esc(l)}</th>`).join("")}<th>Amal</th>
       </tr>`;
     const rows = list.map((s, i) => `<tr data-id="${s.id}">
       <td class="name"><div class="fio" title="${esc(s.fio)}">${esc(s.fio)}</div><div class="grp">${esc(s.group_name)}</div></td>
+      <td><button type="button" class="btn mini-action" data-delete-student="${s.id}" style="background:#b4233a;color:#fff">🗑</button></td>
       ${labels.map((label, k) => { const idx = k + 1; return `<td class="${tone(s["s" + idx])}"><input type="number" inputmode="numeric" min="0" max="100" step="1"
           placeholder="—" value="${s["s" + idx] || ""}" data-row="${i}" data-col="${k}" aria-label="${esc(s.fio)} ${esc(label)}"></td>`; }).join("")}
       </tr>`).join("");
@@ -517,6 +519,13 @@
     wrap.innerHTML = `<table class="journal-table"><thead>${head}</thead><tbody>${rows}</tbody>
       <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>`;
     $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
+    wrap.querySelectorAll("[data-delete-student]").forEach(btn => btn.addEventListener("click", async () => {
+      const studentId = Number(btn.dataset.deleteStudent);
+      const student = state.students.find(x => x.id === studentId);
+      if (!student || !confirm(student.fio + " o‘chirilsinmi? Baholari va ota-ona bog‘lanishlari ham o‘chadi.")) return;
+      try { await api("/api/student/" + studentId, {method:"DELETE"}); await loadSubject(state.subject.id); toast("O‘quvchi o‘chirildi."); }
+      catch(err) { toast(errText(err)); }
+    }));
     renderReportActions();
     wrap.querySelectorAll("input").forEach(inp => {
       inp.addEventListener("input", onScoreInput);
@@ -959,6 +968,21 @@
       sel.value = String(r.subject.id);
       await loadSubject(r.subject.id);
       toast("Fan qo‘shildi.");
+    } catch(err) { toast(errText(err)); }
+  });
+  $("deleteSubjectBtn").addEventListener("click", async () => {
+    if (!state.subject) { toast("Avval fan tanlang."); return; }
+    const subjectId = state.subject.id;
+    const subjectName = state.subject.name;
+    const count = state.students.length;
+    if (!confirm('"' + subjectName + '" fani va undagi ' + count + ' nafar o‘quvchi butunlay o‘chirilsinmi?')) return;
+    try {
+      await api("/api/subject/" + subjectId, {method:"DELETE"});
+      state.subjects = state.subjects.filter(x => x.id !== subjectId);
+      $("subject").innerHTML = state.subjects.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join("") || '<option value="">Fanlar yo‘q</option>';
+      if (state.subjects.length) { $("subject").value = String(state.subjects[0].id); await loadSubject(state.subjects[0].id); }
+      else { state.subject = null; state.students = []; $("grid").innerHTML = '<div class="card empty">Hali fan yo‘q. Yangi fan qo‘shing.</div>'; renderTeacherHero(); }
+      toast("Fan va unga tegishli o‘quvchilar o‘chirildi.");
     } catch(err) { toast(errText(err)); }
   });
   $("addStudentBtn").addEventListener("click", async () => {
