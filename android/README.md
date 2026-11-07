@@ -1,15 +1,24 @@
 # NEURON Android
 
-Must remain isolated from the Telegram bot runtime and source code.
+A mobile client for NEURON SMART JOURNAL. The Android app loads the independently deployed mobile API dashboard in a WebView.
 
-## Non-negotiable boundaries
-- Android source lives only under `android/`.
-- The Android app must never import, execute, or launch `main.py`.
-- Do not add `BOT_TOKEN`, database credentials, or AI provider keys to the APK.
-- Existing API authorization must remain server-verified. A native app must not fabricate Telegram WebApp `initData`.
+## Isolation and security
+- The app and API are maintained on this branch; the Telegram bot's `main.py` is not imported, executed, or modified.
+- Keep `BOT_TOKEN`, `DATABASE_URL`, and `JWT_SECRET` on the server only. Never embed them in the APK.
+- Telegram Login Widget HMAC is validated by the API. Short-lived one-time handoff codes are exchanged for a signed app session.
+- Super Admin access is restricted server-side to owner Telegram ID 6359925487.
 
-## Current stage
-This is the Android build foundation only. The existing Mini App API authenticates requests by validating Telegram-signed `initData`; a standalone Android app does not receive that value automatically. A secure native sign-in handoff must be designed before enabling real account access. No bot-side authentication changes are included in this stage.
+## Current mobile features
+- Teacher: subject list, create subject/student, enter scores, attendance and payment state, view recent journal history.
+- Student: view scores, attendance, payment state and teacher note.
+- Parent: view linked children, their scores, attendance, payment state and teacher notes.
+- Super Admin: overview counts, teacher approval and plan editing.
+- Parent score notifications are sent by the separate API after score changes when the Telegram bot token is configured.
+
+## Known setup requirements
+- Render API must have `BOT_TOKEN`, `DATABASE_URL`, `JWT_SECRET`, and `BOT_USERNAME`.
+- Configure Telegram Login Widget domain in @BotFather to `neuron-android-api.onrender.com`.
+- This is an evolving MVP. Validate each role against real accounts and the Neon schema before production use. The debug APK is not a Play Store release.
 
 ## Build
-GitHub Actions builds a debug APK from this directory. The APK is for installation/testing and is not a production-signed release.
+GitHub Actions builds a debug APK from this directory. Download the `neuron-debug-apk` artifact from a successful workflow run.
