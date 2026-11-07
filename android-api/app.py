@@ -152,6 +152,19 @@ async def notify_score_parents(student_id, idx, value):
             conn.close()
 
 
+def parse_journal_score(raw):
+    """Normalize a journal grade and return only 1–5 or None."""
+    if raw in (None, "", "—"):
+        return None
+    try:
+        score = int(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Baho 1 dan 5 gacha butun son bo‘lsin")
+    if score not in (1, 2, 3, 4, 5):
+        raise HTTPException(400, "Baho 1 dan 5 gacha bo‘lsin")
+    return score
+
+
 def ensure_journal_schema(conn):
     with conn.cursor() as cur:
         cur.execute("""CREATE TABLE IF NOT EXISTS journal_lessons (
@@ -184,7 +197,15 @@ def enforce_teacher_quota(cur, tid, resource):
         raise HTTPException(403,"Tarif limitingiz tugagan. Tarifni yangilang.")
 
 def teacher_id_for(cur, uid):
-    cur.execute("SELECT id FROM teachers WHERE chat_id=%s AND active=1 AND verify_status='approved' AND admin_approved=1", (uid,))
+    # Password-based NEURON accounts use a negative login_accounts.id as JWT subject.
+    # Positive subjects remain supported for old records during migration.
+    if int(uid) < 0:
+        cur.execute("""SELECT t.id FROM login_accounts a
+            JOIN teachers t ON t.id=a.teacher_id
+            WHERE a.id=%s AND a.role='teacher' AND a.active=TRUE
+              AND t.active=1 AND t.verify_status='approved' AND t.admin_approved=1""", (-int(uid),))
+    else:
+        cur.execute("SELECT id FROM teachers WHERE chat_id=%s AND active=1 AND verify_status='approved' AND admin_approved=1", (uid,))
     row = cur.fetchone()
     if not row:
         raise HTTPException(403, "O'qituvchi hisobi tasdiqlanmagan")
@@ -206,17 +227,29 @@ async def password_login(request: Request):
         if not account or not check_password(password, account["password_hash"]):
             raise HTTPException(401, "Login yoki parol noto‘g‘ri")
         role = account["role"]
-        if role == "super_admin": uid = OWNER_ID
+        if role == "super_admin":
+            uid = OWNER_ID
+            if uid != OWNER_ID: raise HTTPException(403, "Super Admin ruxsati yo'q")
         elif role == "teacher":
             with conn.cursor() as cur:
-                cur.execute("SELECT chat_id FROM teachers WHERE id=%s AND active=1 AND verify_status=%s AND admin_approved=1", (account["teacher_id"], "approved"))
+                cur.execute("""SELECT id FROM teachers
+                    WHERE id=%s AND active=1 AND verify_status='approved' AND admin_approved=1""",
+                    (account["teacher_id"],))
                 row = cur.fetchone()
             if not row: raise HTTPException(403, "O‘qituvchi hisobi hali tasdiqlanmagan")
-            uid = int(row[0])
-        elif role == "student": uid = -int(account["student_id"])
-        else: uid = int(account["parent_chat_id"])
-        roles, _, _ = roles_for(uid)
-        if role not in roles: raise HTTPException(403, "Bu login uchun kabinet yoki ruxsat topilmadi")
+            # No Telegram ID, widget, or bot token is used for the platform session.
+            uid = -int(account["id"])
+        elif role == "student":
+            uid = -int(account["student_id"])
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM students WHERE id=%s", (account["student_id"],))
+                if not cur.fetchone(): raise HTTPException(403, "O‘quvchi hisobi topilmadi")
+        else:
+            uid = int(account["parent_chat_id"])
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM parent_children WHERE parent_chat_id=%s LIMIT 1", (uid,))
+                if not cur.fetchone(): raise HTTPException(403, "Ota-ona hisobiga farzand biriktirilmagan")
+        if not JWT_SECRET: raise HTTPException(503, "JWT_SECRET sozlanmagan")
         token = jwt.encode({"sub": str(uid), "role": role, "iat": int(time.time()), "exp": int(time.time()) + JWT_TTL}, JWT_SECRET, algorithm="HS256")
         return {"token": token, "role": role}
     finally: conn.close()
@@ -328,9 +361,25 @@ async def exchange(request: Request):
 @app.get("/api/me")
 def me(authorization: str = Header(default="")):
     uid, role = require_role(authorization, {"teacher", "student", "parent", "super_admin"})
-    roles, teacher, student = roles_for(uid)
-    if role not in roles:
-        raise HTTPException(403, "Rol endi faol emas")
+    if role == "teacher":
+        # Teacher sessions are bound to a NEURON login account, not a Telegram identity.
+        conn = db()
+        try:
+            with conn.cursor() as cur:
+                teacher_id_for(cur, uid)
+        finally:
+            conn.close()
+        teacher = None
+        student = None
+    elif role == "super_admin":
+        if uid != OWNER_ID:
+            raise HTTPException(403, "Faqat loyiha egasi")
+        teacher = None
+        student = None
+    else:
+        roles, teacher, student = roles_for(uid)
+        if role not in roles:
+            raise HTTPException(403, "Rol endi faol emas")
     conn = db()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -558,9 +607,8 @@ async def save_journal_score(request: Request, authorization: str = Header(defau
     body=await request.json()
     lesson_id=int(body.get("lesson_id",0)); student_id=int(body.get("student_id",0))
     raw=body.get("score")
-    score=None if raw in (None,"","—") else int(raw)
+    score=parse_journal_score(raw)
     note=str(body.get("note","")).strip()[:500]
-    if score is not None and score not in (1,2,3,4,5): raise HTTPException(400,"Baho 1 dan 5 gacha bo‘lsin")
     conn=db()
     try:
         ensure_journal_schema(conn)
@@ -758,7 +806,24 @@ async function openSubject(id){try{activeSubject=id;subjectData=await api('/api/
 async function showPeriodReport(){let period=prompt('Hisobot davri: quarter — chorak, year — yil','quarter');if(!period)return;if(!['quarter','year'].includes(period)){toast('quarter yoki year deb kiriting');return}try{let d=await api('/api/teacher/subject/'+activeSubject+'/report?period='+period);let c=document.getElementById('content');c.innerHTML='<button class="btn secondary" onclick="openSubject('+activeSubject+')">← Jurnalga qaytish</button><div class="section-title">'+esc(d.subject.name)+' — '+(period==='year'?'Yillik':'Choraklik')+' hisobot</div><div class="muted small">'+esc(d.start)+' — '+esc(d.end)+'</div><div class="journal-scroll"><table class="journal-table"><thead><tr><th>O‘quvchi</th><th>Guruh</th><th>Baholangan dars</th><th>O‘rtacha</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th></tr></thead><tbody>'+d.students.map(s=>'<tr><td>'+esc(s.fio)+'</td><td>'+esc(s.group_name||'—')+'</td><td>'+s.lessons+'</td><td><b>'+(s.average_score??'—')+'</b></td><td>'+s.fives+'</td><td>'+s.fours+'</td><td>'+s.threes+'</td><td>'+s.twos+'</td><td>'+s.ones+'</td></tr>').join('')+'</tbody></table></div>'}catch(e){toast(e.message)}}
 async function addJournalLesson(sid){let title=prompt('Dars mavzusi yoki ustun nomi:');if(!title)return;let date=prompt('Sana (YYYY-MM-DD):',new Date().toISOString().slice(0,10));if(!date)return;try{await api('/api/teacher/lesson',{method:'POST',body:JSON.stringify({subject_id:sid,title,lesson_date:date})});await openSubject(sid);toast('Jurnalga yangi dars ustuni qo‘shildi')}catch(e){toast(e.message)}}
 function journalScore(studentId,lessonId){let x=(subjectData.journal_scores||[]).find(v=>Number(v.student_id)===Number(studentId)&&Number(v.lesson_id)===Number(lessonId));return x&&x.score!==null?String(x.score):''}
-async function saveJournalScore(studentId,lessonId,value,el){try{await api('/api/teacher/journal-score',{method:'POST',body:JSON.stringify({student_id:studentId,lesson_id:lessonId,score:value||null})});let x=(subjectData.journal_scores||[]).find(v=>Number(v.student_id)===Number(studentId)&&Number(v.lesson_id)===Number(lessonId));if(x)x.score=value?Number(value):null;else subjectData.journal_scores.push({student_id:studentId,lesson_id:lessonId,score:value?Number(value):null});if(el){el.classList.toggle('graded',!!value)}toast(value?'Baho saqlandi':'Baho tozalandi')}catch(e){toast(e.message);if(el)el.value=''}}
+async function saveJournalScore(studentId,lessonId,value,el){
+  const previous=journalScore(studentId,lessonId);
+  if(el)el.disabled=true;
+  try{
+    const saved=await api('/api/teacher/journal-score',{
+      method:'POST',
+      body:JSON.stringify({student_id:studentId,lesson_id:lessonId,score:value||null})
+    });
+    let x=(subjectData.journal_scores||[]).find(v=>Number(v.student_id)===Number(studentId)&&Number(v.lesson_id)===Number(lessonId));
+    if(x)x.score=saved.score===null?null:Number(saved.score);
+    else subjectData.journal_scores.push({student_id:studentId,lesson_id:lessonId,score:saved.score===null?null:Number(saved.score)});
+    if(el){el.value=saved.score===null?'':String(saved.score);el.classList.toggle('graded',saved.score!==null)}
+    toast(saved.score===null?'Baho tozalandi':'Baho saqlandi');
+  }catch(e){
+    if(el)el.value=previous;
+    toast('Baho saqlanmadi: '+e.message);
+  }finally{if(el)el.disabled=false}
+}
 function renderGroupJournal(selected){window.activeGroup=selected;let bar=document.getElementById('groupbar'),table=document.getElementById('journalTable');if(!bar||!table)return;let groups=[...new Set((subjectData.groups||[]).map(x=>x.group_name||'Guruhsiz'))];let opts=['Barchasi',...groups];bar.innerHTML=opts.map(g=>'<button class="groupchip '+(g===selected?'active':'')+'" onclick="renderGroupJournal('+JSON.stringify(g)+')">'+esc(g)+(g==='Barchasi'?'':' · '+((subjectData.groups.find(x=>(x.group_name||'Guruhsiz')===g)||{}).student_count||0))+'</button>').join('');let query=(document.getElementById('journalSearch')?.value||'').toLowerCase();let rows=(subjectData.students||[]).filter(st=>(selected==='Barchasi'||(st.group_name||'Guruhsiz')===selected)&&st.fio.toLowerCase().includes(query));let lessons=(subjectData.lessons||[]).slice().reverse();document.getElementById('journalMeta').textContent=rows.length+' nafar o‘quvchi • '+lessons.length+' ta dars ustuni';let head='<thead><tr><th class="sticky-col">№</th><th class="sticky-name">O‘quvchi</th>'+lessons.map(l=>'<th><div>'+esc(l.title)+'</div><small>'+esc(l.lesson_date)+'</small></th>').join('')+'<th>Davomat</th></tr></thead>';let body=rows.map((st,i)=>'<tr><td class="sticky-col">'+(i+1)+'</td><td class="sticky-name"><b>'+esc(st.fio)+'</b><small>'+esc(st.group_name||'Guruhsiz')+'</small></td>'+lessons.map(l=>{let val=journalScore(st.id,l.id);return '<td><select class="grade-cell '+(val?'graded':'')+'" aria-label="'+esc(st.fio)+' bahosi" onchange="saveJournalScore('+st.id+','+l.id+',this.value,this)"><option value="">—</option>'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(val===String(n)?'selected':'')+'>'+n+'</option>').join('')+'</select></td>'}).join('')+'<td><select class="attendance-cell" onchange="saveAttendanceQuick('+st.id+',this.value)">'+['Keldi','Kelmadi','Sababli','Kutilmoqda'].map(x=>'<option '+(st.davomat===x?'selected':'')+'>'+x+'</option>').join('')+'</select></td></tr>').join('');table.innerHTML=head+'<tbody>'+(body||'<tr><td colspan="'+(lessons.length+3)+'">Bu guruhda o‘quvchilar yo‘q.</td></tr>')+'</tbody>';let tools=document.getElementById('studentTools');if(tools)tools.innerHTML=rows.map(st=>'<div class="student-tool"><b>'+esc(st.fio)+'</b><div class="muted small">'+esc(st.group_name||'Guruhsiz')+' • Kod: '+esc(st.code||'—')+'</div><div class="row"><button class="btn secondary" onclick="setStudentLogin('+st.id+')">O‘quvchi login/paroli</button>'+(st.parent_chat_id?'<button class="btn secondary" onclick="setParentLogin('+JSON.stringify(st.parent_chat_id)+')">Ota-ona login/paroli</button>':'')+'<button class="btn secondary" onclick="showJournalHistory('+st.id+')">Baho tarixi</button></div></div>').join('')}
 async function saveAttendanceQuick(id,status){try{await api('/api/teacher/attendance',{method:'POST',body:JSON.stringify({student_id:id,status})});let st=subjectData.students.find(x=>x.id===id);if(st)st.davomat=status;toast('Davomat saqlandi')}catch(e){toast(e.message)}}
 async function showJournalHistory(id){try{let d=await api('/api/teacher/journal-history/'+id);let rows=d.history||[];alert(rows.length?rows.map(x=>x.changed_at+' • '+x.title+' • '+(x.old_score??'—')+' → '+(x.new_score??'—')).join('\n'):'Baho tarixi hozircha bo‘sh')}catch(e){toast(e.message)}}
