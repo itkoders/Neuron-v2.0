@@ -25,6 +25,27 @@ def db():
         cur.execute("SET search_path TO neuron_bot, public")
     return conn
 
+def ensure_login_schema(conn):
+    with conn.cursor() as cur:
+        cur.execute("""CREATE TABLE IF NOT EXISTS login_accounts (
+            id BIGSERIAL PRIMARY KEY, role TEXT NOT NULL CHECK (role IN ('teacher','student','parent')),
+            teacher_id BIGINT, student_id BIGINT, parent_chat_id BIGINT,
+            username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+
+def make_password_hash(password):
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 310000)
+    return "pbkdf2_sha256$310000$" + salt.hex() + "$" + digest.hex()
+
+def check_password(password, encoded):
+    try:
+        scheme, rounds, salt_hex, digest_hex = encoded.split("$", 3)
+        if scheme != "pbkdf2_sha256": return False
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt_hex), int(rounds))
+        return hmac.compare_digest(actual.hex(), digest_hex)
+    except Exception: return False
+
 def verified_user(data):
     if not BOT_TOKEN or not JWT_SECRET:
         raise HTTPException(503, "Telegram login server sozlanmagan")
@@ -49,6 +70,10 @@ def roles_for(uid):
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             roles = ["super_admin"] if uid == OWNER_ID else []
+            if uid < 0:
+                cur.execute("SELECT id, teacher_id, subject_id, fio, group_name, s1, s2, s3, davomat, payment_status, teacher_note, last_score_date FROM students WHERE id=%s", (-uid,))
+                student = cur.fetchone()
+                return (["student"], None, student) if student else ([], None, None)
             cur.execute("SELECT id, first_name, last_name, active, verify_status, admin_approved, plan_key, plan_expires FROM teachers WHERE chat_id=%s", (uid,))
             teacher = cur.fetchone()
             if teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher["admin_approved"]:
@@ -121,6 +146,96 @@ def teacher_id_for(cur, uid):
     if not row:
         raise HTTPException(403, "O'qituvchi hisobi tasdiqlanmagan")
     return row["id"]
+
+@app.post("/auth/login")
+async def password_login(request: Request):
+    body = await request.json()
+    username = str(body.get("username", "")).strip().lower()
+    password = str(body.get("password", ""))
+    if not username or not password or len(username) > 80 or len(password) > 256:
+        raise HTTPException(400, "Login va parolni kiriting")
+    conn = db()
+    try:
+        ensure_login_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM login_accounts WHERE username=%s AND active=TRUE", (username,))
+            account = cur.fetchone()
+        if not account or not check_password(password, account["password_hash"]):
+            raise HTTPException(401, "Login yoki parol noto‘g‘ri")
+        role = account["role"]
+        if role == "teacher":
+            with conn.cursor() as cur:
+                cur.execute("SELECT chat_id FROM teachers WHERE id=%s AND active=1 AND verify_status=%s AND admin_approved=1", (account["teacher_id"], "approved"))
+                row = cur.fetchone()
+            if not row: raise HTTPException(403, "O‘qituvchi hisobi hali tasdiqlanmagan")
+            uid = int(row[0])
+        elif role == "student": uid = -int(account["student_id"])
+        else: uid = int(account["parent_chat_id"])
+        roles, _, _ = roles_for(uid)
+        if role not in roles: raise HTTPException(403, "Bu login uchun kabinet yoki ruxsat topilmadi")
+        token = jwt.encode({"sub": str(uid), "role": role, "iat": int(time.time()), "exp": int(time.time()) + JWT_TTL}, JWT_SECRET, algorithm="HS256")
+        return {"token": token, "role": role}
+    finally: conn.close()
+
+@app.post("/api/admin/login-account")
+async def admin_login_account(request: Request, authorization: str = Header(default="")):
+    uid, _ = require_role(authorization, {"super_admin"})
+    if uid != OWNER_ID: raise HTTPException(403, "Faqat loyiha egasi")
+    body = await request.json()
+    role = str(body.get("role", ""))
+    username = str(body.get("username", "")).strip().lower()
+    password = str(body.get("password", ""))
+    if role not in {"teacher", "student", "parent"}: raise HTTPException(400, "Kabinet turi noto‘g‘ri")
+    if len(username)<3 or len(username)>40 or not username.replace("_","").replace(".","").isalnum(): raise HTTPException(400, "Login 3–40 belgi: lotin harfi, raqam, nuqta yoki _")
+    if len(password)<8 or len(password)>128: raise HTTPException(400, "Parol kamida 8 belgidan iborat bo‘lsin")
+    conn=db()
+    try:
+        ensure_login_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            teacher_id=None; student_id=None; parent_chat_id=None
+            if role=="teacher":
+                teacher_id=int(body.get("teacher_id",0))
+                cur.execute("SELECT id FROM teachers WHERE id=%s AND active=1 AND verify_status=%s AND admin_approved=1",(teacher_id,"approved"))
+                if not cur.fetchone(): raise HTTPException(404, "Tasdiqlangan o‘qituvchi topilmadi")
+            elif role=="student":
+                student_id=int(body.get("student_id",0)); cur.execute("SELECT id FROM students WHERE id=%s",(student_id,))
+                if not cur.fetchone(): raise HTTPException(404, "O‘quvchi topilmadi")
+            else:
+                parent_chat_id=int(body.get("parent_chat_id",0)); cur.execute("SELECT 1 FROM parent_children WHERE parent_chat_id=%s LIMIT 1",(parent_chat_id,))
+                if not cur.fetchone(): raise HTTPException(404, "Bu ota-onaga farzand biriktirilmagan")
+            cur.execute("""INSERT INTO login_accounts(role,teacher_id,student_id,parent_chat_id,username,password_hash)
+                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(username) DO UPDATE SET role=EXCLUDED.role,teacher_id=EXCLUDED.teacher_id,
+                student_id=EXCLUDED.student_id,parent_chat_id=EXCLUDED.parent_chat_id,password_hash=EXCLUDED.password_hash,active=TRUE,updated_at=NOW()""",
+                (role,teacher_id,student_id,parent_chat_id,username,make_password_hash(password)))
+        conn.commit(); return {"ok":True,"username":username,"role":role}
+    finally: conn.close()
+
+@app.post("/api/teacher/login-account")
+async def teacher_login_account(request: Request, authorization: str = Header(default="")):
+    uid, _ = require_role(authorization, {"teacher"})
+    body=await request.json()
+    role=str(body.get("role","student")); username=str(body.get("username","")).strip().lower(); password=str(body.get("password",""))
+    if role not in {"student","parent"}: raise HTTPException(400, "Faqat o‘quvchi yoki ota-ona kabineti yaratiladi")
+    if len(username)<3 or len(username)>40 or not username.replace("_","").replace(".","").isalnum(): raise HTTPException(400, "Login 3–40 belgi: lotin harfi, raqam, nuqta yoki _")
+    if len(password)<8 or len(password)>128: raise HTTPException(400, "Parol kamida 8 belgidan iborat bo‘lsin")
+    conn=db()
+    try:
+        ensure_login_schema(conn)
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid=teacher_id_for(cur,uid); student_id=None; parent_chat_id=None
+            if role=="student":
+                student_id=int(body.get("student_id",0)); cur.execute("SELECT id FROM students WHERE id=%s AND teacher_id=%s",(student_id,tid))
+                if not cur.fetchone(): raise HTTPException(404, "Bu o‘qituvchiga tegishli o‘quvchi topilmadi")
+            else:
+                parent_chat_id=int(body.get("parent_chat_id",0))
+                cur.execute("SELECT 1 FROM parent_children pc JOIN students s ON s.id=pc.student_id WHERE pc.parent_chat_id=%s AND s.teacher_id=%s LIMIT 1",(parent_chat_id,tid))
+                if not cur.fetchone(): raise HTTPException(404, "Bu ota-onaga ushbu o‘qituvchining o‘quvchisi biriktirilmagan")
+            cur.execute("""INSERT INTO login_accounts(role,teacher_id,student_id,parent_chat_id,username,password_hash)
+                VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(username) DO UPDATE SET role=EXCLUDED.role,teacher_id=EXCLUDED.teacher_id,
+                student_id=EXCLUDED.student_id,parent_chat_id=EXCLUDED.parent_chat_id,password_hash=EXCLUDED.password_hash,active=TRUE,updated_at=NOW()""",
+                (role,tid,student_id,parent_chat_id,username,make_password_hash(password)))
+        conn.commit(); return {"ok":True,"username":username,"role":role}
+    finally: conn.close()
 
 @app.get("/health")
 def health():
