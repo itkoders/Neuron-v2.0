@@ -562,6 +562,9 @@ def db_subjects(tid):
 
 
 def db_add_subject(tid, name, labels):
+    # Bo'sh label ustunlari foydalanuvchiga ko'rsatilmaydi.
+    labels = list(labels or [])[:3]
+    labels += [""] * (3 - len(labels))
     run("INSERT INTO subjects (teacher_id, name, label1, label2, label3) VALUES (?, ?, ?, ?, ?)",
         (tid, name, labels[0], labels[1], labels[2]))
 
@@ -864,7 +867,7 @@ def score_text(st, labels):
     # Nechta nom berilgan bo'lsa, faqat shuncha ball ko'rsatiladi.
     labels = [str(x).strip() for x in (labels or []) if str(x).strip()]
     icons = ["📜", "🌍", "📑"]
-    return "\\n".join(
+    return "\n".join(
         f"{icons[i]} {label}: **{st.get('s' + str(i + 1), 0)}%**"
         for i, label in enumerate(labels[:3])
     ) or "Baholash ustunlari belgilanmagan."
@@ -1655,7 +1658,7 @@ async def tp_subj_name(message: types.Message, state: FSMContext):
         return
     await state.update_data(subj_name=name)
     await state.set_state(TeacherStates.subj_labels)
-    await send_and_clean_both(message, "🏷 **3 ta ball turining nomini vergul bilan yozing:**\n\n"
+    await send_and_clean_both(message, "🏷 **Kerakli ball ustunlari nomini vergul bilan yozing (1–3 ta):**\n\n"
                                        "_Masalan: Test, Yozma ish, Uy vazifasi_\n\nYoki \"standart\" deb yozing.", delay=120)
 
 
