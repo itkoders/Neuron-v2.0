@@ -61,32 +61,38 @@
   .hint { color: var(--muted); font-size: 13px; margin: 2px 4px 12px; }
   .section-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 16px 4px 8px; }
 
-  /* Jurnal jadvali */
-  .grid-wrap { overflow: auto; max-height: calc(100vh - 250px); border-radius: var(--radius);
-    border: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 440px; font-variant-numeric: tabular-nums; }
-  th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; text-align: center; }
-  th:last-child, td:last-child { border-right: 0; }
-  thead th { position: sticky; top: 0; z-index: 3; background: var(--soft); font-size: 12px; color: var(--muted);
-    font-weight: 700; padding: 10px 6px; }
-  th.name, td.name { position: sticky; left: 0; z-index: 2; background: var(--card); text-align: left; min-width: 160px;
-    max-width: 200px; padding: 9px 12px; }
-  thead th.name { z-index: 4; background: var(--soft); }
-  td.name .fio { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-  td.name .grp { font-size: 11px; color: var(--muted); }
-  td input { width: 100%; min-width: 60px; height: 44px; border: 0; background: transparent; text-align: center;
-    font: inherit; font-weight: 700; color: var(--text); outline: none; }
-  td input::placeholder { color: var(--muted); font-weight: 400; }
-  td input:focus { background: var(--soft); box-shadow: inset 0 0 0 2px var(--accent); }
-  td.cell-ok { background: var(--ok-bg); }
-  td.cell-warn { background: var(--warn-bg); }
-  td.cell-bad { background: var(--bad-bg); }
-  td.cell-err { background: var(--bad-bg); }
-  td.cell-err input { color: var(--bad); }
-  td.total { font-weight: 800; min-width: 70px; font-size: 15px; }
-  tfoot td { font-weight: 700; background: var(--soft); position: sticky; bottom: 0; z-index: 2; height: 42px; font-size: 13px; }
-  tfoot td.name { z-index: 3; }
-  .sort-btn { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+  /* Mobile-friendly journal: page scrolls vertically; table scrolls horizontally only */
+  .journal-shell{width:100%;min-width:0;margin:0 0 14px}
+  .grid-wrap{width:100%;max-height:none;overflow-x:auto;overflow-y:visible;border-radius:16px;border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow);-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .journal-table{border-collapse:separate;border-spacing:0;width:100%;min-width:590px;table-layout:fixed;font-variant-numeric:tabular-nums}
+  .journal-table th,.journal-table td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center}
+  .journal-table th:last-child,.journal-table td:last-child{border-right:0}
+  .journal-table thead th{position:static;background:var(--soft);font-size:12px;color:var(--muted);font-weight:750;padding:12px 7px;white-space:normal;overflow-wrap:anywhere}
+  .journal-table th.name,.journal-table td.name{position:static;left:auto;z-index:auto;background:var(--card);text-align:left;width:148px;min-width:148px;max-width:148px;padding:10px 9px}
+  .journal-table thead th.name{background:var(--soft)}
+  .journal-table td.name .fio{font-weight:700;font-size:13px;white-space:normal;overflow-wrap:anywhere;line-height:1.3;max-width:none}
+  .journal-table td.name .grp{font-size:11px;color:var(--muted);margin-top:3px}
+  .journal-table th:not(.name),.journal-table td:not(.name){width:104px;min-width:104px}
+  .journal-table td input{display:block;width:100%;min-width:0;height:48px;border:0;border-radius:0;background:transparent;text-align:center;font:inherit;font-weight:750;color:var(--text);outline:none;padding:0 4px}
+  .journal-table td input:focus{background:var(--soft);box-shadow:inset 0 0 0 2px var(--accent)}
+  .journal-table td.cell-ok{background:var(--ok-bg)}.journal-table td.cell-warn{background:var(--warn-bg)}.journal-table td.cell-bad,.journal-table td.cell-err{background:var(--bad-bg)}
+  .journal-table tfoot td{font-weight:750;background:var(--soft);height:42px;font-size:13px}
+  .journal-table tfoot td.name{font-weight:800}
+  .sort-btn{border:0;background:none;color:inherit;font:inherit;font-weight:750;cursor:pointer;padding:0}
+  .report-actions{position:relative;isolation:isolate;display:block;clear:both;width:100%;margin:14px 0 24px;padding:16px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:var(--shadow)}
+  .report-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  .report-heading strong{font-size:15px}.report-heading span{font-size:12px;color:var(--muted);background:var(--soft);padding:5px 9px;border-radius:99px}
+  .report-info{font-size:13px;color:var(--muted);line-height:1.45;margin-bottom:12px}
+  .report-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .report-buttons .btn{min-height:50px;white-space:normal;line-height:1.3;padding:12px 10px}
+  @media(max-width:560px){
+    main{padding:18px 12px 80px}
+    .journal-table{min-width:530px}
+    .journal-table th.name,.journal-table td.name{width:132px;min-width:132px;max-width:132px}
+    .journal-table th:not(.name),.journal-table td:not(.name){width:94px;min-width:94px}
+    .report-buttons{grid-template-columns:1fr}
+    .report-actions{padding:14px}
+  }
 
   /* Davomat */
   .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
@@ -178,7 +184,7 @@
   .controls{margin-top:16px} .mini-action{white-space:nowrap;min-height:44px;padding:10px 13px} @media(max-width:620px){.controls{flex-wrap:wrap}.controls select,.controls input{flex:1 1 40%}.mini-action{flex:1 1 30%;font-size:13px;padding:9px 7px}} select,input[type="search"],.field{border:1px solid var(--line);border-radius:13px;background:var(--card);color:var(--text);min-height:44px}header select,header input{background:var(--soft);color:var(--text);border:1px solid var(--line)}
   .tabs{margin-top:14px;background:var(--soft);border:1px solid var(--line);border-radius:14px}.tab{color:var(--muted)}.tab.active{background:var(--card);color:var(--accent);box-shadow:0 2px 9px rgba(25,35,75,.09)}
   main{max-width:1240px;padding:24px clamp(12px,3vw,34px) 110px}.card{border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line)}.section-title{color:var(--muted);letter-spacing:.09em;font-size:11px}
-  .grid-wrap{max-height:calc(100vh - 310px);border-radius:18px}table{min-width:540px}thead th{padding:14px 9px}td input{height:50px}.stat{padding:15px 9px}.stat b{font-size:22px;letter-spacing:-.04em}.panel{padding:20px}
+  .grid-wrap{max-height:none;border-radius:18px}.journal-table{min-width:530px}.journal-table thead th{padding:12px 7px}.journal-table td input{height:48px}.stat{padding:15px 9px}.stat b{font-size:22px;letter-spacing:-.04em}.panel{padding:20px}
   .btn{border-radius:13px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 5px 14px rgba(81,69,229,.18)}.btn.ghost{box-shadow:none}
   .theme-switch{display:flex;gap:3px;padding:4px;border-radius:12px;background:var(--soft);border:1px solid var(--line)}.theme-switch button{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:7px 9px;font-size:12px;font-weight:750;cursor:pointer}.theme-switch button.active{color:var(--accent);background:var(--card);box-shadow:0 2px 8px rgba(20,30,60,.09)}
   .teacher-hero{max-width:1240px;margin:18px auto 0;padding:19px;border-radius:20px;color:#fff;background:linear-gradient(120deg,#202b53,#3c3c8c 58%,#6255d9);position:relative;overflow:hidden}
@@ -241,7 +247,8 @@
   <section id="teacherView" class="hidden">
     <section data-pane="grades">
       <p class="hint">Katakka ball yozing (0–100). Enter: pastdagi o'quvchiga o'tadi. Saqlash avtomatik.</p>
-      <div class="grid-wrap" id="grid"></div>
+      <div class="journal-shell"><div class="grid-wrap" id="grid"></div></div>
+      <div id="reportActions" class="report-actions"></div>
     </section>
     <section data-pane="attendance" class="hidden">
       <div class="summary" id="attSummary"></div>
@@ -501,9 +508,8 @@
       const vals = list.map(s => s["s" + (k + 1)]).filter(v => v > 0);
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
     });
-    wrap.innerHTML = `<table><thead>${head}</thead><tbody>${rows}</tbody>
-      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>
-      <div id="reportActions" class="report-actions"></div>`;
+    wrap.innerHTML = `<table class="journal-table"><thead>${head}</thead><tbody>${rows}</tbody>
+      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>`;
     $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
     renderReportActions();
     wrap.querySelectorAll("input").forEach(inp => {
@@ -572,10 +578,11 @@
   function renderReportActions() {
     const panel = $("reportActions");
     if (!panel) return;
-    const ready = state.students.length > 0 && state.pendingScores.size === 0 &&
-      state.students.every(s => s.last_score_date === state.today && !!state.today);
+    const ready = state.students.length > 0 && state.pendingScores.size === 0;
+    const scored = state.students.filter(s => s.last_score_date === state.today && !!state.today).length;
     panel.innerHTML = `
-      <div class="report-info">${ready ? "✅ Barcha o‘quvchilarning bugungi ballari kiritildi." : "ℹ️ Avval barcha o‘quvchilarga bugungi ballarni kiriting."}</div>
+      <div class="report-heading"><strong>📬 Kunlik xabarlar</strong><span>${scored}/${state.students.length} o‘quvchiga bugun baho kiritilgan</span></div>
+      <div class="report-info">${ready ? "Baho kiritilgan o‘quvchilar natijalari yuboriladi, qolganlar 0 ball bilan ko‘rsatiladi." : "⏳ Kiritilgan ballar saqlanmoqda…"}</div>
       <div class="report-buttons">
         <button class="btn" id="sendGroupReport" type="button" ${ready ? "" : "disabled"}>📢 Guruhga kunlik hisobot yuborish</button>
         <button class="btn ghost" id="sendParentReports" type="button" ${ready ? "" : "disabled"}>👨‍👩‍👧 Ota-onalarga yuborish</button>
@@ -597,9 +604,7 @@
       else toast(`✅ Ota-onalarga ${r.sent}/${r.total} ta xabar yuborildi.`);
       button.textContent = "✅ Yuborildi";
     } catch (err) {
-      const missing = err.data && err.data.missing;
-      if (missing && missing.length) toast("Ball kiritilmagan: " + missing.slice(0,3).join(", "));
-      else if (err.data && err.data.error === "group_not_configured") toast("Avval o‘qituvchi panelida guruh/kanalni ulang.");
+      if (err.data && err.data.error === "group_not_configured") toast("Avval o‘qituvchi panelida guruh/kanalni ulang.");
       else toast(errText(err));
       button.disabled = false;
       button.textContent = old;
