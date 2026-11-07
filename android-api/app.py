@@ -196,3 +196,15 @@ async def teacher_attendance(request:Request, authorization:str=Header(default="
             cur.execute("INSERT INTO attendance_history(student_id,date_str,davomat,s1,s2,s3) SELECT id,%s,%s,s1,s2,s3 FROM students WHERE id=%s",(datetime.now().strftime("%d.%m.%Y"),status,sid))
         conn.commit(); return {"ok":True}
     finally: conn.close()
+
+@app.get("/mobile", response_class=HTMLResponse)
+def mobile():
+    return HTMLResponse("""<!doctype html><html lang="uz"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEURON</title><style>body{margin:0;background:#0c1226;color:#fff;font:16px Arial;padding:24px}main{max-width:680px;margin:auto}.card{background:#182342;border:1px solid #34446d;border-radius:18px;padding:20px;margin:12px 0}button{background:#5369df;color:white;border:0;border-radius:12px;padding:12px;margin:5px;font-weight:bold}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#c6d2f3}</style>
+<main><div class="card"><h1>NEURON</h1><p>SMART JOURNAL</p><div id="status">Kirish tekshirilmoqda...</div><div id="roles"></div><pre id="data"></pre></div></main>
+<script>
+const code=new URLSearchParams(location.search).get('code');let token=localStorage.getItem('neuron_token')||'';
+async function exchange(role){let r=await fetch('/auth/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,role})});let d=await r.json();if(!r.ok)throw Error(d.detail||'Kirish xatosi');if(d.choose_role){document.getElementById('status').textContent='Kabinetni tanlang';document.getElementById('roles').innerHTML=d.roles.map(x=>'<button onclick="exchange(\''+x+'\')">'+({teacher:'O‘qituvchi',student:'O‘quvchi',parent:'Ota-ona',super_admin:'Super Admin'}[x]||x)+'</button>').join('');return}token=d.token;localStorage.setItem('neuron_token',token);history.replaceState({},'', '/mobile');await load()}
+async function load(){let r=await fetch('/api/me',{headers:{Authorization:'Bearer '+token}});let d=await r.json();if(!r.ok)throw Error(d.detail||'Sessiya xatosi');document.getElementById('status').textContent='Kirish muvaffaqiyatli: '+d.role;document.getElementById('data').textContent=JSON.stringify(d,null,2)}
+if(code){exchange().catch(e=>document.getElementById('status').textContent=e.message)}else if(token){load().catch(e=>document.getElementById('status').textContent=e.message)}else{document.getElementById('status').innerHTML='<a href="/login" style="color:#9db3ff">Telegram orqali kirish</a>'}
+</script></main></html>""")
