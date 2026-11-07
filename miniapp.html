@@ -310,7 +310,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", pendingScores: new Set(), sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
 
   function applyTheme() {
     const saved = localStorage.getItem("neuron-theme") || "system";
@@ -387,6 +387,7 @@
       auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
       role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
+      feature_locked: "Bu funksiya tarifingizda mavjud emas. Tarifni yangilang.",
       amount_not_set: "O‘qituvchi oylik to‘lov summasini hali belgilamagan.",
       already_paid: "Bu oy uchun to‘lov allaqachon qabul qilingan.",
       card_not_set: "O‘qituvchi karta ma’lumotlarini hali kiritmagan.",
@@ -454,6 +455,11 @@
     $("teacherControls").classList.remove("hidden");
     $("tabsTeacher").classList.remove("hidden");
     state.subjects = me.subjects;
+    state.plan = me.plan || {};
+    state.features = new Set(state.plan.features || []);
+    const addSubject = $("addSubjectBtn"), addStudent = $("addStudentBtn");
+    if (addSubject) addSubject.classList.toggle("hidden", !!(state.plan.subject_limit && me.subject_count >= state.plan.subject_limit));
+    if (addStudent) addStudent.classList.toggle("hidden", !!(state.plan.student_limit && me.student_count >= state.plan.student_limit));
     $("subject").innerHTML = state.subjects.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join("")
       || '<option value="">Fanlar yo\'q</option>';
     if (state.subjects.length) loadSubject(state.subjects[0].id);
@@ -578,14 +584,18 @@
   function renderReportActions() {
     const panel = $("reportActions");
     if (!panel) return;
+    const canGroup = state.features.has("reports");
+    const canParents = state.features.has("auto_notify");
+    if (!canGroup && !canParents) { panel.innerHTML = ""; panel.classList.add("hidden"); return; }
+    panel.classList.remove("hidden");
     const ready = state.students.length > 0 && state.pendingScores.size === 0;
     const scored = state.students.filter(s => s.last_score_date === state.today && !!state.today).length;
     panel.innerHTML = `
       <div class="report-heading"><strong>📬 Kunlik xabarlar</strong><span>${scored}/${state.students.length} o‘quvchiga bugun baho kiritilgan</span></div>
-      <div class="report-info">${ready ? "Baho kiritilgan o‘quvchilar natijalari yuboriladi, qolganlar 0 ball bilan ko‘rsatiladi." : "⏳ Kiritilgan ballar saqlanmoqda…"}</div>
+      <div class="report-info">${ready ? "Bahosi kiritilgan o‘quvchilar natijasi yuboriladi; qolganlari — belgisi bilan ko‘rsatiladi." : "⏳ Kiritilgan ballar saqlanmoqda…"}</div>
       <div class="report-buttons">
-        <button class="btn" id="sendGroupReport" type="button" ${ready ? "" : "disabled"}>📢 Guruhga kunlik hisobot yuborish</button>
-        <button class="btn ghost" id="sendParentReports" type="button" ${ready ? "" : "disabled"}>👨‍👩‍👧 Ota-onalarga yuborish</button>
+        ${canGroup ? `<button class="btn" id="sendGroupReport" type="button" ${ready ? "" : "disabled"}>📢 Guruhga kunlik hisobot yuborish</button>` : ""}
+        ${canParents ? `<button class="btn ghost" id="sendParentReports" type="button" ${ready ? "" : "disabled"}>👨‍👩‍👧 Ota-onalarga yuborish</button>` : ""}
       </div>`;
     const groupBtn = $("sendGroupReport");
     const parentBtn = $("sendParentReports");
