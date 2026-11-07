@@ -508,9 +508,9 @@
       </tr>`;
     const rows = list.map((s, i) => `<tr data-id="${s.id}">
       <td class="name"><div class="fio" title="${esc(s.fio)}">${esc(s.fio)}</div><div class="grp">${esc(s.group_name)}</div></td>
-      <td><button type="button" class="btn mini-action" data-delete-student="${s.id}" style="background:#b4233a;color:#fff">🗑</button></td>
       ${labels.map((label, k) => { const idx = k + 1; return `<td class="${tone(s["s" + idx])}"><input type="number" inputmode="numeric" min="0" max="100" step="1"
           placeholder="—" value="${s["s" + idx] || ""}" data-row="${i}" data-col="${k}" aria-label="${esc(s.fio)} ${esc(label)}"></td>`; }).join("")}
+      <td><button type="button" class="btn mini-action" data-delete-student="${s.id}" style="background:#b4233a;color:#fff">🗑</button></td>
       </tr>`).join("");
     const avg = labels.map((_, k) => {
       const vals = list.map(s => s["s" + (k + 1)]).filter(v => v > 0);
