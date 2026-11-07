@@ -4048,6 +4048,54 @@ async def api_add_student(request):
     return web.json_response({"ok": True, "code": code})
 
 
+async def _delete_student_records(student_id):
+    run("DELETE FROM student_links WHERE student_id = ?", (student_id,))
+    run("DELETE FROM parent_children WHERE student_id = ?", (student_id,))
+    run("DELETE FROM pending_requests WHERE student_id = ?", (student_id,))
+    run("DELETE FROM payment_requests WHERE student_id = ?", (student_id,))
+    run("DELETE FROM attendance_history WHERE student_id = ?", (student_id,))
+    run("DELETE FROM student_logs WHERE student_id = ?", (student_id,))
+    AI_SESSIONS.pop(student_id, None)
+
+
+async def api_delete_student(request):
+    kind, t, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    try:
+        sid = int(request.match_info["sid"])
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad"}, status=400)
+    st = owned_student(t, sid)
+    if not st:
+        return web.json_response({"error": "not_found"}, status=404)
+    await _delete_student_records(sid)
+    run("DELETE FROM students WHERE id = ? AND teacher_id = ?", (sid, t["id"]))
+    audit(t["chat_id"], "miniapp_student_delete", str(sid), st["fio"])
+    return web.json_response({"ok": True})
+
+
+async def api_delete_subject(request):
+    kind, t, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    try:
+        subject_id = int(request.match_info["sid"])
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad"}, status=400)
+    subj = owned_subject(t, subject_id)
+    if not subj:
+        return web.json_response({"error": "not_found"}, status=404)
+    students = list(db_students(t["id"], subject_id).values())
+    for st in students:
+        await _delete_student_records(st["id"])
+    run("DELETE FROM students WHERE teacher_id = ? AND subject_id = ?", (t["id"], subject_id))
+    run("DELETE FROM subjects WHERE id = ? AND teacher_id = ?", (subject_id, t["id"]))
+    audit(t["chat_id"], "miniapp_subject_delete", str(subject_id),
+          f"{subj['name']}; students={len(students)}")
+    return web.json_response({"ok": True, "deleted_students": len(students)})
+
+
 async def api_subject(request):
     t, err = miniapp_teacher(request)
     if err:
@@ -4478,6 +4526,8 @@ async def start_web_server():
     app.router.add_get("/api/me", api_me)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
+    app.router.add_delete("/api/student/{sid}", api_delete_student)
+    app.router.add_delete("/api/subject/{sid}", api_delete_subject)
     app.router.add_get("/api/subject/{sid}", api_subject)
     app.router.add_post("/api/score", api_score)
     app.router.add_post("/api/report/send", api_daily_report)
