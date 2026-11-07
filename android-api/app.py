@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.responses import HTMLResponse, RedirectResponse
 import psycopg2
+import httpx
 from psycopg2.extras import RealDictCursor
 import jwt
 
@@ -86,6 +87,33 @@ def require_role(authorization, allowed):
     if role not in allowed:
         raise HTTPException(403, "Ruxsat yo'q")
     return uid, role
+
+
+async def notify_score_parents(student_id, idx, value):
+    if not BOT_TOKEN:
+        return
+    conn = None
+    try:
+        conn = db()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""SELECT s.fio, pc.parent_chat_id FROM students s
+                JOIN parent_children pc ON pc.student_id=s.id
+                WHERE s.id=%s""", (student_id,))
+            rows = cur.fetchall()
+        async with httpx.AsyncClient(timeout=8) as client:
+            for row in rows:
+                try:
+                    await client.post("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", json={
+                        "chat_id": row["parent_chat_id"],
+                        "text": "📊 Farzandingiz " + row["fio"] + " bugun " + str(value) + " ball oldi. NEURON SMART JOURNAL."
+                    })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    finally:
+        if conn:
+            conn.close()
 
 def teacher_id_for(cur, uid):
     cur.execute("SELECT id FROM teachers WHERE chat_id=%s AND active=1 AND verify_status='approved' AND admin_approved=1", (uid,))
@@ -267,7 +295,22 @@ async def teacher_score(request: Request, authorization: str = Header(default=""
             cur.execute("""INSERT INTO attendance_history(student_id,date_str,davomat,s1,s2,s3)
                 SELECT id,%s,davomat,s1,s2,s3 FROM students WHERE id=%s""", (datetime.now().strftime("%d.%m.%Y"), student_id))
         conn.commit()
+        await notify_score_parents(student_id, idx, value)
         return {"ok": True}
+    finally:
+        conn.close()
+
+@app.get("/api/teacher/student/{student_id}/history")
+def student_history(student_id: int, authorization: str = Header(default="")):
+    uid, _ = require_role(authorization, {"teacher"})
+    conn = db()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            tid = teacher_id_for(cur, uid)
+            cur.execute("""SELECT h.date_str,h.davomat,h.s1,h.s2,h.s3 FROM attendance_history h
+                JOIN students s ON s.id=h.student_id WHERE h.student_id=%s AND s.teacher_id=%s
+                ORDER BY h.id DESC LIMIT 30""", (student_id, tid))
+            return {"history": cur.fetchall()}
     finally:
         conn.close()
 
@@ -376,8 +419,9 @@ async function refresh(){try{me=await api('/api/me');home();toast('Ma’lumotlar
 function home(){if(!me){load();return}if(role==='teacher')teacherHome();else if(role==='student')studentHome();else if(role==='parent')parentHome();else adminHome()}
 function teacherHome(){shell('Xush kelibsiz, '+(me.name||'ustoz'),'Tarif: '+(me.plan||'—')+' • O‘quvchilar: '+(me.student_count||0));let c=document.getElementById('content');c.innerHTML='<div class="grid"><div class="card"><div class="label">O‘quvchilar</div><div class="stat">'+(me.student_count||0)+'</div></div><div class="card"><div class="label">Fanlar</div><div class="stat">'+me.subjects.length+'</div></div></div><div class="section-title">Fanlar jurnali</div><div id="subjects"></div><button class="btn full" onclick="addSubject()">＋ Yangi fan qo‘shish</button>';let s=document.getElementById('subjects');if(!me.subjects.length)s.innerHTML='<div class="card muted">Hozircha fan qo‘shilmagan.</div>';me.subjects.forEach(x=>{s.innerHTML+='<button class="subject" onclick="openSubject('+x.id+')"><span>📘 '+esc(x.name)+'</span><span>›</span></button>'})}
 async function openSubject(id){try{activeSubject=id;subjectData=await api('/api/teacher/subject/'+id);let c=document.getElementById('content');let sub=subjectData.subject;c.innerHTML='<button class="btn secondary" onclick="teacherHome()">← Fanlar</button><div class="section-title">'+esc(sub.name)+' — jurnal</div><div class="muted small">Ballar, davomat va to‘lov holatini shu yerdan boshqaring.</div><button class="btn full" onclick="addStudent('+id+')">＋ O‘quvchi qo‘shish</button><div class="student-list" id="students"></div>';let list=document.getElementById('students');if(!subjectData.students.length)list.innerHTML='<div class="card muted">Bu fanda o‘quvchilar hali yo‘q.</div>';subjectData.students.forEach(st=>{list.innerHTML+=studentEditor(st,sub)})}catch(e){toast(e.message)}}
-function studentEditor(st,sub){let id=st.id;return '<div class="student"><h3>'+esc(st.fio)+'</h3><div class="muted small">'+esc(st.group_name)+' • ID: '+id+'</div><div class="scores">'+[1,2,3].map(i=>'<div class="field"><label>'+esc(sub['label'+i]||('Ball '+i))+'</label><input id="s'+id+'_'+i+'" type="number" min="0" max="100" value="'+(st['s'+i]||0)+'"></div>').join('')+'</div><button class="btn full" onclick="saveScores('+id+')">Ballarni saqlash</button><div class="divider"></div><div class="row"><div class="field"><label>Davomat</label><select id="a'+id+'">'+['Keldi','Kelmadi','Sababli','Kutilmoqda'].map(x=>'<option '+(st.davomat===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label>To‘lov</label><select id="p'+id+'">'+["To'langan","To'lanmagan"].map(x=>'<option '+(st.payment_status===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="row"><button class="btn secondary" onclick="saveAttendance('+id+')">Davomat</button><button class="btn secondary" onclick="savePayment('+id+')">To‘lov</button></div><div class="muted small" style="margin-top:9px">Oxirgi ball: '+esc(st.last_score_date||'—')+' • '+esc(st.payment_date||'')+'</div></div>'}
+function studentEditor(st,sub){let id=st.id;return '<div class="student"><h3>'+esc(st.fio)+'</h3><div class="muted small">'+esc(st.group_name)+' • ID: '+id+'</div><div class="scores">'+[1,2,3].map(i=>'<div class="field"><label>'+esc(sub['label'+i]||('Ball '+i))+'</label><input id="s'+id+'_'+i+'" type="number" min="0" max="100" value="'+(st['s'+i]||0)+'"></div>').join('')+'</div><button class="btn full" onclick="saveScores('+id+')">Ballarni saqlash</button><button class="btn secondary full" onclick="showHistory('+id+')">Jurnal tarixi</button><div class="divider"></div><div class="row"><div class="field"><label>Davomat</label><select id="a'+id+'">'+['Keldi','Kelmadi','Sababli','Kutilmoqda'].map(x=>'<option '+(st.davomat===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label>To‘lov</label><select id="p'+id+'">'+["To'langan","To'lanmagan"].map(x=>'<option '+(st.payment_status===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div><div class="row"><button class="btn secondary" onclick="saveAttendance('+id+')">Davomat</button><button class="btn secondary" onclick="savePayment('+id+')">To‘lov</button></div><div class="muted small" style="margin-top:9px">Oxirgi ball: '+esc(st.last_score_date||'—')+' • '+esc(st.payment_date||'')+'</div></div>'}
 async function saveScores(id){try{for(let i=1;i<=3;i++){let value=Number(document.getElementById('s'+id+'_'+i).value);if(!Number.isInteger(value)||value<0||value>100)throw Error('Ball 0 dan 100 gacha bo‘lsin');await api('/api/teacher/score',{method:'POST',body:JSON.stringify({student_id:id,idx:i,value})})}toast('Ballar saqlandi')}catch(e){toast(e.message)}}
+async function showHistory(id){try{let d=await api('/api/teacher/student/'+id+'/history');let rows=d.history||[];let txt=rows.map(x=>x.date_str+' • '+x.davomat+' • '+[x.s1,x.s2,x.s3].join(' / ')).join('\\n');alert(rows.length?txt:'Hali tarix yo‘q')}catch(e){toast(e.message)}}
 async function saveAttendance(id){try{await api('/api/teacher/attendance',{method:'POST',body:JSON.stringify({student_id:id,status:document.getElementById('a'+id).value})});toast('Davomat saqlandi')}catch(e){toast(e.message)}}
 async function savePayment(id){try{await api('/api/teacher/payment',{method:'POST',body:JSON.stringify({student_id:id,status:document.getElementById('p'+id).value})});toast('To‘lov holati saqlandi')}catch(e){toast(e.message)}}
 async function addStudent(sid){let fio=prompt('O‘quvchi F.I.O.:');if(!fio)return;let group=prompt('Guruh yoki sinf:', 'Guruhsiz')||'Guruhsiz';try{let d=await api('/api/teacher/student',{method:'POST',body:JSON.stringify({subject_id:sid,fio,group_name:group})});toast('O‘quvchi qo‘shildi. Kod: '+d.code);await openSubject(sid)}catch(e){toast(e.message)}}
