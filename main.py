@@ -1360,7 +1360,7 @@ async def back_home(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.clear()
     await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
-                                 reply_markup=main_menu_kb(), parse_mode="Markdown")
+                                 reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data == "public_plans")
