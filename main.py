@@ -546,7 +546,7 @@ def check_and_reset_daily_data():
 def _subject(row):
     if not row:
         return None
-    return {"id": row[0], "teacher_id": row[1], "name": row[2], "labels": [row[3], row[4], row[5]]}
+    return {"id": row[0], "teacher_id": row[1], "name": row[2], "labels": [x for x in (row[3], row[4], row[5]) if x and str(x).strip()]}
 
 
 def db_subject(sid):
@@ -929,6 +929,8 @@ def teacher_panel_kb(t=None):
     url = support_url()
     if url:
         rows.append([InlineKeyboardButton(text="💰 Pullik yordam", url=url)])
+    if t is not None and is_super(t.get("chat_id")):
+        rows.append([btn("⚙️ Super Admin", "super_admin_login_prompt")])
     rows.append([btn("🔙 Chiqish", "back_home")])
     return kb(rows)
 
@@ -4009,10 +4011,13 @@ async def api_add_subject(request):
     name = str(body.get("name", "")).strip()[:40]
     if len(name) < 2:
         return web.json_response({"error": "bad"}, status=400)
-    labels = body.get("labels") or DEFAULT_LABELS
-    if not isinstance(labels, list) or len(labels) != 3:
-        labels = DEFAULT_LABELS
-    labels = [str(x).strip()[:20] or DEFAULT_LABELS[i] for i, x in enumerate(labels)]
+    labels = body.get("labels")
+    if not isinstance(labels, list):
+        return web.json_response({"error": "labels_required"}, status=400)
+    labels = [str(x).strip()[:20] for x in labels if str(x).strip()]
+    if not 1 <= len(labels) <= 3 or any(len(x) < 2 for x in labels):
+        return web.json_response({"error": "labels_count", "message": "1–3 ta baholash nomi kiriting"}, status=400)
+    labels = labels + [""] * (3 - len(labels))
     db_add_subject(t["id"], name, labels)
     subj = db_subjects(t["id"])[-1]
     audit(t["chat_id"], "miniapp_subject_add", str(subj["id"]), name)
