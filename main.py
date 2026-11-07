@@ -3999,11 +3999,6 @@ async def api_daily_report(request):
     if not students:
         return web.json_response({"error": "no_students"}, status=400)
     today = datetime.now().strftime("%d.%m.%Y")
-    missing = [s["fio"] for s in students if s["last_score_date"] != today]
-    if missing:
-        return web.json_response({"error": "scores_incomplete", "missing": missing[:30],
-                                  "missing_count": len(missing)}, status=409)
-
     labels = subj["labels"]
     if report_type == "group":
         target = t.get("channel_id")
@@ -4042,17 +4037,18 @@ async def api_daily_report(request):
     for st in students:
         vals = [st[f"s{k}"] for k in (1, 2, 3)]
         avg = score_average(st)
+        # 0 ball o'rtachadan chiqarilmaydi, lekin maqtov uchun barcha bo'limlar tekshiriladi.
         message_text = (
-            "📊 **FARZANDINGIZNING KUNLIK HISOBOTI**\n"
+            "📊 FARZANDINGIZNING KUNLIK HISOBOTI\n"
             "━━━━━━━━━━━━━━\n"
-            f"👤 **{md(st['fio'])}**\n"
+            f"👤 {md(st['fio'])}\n"
             f"📚 Fan: {md(subj['name'])}\n"
             f"📅 Sana: {today}\n\n"
-            + "\n".join(f"📝 {md(labels[k])}: **{vals[k]}/100**" for k in range(3))
-            + f"\n\n📊 **Jami ball: {sum(vals)}**"
-            + f"\n📈 **O‘rtacha natija: {avg if avg is not None else 0}/100**"
-            + ("\n🎉 Barakalla! Yaxshi natija." if avg is not None and avg >= 60
-               else "\n💡 Tavsiya: mavzularni takrorlash va mashq qilish.")
+            + "\n".join(f"📝 {md(labels[k])}: {vals[k]}/100" for k in range(3))
+            + f"\n\n📈 O‘rtacha natija: {avg if avg is not None else 0}/100"
+            + ("\n🎉 Barakalla! Yaxshi natija."
+               if avg is not None and avg >= 60 and all(v >= 50 for v in vals)
+               else "\n💡 Tavsiya: past natija ko‘rsatilgan bo‘limlarni qayta takrorlash va mashq qilish.")
         )
         result = await notify_parents_of(st["id"], message_text)
         total_parents += result["total"]
