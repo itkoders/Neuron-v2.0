@@ -1095,6 +1095,9 @@ class SubGuard(BaseMiddleware):
         # Bot faqat shaxsiy chatda ishlaydi; guruhdagi xabarlarni jim o'tkazib yuboradi.
         if isinstance(event, types.Message) and event.chat.type != "private":
             return None
+        if isinstance(event, types.CallbackQuery) and event.message and event.message.chat.type != "private":
+            await event.answer()
+            return None
         user = getattr(event, "from_user", None)
         if user is None or await is_subscribed(user.id):
             return await handler(event, data)
