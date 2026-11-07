@@ -13,6 +13,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "Neuronv2_bot").lstrip("@")
 OWNER_ID = 6359925487
+OWNER_LOGIN = os.getenv("OWNER_LOGIN", "").strip().lower()
+OWNER_PASSWORD = os.getenv("OWNER_PASSWORD", "")
 JWT_TTL = 60 * 60 * 24 * 7
 LOGIN_CODES = {}
 app = FastAPI(title="NEURON Android API", docs_url=None, redoc_url=None)
@@ -28,10 +30,16 @@ def db():
 def ensure_login_schema(conn):
     with conn.cursor() as cur:
         cur.execute("""CREATE TABLE IF NOT EXISTS login_accounts (
-            id BIGSERIAL PRIMARY KEY, role TEXT NOT NULL CHECK (role IN ('teacher','student','parent')),
+            id BIGSERIAL PRIMARY KEY, role TEXT NOT NULL CHECK (role IN ('teacher','student','parent','super_admin')),
             teacher_id BIGINT, student_id BIGINT, parent_chat_id BIGINT,
             username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
+    if OWNER_LOGIN and OWNER_PASSWORD:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO login_accounts(role,username,password_hash)
+                VALUES('super_admin',%s,%s) ON CONFLICT(username) DO NOTHING""",
+                (OWNER_LOGIN, make_password_hash(OWNER_PASSWORD)))
+
 
 def make_password_hash(password):
     salt = secrets.token_bytes(16)
@@ -163,7 +171,8 @@ async def password_login(request: Request):
         if not account or not check_password(password, account["password_hash"]):
             raise HTTPException(401, "Login yoki parol noto‘g‘ri")
         role = account["role"]
-        if role == "teacher":
+        if role == "super_admin": uid = OWNER_ID
+        elif role == "teacher":
             with conn.cursor() as cur:
                 cur.execute("SELECT chat_id FROM teachers WHERE id=%s AND active=1 AND verify_status=%s AND admin_approved=1", (account["teacher_id"], "approved"))
                 row = cur.fetchone()
