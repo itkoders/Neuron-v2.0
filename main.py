@@ -1242,7 +1242,7 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
         d.text((W // 2, 215), f"SANA: {report_date}", fill="#173B8F", font=sub_f, anchor="mm")
         d.text((W - 55, 215), f"O‘QUVCHILAR: {len(items)}", fill="#173B8F", font=sub_f, anchor="rm")
         # Table header
-        x0, y0, row_h = 28, 285, 54
+        x0, y0, row_h = 28, 285, 48
         x = x0
         for label, cw in zip(headers, widths):
             d.rectangle((x, y0, x + cw, y0 + row_h), fill="#DCE8FF", outline="#31549B", width=2)
