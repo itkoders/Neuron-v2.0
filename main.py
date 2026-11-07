@@ -546,12 +546,9 @@ def check_and_reset_daily_data():
 def _subject(row):
     if not row:
         return None
-    # Uchta ball ustuni doim mavjud. Eski bazadagi bo'sh nomlar
-    # ro'yxatni qisqartirib, jurnal oynasida IndexError chiqarardi.
-    labels = []
-    for i, value in enumerate(row[3:6]):
-        label = str(value).strip() if value is not None else ""
-        labels.append(label or DEFAULT_LABELS[i])
+    # Faqat o'qituvchi nom bergan baholash ustunlari ko'rsatiladi.
+    # Bazadagi bo'sh label2/label3 yangi ustun sifatida yaratilmaydi.
+    labels = [str(value).strip() for value in row[3:6] if value is not None and str(value).strip()]
     return {"id": row[0], "teacher_id": row[1], "name": row[2], "labels": labels}
 
 
@@ -864,13 +861,13 @@ def student_grid(students, prefix, back_cb, icon=lambda s: "", name_limit=22):
 
 
 def score_text(st, labels):
-    # Eski yoki noto'liq fan nomlari jurnalni to'xtatib qo'ymasligi uchun.
-    labels = list(labels or [])
-    labels = [
-        (str(labels[i]).strip() if i < len(labels) and labels[i] else DEFAULT_LABELS[i])
-        for i in range(3)
-    ]
-    return f"📜 {labels[0]}: **{st['s1']}%**\\n🌍 {labels[1]}: **{st['s2']}%**\\n📑 {labels[2]}: **{st['s3']}%**"
+    # Nechta nom berilgan bo'lsa, faqat shuncha ball ko'rsatiladi.
+    labels = [str(x).strip() for x in (labels or []) if str(x).strip()]
+    icons = ["📜", "🌍", "📑"]
+    return "\\n".join(
+        f"{icons[i]} {label}: **{st.get('s' + str(i + 1), 0)}%**"
+        for i, label in enumerate(labels[:3])
+    ) or "Baholash ustunlari belgilanmagan."
 
 
 def cabinet_text(st, subject, subj_students, header):
@@ -1665,11 +1662,13 @@ async def tp_subj_name(message: types.Message, state: FSMContext):
 @dp.message(TeacherStates.subj_labels, F.chat.type == "private")
 async def tp_subj_labels(message: types.Message, state: FSMContext):
     raw = (message.text or "").strip()
-    labels = DEFAULT_LABELS
-    if raw.lower() != "standart":
-        parts = [p.strip()[:20] for p in raw.split(",") if p.strip()]
-        if len(parts) == 3:
-            labels = parts
+    if raw.lower() == "standart":
+        labels = DEFAULT_LABELS[:]
+    else:
+        labels = [p.strip()[:20] for p in raw.split(",") if p.strip()]
+        if not 1 <= len(labels) <= 3:
+            await send_and_clean_both(message, "❌ 1–3 ta ustun nomini vergul bilan kiriting. Masalan: Test, Yozma ish", delay=30)
+            return
     t = _me(message)
     name = (await state.get_data()).get("subj_name", "Fan")
     await state.clear()
