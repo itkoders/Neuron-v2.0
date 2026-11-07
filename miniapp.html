@@ -212,6 +212,28 @@
   .parent-card-info strong{font-size:17px;letter-spacing:.03em;word-break:break-word}
   .parent-pay-box{padding:16px;border:1px solid var(--line);border-radius:17px;background:var(--card);min-width:0}
   @media(max-width:480px){#parentContent .facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#parentContent .fact{padding:11px}#parentContent .fact small{font-size:11px}#parentContent .fact b{font-size:14px}.parent-card-info strong{font-size:15px}}
+
+  /* Android / Telegram WebApp: klaviatura ochilganda jurnalni ko‘rinadigan saqlash */
+  @media(max-width:700px){
+    body.keyboard-open{padding-bottom:8px}
+    body.keyboard-open header{position:relative;top:auto;padding:8px 12px 7px;box-shadow:none}
+    body.keyboard-open .who .label{display:none}
+    body.keyboard-open .who h1{font-size:15px;margin:0}
+    body.keyboard-open #teacherControls,
+    body.keyboard-open #teacherHero{display:none!important}
+    body.keyboard-open #tabsTeacher{
+      position:fixed;top:0;left:0;right:0;z-index:80;
+      width:100%;max-width:none;margin:0;padding:5px 8px;
+      border-radius:0 0 13px 13px;box-shadow:0 4px 14px rgba(0,0,0,.16);
+      background:var(--card);border:1px solid var(--line)
+    }
+    body.keyboard-open #tabsTeacher .tab{padding:8px 5px;font-size:12px}
+    body.keyboard-open main{padding-top:58px;padding-bottom:10px}
+    body.keyboard-open .journal-shell{margin-bottom:8px}
+    body.keyboard-open .journal-table td input{height:42px;font-size:16px}
+    body.keyboard-open #reportActions{display:none!important}
+  }
+
 </style>
 </head>
 <body>
@@ -322,7 +344,8 @@
     const hero = $("teacherHero");
     if (!state.subject) { hero.classList.add("hidden"); return; }
     const n = state.students.length;
-    const vals = state.students.flatMap(s => [s.s1,s.s2,s.s3]).filter(v => v > 0);
+    const activeLabels = (state.subject.labels || []).filter(Boolean).slice(0, 3);
+    const vals = state.students.flatMap(s => activeLabels.map((_, i) => Number(s["s" + (i + 1)] || 0))).filter(v => v > 0);
     const avg = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
     const came = state.students.filter(s => s.davomat === "Keldi").length;
     $("heroSubject").textContent = state.subject.name + " · O‘quvchilar rivojini kuzating";
@@ -517,7 +540,7 @@
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
     });
     wrap.innerHTML = `<table class="journal-table"><thead>${head}</thead><tbody>${rows}</tbody>
-      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}</tr></tfoot></table>`;
+      <tfoot><tr><td class="name">O'rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}<td>—</td></tr></tfoot></table>`;
     $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
     wrap.querySelectorAll("[data-delete-student]").forEach(btn => btn.addEventListener("click", async () => {
       const studentId = Number(btn.dataset.deleteStudent);
@@ -1004,6 +1027,38 @@
   $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
   $("aiStop").addEventListener("click", stopAi);
 
+  // Telegram Android klaviaturasi ochilganda jurnal maydoni ekran ortida qolmasin.
+  const syncKeyboardLayout = () => {
+    const vv = window.visualViewport;
+    const keyboardVisible = !!(vv && window.innerHeight - vv.height > 140);
+    document.body.classList.toggle("keyboard-open", keyboardVisible);
+  };
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", syncKeyboardLayout);
+    window.visualViewport.addEventListener("scroll", syncKeyboardLayout);
+  }
+  window.addEventListener("resize", syncKeyboardLayout);
+  document.addEventListener("focusin", (event) => {
+    if (event.target && event.target.matches('.journal-table input')) {
+      document.body.classList.add("keyboard-open");
+      setTimeout(() => {
+        const el = event.target;
+        if (!el.isConnected) return;
+        const rect = el.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const bottom = vv ? vv.height : window.innerHeight;
+        if (rect.bottom > bottom - 18 || rect.top < 58) {
+          el.scrollIntoView({block:"center", inline:"nearest", behavior:"smooth"});
+        }
+        syncKeyboardLayout();
+      }, 220);
+    }
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target && event.target.matches('.journal-table input')) {
+      setTimeout(syncKeyboardLayout, 250);
+    }
+  });
   init();
 })();
 </script>
