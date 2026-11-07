@@ -1757,8 +1757,6 @@ async def tp_score_field(call: types.CallbackQuery):
 async def _after_score(call, st_id, idx, val):
     st = db_student(st_id)
     subj = db_subject(st["subject_id"])
-    await notify_parents_of(st_id, f"📊 **Farzandingiz ({md(st['fio'])}) natijalari yangilandi:**\n\n"
-                                   f"📚 Fan: {md(subj['name'])}\n{score_text(st, subj['labels'])}")
     await call.message.edit_text(f"✅ **{md(st['fio'])}** uchun {subj['labels'][idx - 1]} **{val}%** saqlandi.",
                                  reply_markup=kb([[btn("✍️ Yana ball", f"tp_scf_{st_id}_{idx}")], [btn("🏠 Panel", "tp_menu")]]),
                                  parse_mode="Markdown")
@@ -1811,7 +1809,6 @@ async def tp_score_manual_value(message: types.Message, state: FSMContext):
     idx = data["score_idx"]
     db_set_score(st["id"], idx, int(raw))
     subj = db_subject(st["subject_id"])
-    await notify_parents_of(st["id"], f"📊 **Farzandingiz ({md(st['fio'])}) natijalari yangilandi:**\n\n{score_text(db_student(st['id']), subj['labels'])}")
     await message.answer(f"✅ **{md(st['fio'])}** uchun {subj['labels'][idx - 1]} **{raw}%** saqlandi.",
                          reply_markup=kb([[btn("📝 Ballarga qaytish", f"tp_sc_{st['id']}")], [btn("🏠 Panel", "tp_menu")]]),
                          parse_mode="Markdown")
@@ -3883,7 +3880,8 @@ def _subj_payload(subj):
 
 def _stu_payload(s):
     return {"id": s["id"], "fio": s["fio"], "group_name": s["group_name"],
-            "s1": s["s1"], "s2": s["s2"], "s3": s["s3"], "davomat": s["davomat"]}
+            "s1": s["s1"], "s2": s["s2"], "s3": s["s3"], "davomat": s["davomat"],
+            "last_score_date": s.get("last_score_date", "")}
 
 
 async def _read_json(request):
@@ -3950,7 +3948,8 @@ async def api_subject(request):
         return web.json_response({"error": "not_found"}, status=404)
     students = db_students(t["id"], sid)
     return web.json_response({"subject": _subj_payload(subj),
-                              "students": [_stu_payload(s) for s in students.values()]})
+                              "students": [_stu_payload(s) for s in students.values()],
+                              "today": datetime.now().strftime("%d.%m.%Y")})
 
 
 async def api_score(request):
@@ -3967,40 +3966,104 @@ async def api_score(request):
     st = owned_student(t, sid)
     if not st:
         return web.json_response({"error": "not_found"}, status=404)
-    prev = st[f"s{idx}"]
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
-    subj = db_subject(st["subject_id"])
-    notification = {"total": 0, "sent": 0, "failed": []}
-    if subj and val != prev:
-        latest = db_student(sid)
-        average = score_average(latest, idx)
-        name = md(st["fio"])
-        subject_name = md(subj["name"])
-        labels = subj["labels"]
-        parts = [f"📝 {md(labels[i])}: **{latest[f's{i + 1}']}/100**" for i in range(3) if latest[f"s{i + 1}"] > 0 or i + 1 == idx]
-        avg_line = f"📊 **Umumiy natija: {average}/100**" if average is not None else "📊 Umumiy natija: hali hisoblanmadi"
-        if average is None or average < 60:
-            title = "⚠️ **UMUMIY NATIJA: E'TIBOR KERAK**"
-            status_line = "🔴 Holat: 60 balldan past"
-            advice = "💡 Tavsiya: mavzularni takrorlash va mashq qilish."
-        else:
-            title = "🎉 **UMUMIY NATIJA: AJOYIB!**"
-            status_line = "🟢 Holat: yaxshi natija"
-            advice = "👏 Barakalla! Shu zaylda davom eting!"
-        message_text = (
-            f"{title}\n━━━━━━━━━━━━━━\n"
-            f"👤 **{name}**\n📚 {subject_name}\n"
-            + "\n".join(parts) + "\n"
-            + avg_line + "\n" + status_line + "\n" + advice
-        )
-        notification = await notify_parents_of(sid, message_text)
+    today = datetime.now().strftime("%d.%m.%Y")
+    students = list(db_students(t["id"], st["subject_id"]).values())
+    all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
     return web.json_response({
         "ok": True,
         "last": db_student(sid)["last_score_date"],
-        "parent_notifications": notification
+        "today": today,
+        "all_scored_today": all_scored,
+        "parent_notifications": {"total": 0, "sent": 0, "failed": []}
     })
 
+
+async def api_daily_report(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    body = await _read_json(request)
+    try:
+        subject_id = int(body.get("subject_id"))
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error": "bad"}, status=400)
+    report_type = str(body.get("type", "")).strip().lower()
+    if report_type not in {"group", "parents"}:
+        return web.json_response({"error": "bad_type"}, status=400)
+    subj = owned_subject(t, subject_id)
+    if not subj:
+        return web.json_response({"error": "not_found"}, status=404)
+    students = list(db_students(t["id"], subject_id).values())
+    if not students:
+        return web.json_response({"error": "no_students"}, status=400)
+    today = datetime.now().strftime("%d.%m.%Y")
+    missing = [s["fio"] for s in students if s["last_score_date"] != today]
+    if missing:
+        return web.json_response({"error": "scores_incomplete", "missing": missing[:30],
+                                  "missing_count": len(missing)}, status=409)
+
+    labels = subj["labels"]
+    if report_type == "group":
+        target = t.get("channel_id")
+        if not target:
+            return web.json_response({"error": "group_not_configured"}, status=400)
+        lines = [f"📊 KUNLIK GURUH HISOBOTI", f"📚 Fan: {md(subj['name'])}",
+                 f"📅 Sana: {today}", f"👥 O‘quvchilar: {len(students)}", "━━━━━━━━━━━━━━"]
+        for i, st in enumerate(students, 1):
+            vals = [st[f"s{k}"] for k in (1, 2, 3)]
+            avg = score_average(st)
+            lines.append(f"{i}. {md(st['fio'])} — " +
+                         " | ".join(f"{md(labels[k])}: {vals[k]}/100" for k in range(3)) +
+                         f" | Jami: {sum(vals)} | O‘rtacha: {avg if avg is not None else 0}/100")
+        lines.append("━━━━━━━━━━━━━━\nNEURON SMART JOURNAL")
+        text = "\n".join(lines)
+        chunks, current = [], ""
+        for line in text.splitlines():
+            if len(current) + len(line) + 1 > 3500:
+                chunks.append(current)
+                current = ""
+            current = (current + "\n" + line).strip()
+        if current:
+            chunks.append(current)
+        try:
+            for chunk in chunks:
+                await bot.send_message(target, chunk, parse_mode="Markdown")
+        except Exception as exc:
+            logging.exception("Kunlik guruh hisoboti yuborilmadi: teacher_id=%s subject_id=%s", t["id"], subject_id)
+            return web.json_response({"error": "group_send_failed", "detail": str(exc)[:180]}, status=502)
+        audit(t["chat_id"], "daily_group_report", str(subject_id), today)
+        return web.json_response({"ok": True, "type": "group", "sent": len(chunks),
+                                  "students": len(students), "date": today})
+
+    total_parents = sent_parents = 0
+    failed_students = []
+    for st in students:
+        vals = [st[f"s{k}"] for k in (1, 2, 3)]
+        avg = score_average(st)
+        message_text = (
+            "📊 **FARZANDINGIZNING KUNLIK HISOBOTI**\n"
+            "━━━━━━━━━━━━━━\n"
+            f"👤 **{md(st['fio'])}**\n"
+            f"📚 Fan: {md(subj['name'])}\n"
+            f"📅 Sana: {today}\n\n"
+            + "\n".join(f"📝 {md(labels[k])}: **{vals[k]}/100**" for k in range(3))
+            + f"\n\n📊 **Jami ball: {sum(vals)}**"
+            + f"\n📈 **O‘rtacha natija: {avg if avg is not None else 0}/100**"
+            + ("\n🎉 Barakalla! Yaxshi natija." if avg is not None and avg >= 60
+               else "\n💡 Tavsiya: mavzularni takrorlash va mashq qilish.")
+        )
+        result = await notify_parents_of(st["id"], message_text)
+        total_parents += result["total"]
+        sent_parents += result["sent"]
+        if result["failed"]:
+            failed_students.append({"student": st["fio"], "failed": len(result["failed"])})
+    audit(t["chat_id"], "daily_parent_reports", str(subject_id),
+          f"{today}; sent={sent_parents}; total={total_parents}")
+    return web.json_response({"ok": True, "type": "parents", "sent": sent_parents,
+                              "total": total_parents, "failed_students": failed_students,
+                              "students": len(students), "date": today})
 
 async def api_attendance(request):
     t, err = miniapp_teacher(request)
@@ -4301,6 +4364,7 @@ async def start_web_server():
     app.router.add_post("/api/student", api_add_student)
     app.router.add_get("/api/subject/{sid}", api_subject)
     app.router.add_post("/api/score", api_score)
+    app.router.add_post("/api/report/send", api_daily_report)
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/student/overview", api_student_overview)
     app.router.add_get("/api/parent/overview", api_parent_overview)
