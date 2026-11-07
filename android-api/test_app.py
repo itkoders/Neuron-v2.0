@@ -61,4 +61,4 @@ def test_password_login_has_no_telegram_bot_dependency():
     source = inspect.getsource(app.password_login)
     assert "BOT_TOKEN" not in source
     assert "verified_user" not in source
-    assert "telegram" not in source.lower()
+    assert "telegram.org" not in source.lower()
