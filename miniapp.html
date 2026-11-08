@@ -515,6 +515,13 @@
     </section>
   </section>
 
+  <section id="adminView" class="hidden">
+    <div class="card panel" style="margin-top:14px"><h3>🛡 Super Admin boshqaruvi</h3><p class="hint">NEYRON tizimini ilovaning o‘zidan boshqaring.</p>
+      <div class="admin-nav" id="adminNav">
+        <button class="chip-btn primary" data-admin-tab="overview">Umumiy</button><button class="chip-btn" data-admin-tab="teachers">O‘qituvchilar</button><button class="chip-btn" data-admin-tab="plans">Tariflar</button><button class="chip-btn" data-admin-tab="queue">Tasdiqlash</button><button class="chip-btn" data-admin-tab="settings">Sozlamalar</button><button class="chip-btn" data-admin-tab="audit">Audit</button>
+      </div>
+    </div><div id="adminContent"><div class="loading">Admin panel yuklanmoqda…</div></div>
+  </section>
   <!-- O'quvchi -->
   <section id="studentView" class="hidden">
     <section data-spane="mine"><div id="mine" style="margin-top:14px"></div></section>
@@ -580,7 +587,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, settingsLoaded: false, celebratedToday: false };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, settingsPayment: {}, settingsLoaded: false, adminData: null, adminTab: "overview", celebratedToday: false };
 
   /* ---------- Theme ---------- */
   function applyTheme() {
@@ -664,6 +671,7 @@
       state.settingsSubjects = data.subjects || [];
       state.settingsChannel = data.channel_id || "";
       state.settingsChannelEnabled = !!data.channel_enabled;
+      state.settingsPayment = data.payment || {};
       state.settingsLoaded = true;
       host.innerHTML = `
         <div class="card panel settings-card">
@@ -673,6 +681,15 @@
           <p class="hint" id="channelSettingStatus">${state.settingsChannel ? "Ulangan kanal ID: "+esc(state.settingsChannel) : "Hozircha kanal ulanmagan."}</p>
           <button type="button" class="chip-btn danger" id="removeChannelSetting" ${state.settingsChannel && state.settingsChannelEnabled?"":"disabled"}>Kanalni uzish</button>
           ${state.settingsChannelEnabled ? "" : '<p class="settings-warning">Kanal integratsiyasi joriy tarifda yoqilmagan.</p>'}
+        </div>
+        <div class="card panel settings-card">
+          <h3>💳 To‘lov usuli</h3><p class="hint">Ota-onalar ko‘radigan to‘lov turini va ma’lumotlarini kiriting.</p>
+          <div class="admin-form">
+            <select class="field" id="teacherPaymentType"><option value="card">Bank kartasi</option><option value="click">Click</option><option value="payme">Payme</option><option value="bank_transfer">Bank o‘tkazmasi</option><option value="cash">Naqd pul</option></select>
+            <input class="field" id="teacherCardNumber" placeholder="Karta raqami (8600 …)"><input class="field" id="teacherCardHolder" placeholder="Karta egasi"><input class="field" id="teacherBankName" placeholder="Bank nomi (ixtiyoriy)">
+            <textarea class="field" id="teacherPaymentDetails" rows="3" placeholder="Click/Payme ID yoki to‘lov bo‘yicha ko‘rsatma"></textarea>
+            <button class="btn btn-wide" id="saveTeacherPayment">To‘lov sozlamasini saqlash</button><p class="hint" id="teacherPaymentStatus"></p>
+          </div>
         </div>
         <div class="card panel settings-card">
           <h3>🔑 O‘quvchilar kirish kodlari</h3>
@@ -703,6 +720,31 @@
       $("removeChannelSetting").onclick = async () => {
         try { await api("/api/settings/channel", {method:"POST",body:JSON.stringify({channel_id:""})}); state.settingsLoaded = false; toast("Kanal uzildi."); await loadTeacherSettings(); }
         catch(err) { toast(errText(err)); }
+      };
+      const pay = state.settingsPayment || {};
+      $("teacherPaymentType").value = pay.payment_type || "card";
+      $("teacherCardNumber").value = pay.card_number || "";
+      $("teacherCardHolder").value = pay.card_holder || "";
+      $("teacherBankName").value = pay.bank_name || "";
+      $("teacherPaymentDetails").value = pay.payment_details || "";
+      const syncPayFields = () => {
+        const card = $("teacherPaymentType").value === "card";
+        $("teacherCardNumber").classList.toggle("hidden", !card);
+        $("teacherCardHolder").classList.toggle("hidden", !card);
+        $("teacherBankName").classList.toggle("hidden", !card);
+      };
+      $("teacherPaymentType").addEventListener("change", syncPayFields); syncPayFields();
+      $("saveTeacherPayment").onclick = async () => {
+        const b=$("saveTeacherPayment"); b.disabled=true; b.textContent="Saqlanmoqda…";
+        try {
+          await api("/api/settings/payment",{method:"POST",body:JSON.stringify({
+            payment_type:$("teacherPaymentType").value,card_number:$("teacherCardNumber").value,
+            card_holder:$("teacherCardHolder").value,bank_name:$("teacherBankName").value,
+            payment_details:$("teacherPaymentDetails").value
+          })});
+          $("teacherPaymentStatus").textContent="✅ To‘lov sozlamasi saqlandi."; toast("To‘lov sozlamasi saqlandi.");
+        } catch(err) { $("teacherPaymentStatus").textContent=err.data?.error==="bad_card"?"Karta raqami yoki egasini tekshiring.":err.data?.error==="bad_details"?"To‘lov ma’lumotini kiriting.":errText(err); }
+        finally { b.disabled=false; b.textContent="To‘lov sozlamasini saqlash"; }
       };
       $("codeSearchInput").addEventListener("input", renderStudentCodes);
       $("codeSubjectFilter").addEventListener("change", renderStudentCodes);
@@ -843,7 +885,8 @@
     try {
       const me = await api("/api/me");
       state.role = me.role;
-      if (me.role === "teacher") initTeacher(me);
+      if (me.role === "admin") initAdmin(me);
+      else if (me.role === "teacher") initTeacher(me);
       else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
     } catch (err) {
@@ -854,6 +897,84 @@
       $("studentView").classList.remove("hidden");
       setStatus("Xato", "err");
     }
+  }
+
+
+  function initAdmin() {
+    hideAllViews(); $("roleLabel").textContent="Super Admin"; $("who").textContent="NEYRON boshqaruv markazi";
+    $("adminView").classList.remove("hidden");
+    $("adminNav").addEventListener("click",e=>{const b=e.target.closest("[data-admin-tab]");if(!b)return;state.adminTab=b.dataset.adminTab;document.querySelectorAll("[data-admin-tab]").forEach(z=>z.classList.toggle("primary",z===b));renderAdminTab();});
+    loadAdminOverview();
+  }
+  async function loadAdminOverview() {
+    $("adminContent").innerHTML='<div class="loading">Boshqaruv ma’lumotlari yuklanmoqda…</div>';
+    try{state.adminData=await api("/api/admin/overview");renderAdminTab();setStatus("Admin tayyor");}
+    catch(e){$("adminContent").innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';setStatus("Xato","err");}
+  }
+  function adminCard(title,body,actions) {
+    return '<div class="admin-item"><h4>'+title+'</h4>'+body+(actions?'<div class="admin-actions">'+actions+'</div>':'')+'</div>';
+  }
+  function adminBtn(label,action,id) {
+    return '<button class="chip-btn" data-admin-action="'+action+'" data-id="'+(id||"")+'">'+label+'</button>';
+  }
+  function renderAdminTab() {
+    const d=state.adminData;if(!d)return;const host=$("adminContent"),s=d.settings;
+    if(state.adminTab==="overview") {
+      host.innerHTML='<div class="admin-grid"><div class="admin-kpi"><b>'+d.stats.teachers+'</b><span>O‘qituvchilar</span></div><div class="admin-kpi"><b>'+d.stats.active_teachers+'</b><span>Faol hisoblar</span></div><div class="admin-kpi"><b>'+d.stats.students+'</b><span>Jami o‘quvchilar</span></div><div class="admin-kpi"><b>'+d.stats.paid_teachers+'</b><span>Pullik tarifdagilar</span></div></div>'+
+      adminCard('⚡ Tezkor holat','<p class="admin-muted">Tasdiqlash navbatida: '+d.queue.length+' ta</p><p class="admin-muted">Majburiy obuna: '+(s.mandatory_sub?'Yoqilgan':'O‘chirilgan')+'</p><p class="admin-muted">AI: '+esc(s.ai_primary)+'</p>',adminBtn('Yangilash','refresh')+adminBtn('Tasdiqlash navbati','go-queue'));
+    } else if(state.adminTab==="teachers") {
+      host.innerHTML='<div class="card panel"><h3>👩‍🏫 O‘qituvchilar</h3><input class="field" id="adminTeacherSearch" placeholder="Ism yoki telefon bo‘yicha qidirish"></div><div id="adminTeacherList"></div>';
+      const draw=()=>{const q=($("adminTeacherSearch").value||"").toLowerCase();$("adminTeacherList").innerHTML=d.teachers.filter(t=>(t.name+" "+t.phone).toLowerCase().includes(q)).map(t=>{
+        const opts=d.plans.map(p=>'<option value="'+esc(p.key)+'" '+(p.key===t.plan_key?'selected':'')+'>'+esc(p.name)+'</option>').join("");
+        const acts=adminBtn('Tarif berish','assign',t.id)+adminBtn('30 kun qo‘shish','extend',t.id)+adminBtn(t.active?'Bloklash':'Faollashtirish','toggle_active',t.id)+adminBtn(t.ai_enabled?'AI o‘chirish':'AI yoqish','toggle_ai',t.id)+adminBtn('Yangi kod','regen',t.id)+adminBtn('O‘chirish','delete',t.id);
+        return adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.plan_name)+' · '+t.students+'/'+(t.student_limit||'∞')+' o‘quvchi</p><p class="admin-muted">'+(t.active?'Faol':'Bloklangan')+' · '+(t.approved?'Tasdiqlangan':'Kutilmoqda')+'</p><select class="field" data-plan-for="'+t.id+'">'+opts+'</select>',acts);
+      }).join("")||'<div class="card empty">O‘qituvchi topilmadi.</div>';};
+      draw();$("adminTeacherSearch").addEventListener("input",draw);
+    } else if(state.adminTab==="plans") {
+      const newForm='<div class="card panel"><h3>➕ Yangi tarif</h3><div class="admin-form"><input class="field" id="newPlanName" placeholder="Tarif nomi"><input class="field" id="newPlanPrice" type="number" placeholder="Narxi (so‘m)"><input class="field" id="newPlanLimit" type="number" placeholder="O‘quvchi limiti"><input class="field" id="newPlanDays" type="number" placeholder="Muddat (kun)">'+adminBtn('Tarif yaratish','create-plan')+'</div></div>';
+      host.innerHTML=newForm+d.plans.map(p=>{
+        const fields='<div class="admin-form"><input class="field" data-field="name" data-key="'+p.key+'" value="'+esc(p.name)+'" placeholder="Nomi"><input class="field" type="number" data-field="price" data-key="'+p.key+'" value="'+p.price+'" placeholder="Narxi"><input class="field" type="number" data-field="student_limit" data-key="'+p.key+'" value="'+p.student_limit+'" placeholder="O‘quvchi limiti"><input class="field" type="number" data-field="subject_limit" data-key="'+p.key+'" value="'+p.subject_limit+'" placeholder="Fan limiti"><input class="field" type="number" data-field="duration_days" data-key="'+p.key+'" value="'+p.duration_days+'" placeholder="Kun"></div>';
+        const features=Object.entries(d.features).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-feature="'+k+'" data-key="'+p.key+'" '+(p.features.includes(k)?'checked':'')+'> '+esc(v)+'</label>').join("");
+        return adminCard(esc(p.name)+' · '+Number(p.price).toLocaleString('uz-UZ')+' so‘m','<p class="admin-muted">'+p.key+' · '+(p.active?'Faol':'Faol emas')+'</p>'+fields+features,adminBtn('Saqlash','save-plan',p.key)+adminBtn(p.active?'O‘chirish':'Yoqish','toggle-plan',p.key));
+      }).join("");
+    } else if(state.adminTab==="queue") {
+      host.innerHTML=d.queue.map(t=>adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.verify_status)+'</p>',adminBtn('Tasdiqlash','approve',t.id)+adminBtn('Rad etish','reject',t.id))).join("")||'<div class="card empty">Tasdiqlash navbati bo‘sh.</div>';
+    } else if(state.adminTab==="settings") {
+      host.innerHTML='<div class="card panel"><h3>🔔 Majburiy obuna</h3><input class="field" id="admChannel" value="'+esc(s.required_channel)+'" placeholder="@kanal yoki -100..."><div class="admin-actions">'+adminBtn('Kanalni saqlash','save-channel')+adminBtn(s.mandatory_sub?'O‘chirish':'Yoqish','toggle-sub')+'</div></div>'+
+      '<div class="card panel settings-card"><h3>🆘 Yordam</h3><input class="field" id="admSupport" value="'+esc(s.support_contact)+'" placeholder="@yordamchi yoki ID"><input class="field" id="admSupportLabel" value="'+esc(s.support_label)+'" placeholder="Tugma nomi"><div class="admin-actions">'+adminBtn('Saqlash','save-support')+adminBtn(s.support_enabled?'O‘chirish':'Yoqish','toggle-support')+'</div></div>'+
+      '<div class="card panel settings-card"><h3>🛡 Tasdiqlash rejimi</h3><select class="field" id="admVerify"><option value="phone" '+(s.verify_mode==='phone'?'selected':'')+'>Telefon orqali</option><option value="manual" '+(s.verify_mode==='manual'?'selected':'')+'>Hujjat tekshiruvi</option></select>'+adminBtn('Saqlash','save-verify')+'</div>'+
+      '<div class="card panel settings-card"><h3>🤖 AI provayderi</h3><select class="field" id="admAI"><option value="gemini" '+(s.ai_primary==='gemini'?'selected':'')+'>Gemini</option><option value="openai" '+(s.ai_primary==='openai'?'selected':'')+'>ChatGPT</option></select>'+adminBtn('Saqlash','save-ai')+'</div>'+
+      '<div class="card panel settings-card"><h3>🔑 Super Admin paroli</h3><input class="field" id="admPassword" type="password" placeholder="Yangi parol (8+ belgi)">'+adminBtn('Parolni almashtirish','save-password')+'</div>';
+    } else if(state.adminTab==="audit") {
+      host.innerHTML='<div class="loading">Audit yuklanmoqda…</div>';
+      api("/api/admin/audit").then(a=>{host.innerHTML=a.items.map(i=>adminCard(esc(i.action),'<p class="admin-muted">'+esc(i.created_at)+' · #'+esc(i.target)+'</p><p>'+esc(i.details||"")+'</p>')).join("")||'<div class="card empty">Yozuvlar yo‘q.</div>';}).catch(e=>host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>');
+    }
+    host.onclick=adminActionHandler;
+    host.onchange=async e=>{const c=e.target.closest("[data-feature]");if(!c)return;try{await adminPost("/api/admin/plan",{action:"toggle_feature",key:c.dataset.key,feature:c.dataset.feature});await loadAdminOverview();state.adminTab="plans";renderAdminTab();}catch(err){toast(errText(err));}};
+  }
+  async function adminPost(path,data){return api(path,{method:"POST",body:JSON.stringify(data)});}
+  async function adminActionHandler(e) {
+    const b=e.target.closest("[data-admin-action]");if(!b)return;const a=b.dataset.adminAction,id=b.dataset.id;
+    try {
+      if(a==="refresh"){await loadAdminOverview();return;}
+      if(a==="go-queue"){state.adminTab="queue";renderAdminTab();return;}
+      if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:$('[data-plan-for="'+id+'"]').value});}
+      else if(["extend","toggle_active","toggle_ai","approve"].includes(a)){await adminPost("/api/admin/teacher/"+id,{action:a});}
+      else if(a==="reject"){const reason=prompt("Rad etish sababini kiriting:")||"Sabab ko‘rsatilmagan";await adminPost("/api/admin/teacher/"+id,{action:"reject",reason});}
+      else if(a==="regen"){const z=await adminPost("/api/admin/teacher/"+id,{action:"regenerate_code"});alert("Yangi kod: "+z.code);}
+      else if(a==="delete"){if(!confirm("O‘qituvchi va unga tegishli ma’lumotlar o‘chirilsinmi?"))return;await adminPost("/api/admin/teacher/"+id,{action:"delete"});}
+      else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>obj[i.dataset.field]=i.value);await adminPost("/api/admin/plan",obj);}
+      else if(a==="toggle-plan"){await adminPost("/api/admin/plan",{action:"toggle_active",key:id});}
+      else if(a==="create-plan"){await adminPost("/api/admin/plan",{action:"create",name:$("newPlanName").value,price:$("newPlanPrice").value||0,student_limit:$("newPlanLimit").value||0,duration_days:$("newPlanDays").value||0});}
+      else if(a==="save-channel"){await adminPost("/api/admin/settings",{key:"required_channel",value:$("admChannel").value});}
+      else if(a==="toggle-sub"){await adminPost("/api/admin/settings",{key:"mandatory_sub",value:state.adminData.settings.mandatory_sub?"0":"1"});}
+      else if(a==="save-support"){await adminPost("/api/admin/settings",{key:"support_contact",value:$("admSupport").value});await adminPost("/api/admin/settings",{key:"support_label",value:$("admSupportLabel").value});}
+      else if(a==="toggle-support"){await adminPost("/api/admin/settings",{key:"support_enabled",value:state.adminData.settings.support_enabled?"0":"1"});}
+      else if(a==="save-verify"){await adminPost("/api/admin/settings",{key:"verify_mode",value:$("admVerify").value});}
+      else if(a==="save-ai"){await adminPost("/api/admin/settings",{key:"ai_primary",value:$("admAI").value});}
+      else if(a==="save-password"){await adminPost("/api/admin/password",{password:$("admPassword").value});$("admPassword").value="";}
+      toast("O‘zgarish saqlandi.");await loadAdminOverview();renderAdminTab();
+    } catch(err){toast(err.data?.error==="channel_required"?"Avval kanalni saqlang.":err.data?.error==="bot_not_admin"?"Botni kanalga administrator qiling.":errText(err));}
   }
 
   /* ---------- O'QITUVCHI ---------- */
@@ -1494,6 +1615,16 @@
   $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
   $("aiStop").addEventListener("click", stopAi);
 
+  .admin-nav{display:flex;gap:7px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+  .admin-nav .chip-btn{min-height:38px;padding:0 11px;font-size:12px}
+  .admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+  .admin-kpi{padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+  .admin-kpi b{display:block;font-size:23px;font-weight:850}.admin-kpi span,.admin-muted{font-size:12px;color:var(--muted)}
+  .admin-item{padding:14px;margin-top:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+  .admin-item h4{margin:0 0 5px;font-size:15px}.admin-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+  .admin-actions .chip-btn{min-height:38px;padding:0 10px;font-size:12px}.admin-form{display:grid;gap:9px;margin-top:10px}
+  .admin-form .field{width:100%}.admin-feature{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px}
+  .admin-feature input{width:18px;height:18px}
   /* Mobil qurilmalarda og‘ir blur va doimiy animatsiyalarni cheklash */
   const perfStyle = document.createElement("style");
   perfStyle.textContent = `
