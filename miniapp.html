@@ -580,7 +580,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, celebratedToday: false };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, settingsLoaded: false, celebratedToday: false };
 
   /* ---------- Theme ---------- */
   function applyTheme() {
@@ -664,6 +664,7 @@
       state.settingsSubjects = data.subjects || [];
       state.settingsChannel = data.channel_id || "";
       state.settingsChannelEnabled = !!data.channel_enabled;
+      state.settingsLoaded = true;
       host.innerHTML = `
         <div class="card panel settings-card">
           <h3>📢 Telegram kanalini ulash</h3>
@@ -689,6 +690,7 @@
         try {
           const saved = await api("/api/settings/channel", {method:"POST", body:JSON.stringify({channel_id:value})});
           state.settingsChannel = saved.channel_id || "";
+          state.settingsLoaded = false;
           toast(saved.channel_title ? "Kanal ulandi: " + saved.channel_title : "Kanal sozlamasi saqlandi.");
           await loadTeacherSettings();
         } catch (err) {
@@ -699,7 +701,7 @@
         }
       };
       $("removeChannelSetting").onclick = async () => {
-        try { await api("/api/settings/channel", {method:"POST",body:JSON.stringify({channel_id:""})}); toast("Kanal uzildi."); await loadTeacherSettings(); }
+        try { await api("/api/settings/channel", {method:"POST",body:JSON.stringify({channel_id:""})}); state.settingsLoaded = false; toast("Kanal uzildi."); await loadTeacherSettings(); }
         catch(err) { toast(errText(err)); }
       };
       $("codeSearchInput").addEventListener("input", renderStudentCodes);
@@ -900,7 +902,7 @@
     if (state.tab === "grades") renderGrid();
     if (state.tab === "attendance") renderAttendance();
     if (state.tab === "stats") renderStats();
-    if (state.tab === "settings") loadTeacherSettings();
+    if (state.tab === "settings" && !state.settingsLoaded) loadTeacherSettings();
   }
 
   function renderGrid() {
