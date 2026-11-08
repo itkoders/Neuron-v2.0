@@ -266,6 +266,11 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_methods (
         teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
         bank_name TEXT DEFAULT '', updated_at TEXT)""")
+    payment_cols = {r[1] for r in run("PRAGMA table_info(teacher_payment_methods)", fetch="all")}
+    if "payment_type" not in payment_cols:
+        run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_type TEXT DEFAULT 'card'")
+    if "payment_details" not in payment_cols:
+        run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_details TEXT DEFAULT ''")
     run("""CREATE TABLE IF NOT EXISTS payment_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id BIGINT NOT NULL,
         amount INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT DEFAULT '', status TEXT DEFAULT 'pending',
@@ -692,8 +697,9 @@ def score_average(st, include_zero_idx=None):
 
 
 def teacher_payment_method(teacher_id):
-    row = run("SELECT card_number, card_holder, bank_name FROM teacher_payment_methods WHERE teacher_id = ?", (teacher_id,), fetch="one")
-    return {"card_number": row[0], "card_holder": row[1], "bank_name": row[2]} if row else None
+    row = run("SELECT card_number, card_holder, bank_name, payment_type, payment_details FROM teacher_payment_methods WHERE teacher_id = ?", (teacher_id,), fetch="one")
+    return {"card_number": row[0], "card_holder": row[1], "bank_name": row[2],
+            "payment_type": row[3] or "card", "payment_details": row[4] or ""} if row else None
 
 
 def db_parent_student_ids(parent_chat_id):
@@ -974,7 +980,8 @@ def main_menu_kb(user_id=None):
         [btn("💼 Tariflar", "public_plans"), btn("❓ Ko'p so'raladigan savollar", "faq_menu")],
     ]
     if user_id is not None and is_super(user_id):
-        rows.append([btn("⚙️ Super Admin", "super_admin_login_prompt")])
+        rows.append([InlineKeyboardButton(text="🛡 Super Admin ilovasi", web_app=WebAppInfo(url=miniapp_role_url("admin"))) ] if MINIAPP_URL else [btn("⚙️ Super Admin", "super_admin_login_prompt")])
+        rows.append([btn("⚙️ Bot orqali boshqarish", "super_admin_login_prompt")])
     return kb(rows)
 
 
@@ -4279,7 +4286,10 @@ def miniapp_identity(request):
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
-    if requested_role not in {"", "teacher", "student", "parent"}:
+    if requested_role == "admin":
+        if is_super(uid): return "admin", uid, None
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
+    if requested_role not in {"", "teacher", "student", "parent", "admin"}:
         return None, None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
     row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
@@ -4306,6 +4316,267 @@ def miniapp_identity(request):
     return None, None, web.json_response({"error": "forbidden"}, status=403)
 
 
+
+
+def miniapp_admin(request):
+    uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not uid:
+        return None, web.json_response({"error": "auth"}, status=401)
+    if not is_super(uid) or request.headers.get("X-App-Role", "").strip().lower() != "admin":
+        return None, web.json_response({"error": "forbidden"}, status=403)
+    return uid, None
+
+
+def _admin_overview_payload():
+    teachers = db_all_teachers()
+    items = []
+    for t in teachers:
+        p, expired_now = effective_plan(t)
+        items.append({
+            "id": t["id"], "name": teacher_name(t), "phone": t.get("phone") or "",
+            "active": bool(t["active"]), "approved": bool(t.get("admin_approved")),
+            "verify_status": t.get("verify_status") or "", "plan_key": p["key"],
+            "plan_name": p["name"], "plan_expires": t.get("plan_expires") or "",
+            "students": teacher_student_count(t["id"]), "student_limit": p["student_limit"],
+            "ai_enabled": db_get_setting(f"ai_allowed_{t['id']}") == "1",
+            "created_at": t.get("created_at") or ""
+        })
+    plans = []
+    for p in db_plans():
+        plans.append({"key": p["key"], "name": p["name"], "price": p["price"],
+            "student_limit": p["student_limit"], "subject_limit": p.get("subject_limit", 0),
+            "duration_days": p["duration_days"], "active": bool(p["active"]),
+            "features": sorted(p["features"])})
+    queue = [x for x in items if not x["approved"] and x["verify_status"] in ("approved", "admin_pending", "doc_pending")]
+    stats = {
+        "teachers": len(teachers), "active_teachers": sum(1 for t in teachers if t["active"]),
+        "students": run("SELECT COUNT(*) FROM students", fetch="one")[0],
+        "paid_teachers": sum(1 for t in teachers if effective_plan(t)[0]["price"] > 0)
+    }
+    settings = {
+        "mandatory_sub": db_get_setting("mandatory_sub") == "1",
+        "required_channel": db_get_setting("required_channel") or "",
+        "support_contact": db_get_setting("support_contact") or "",
+        "support_label": db_get_setting("support_label") or "Yordam",
+        "support_enabled": db_get_setting("support_enabled") == "1",
+        "verify_mode": verify_mode(), "ai_primary": ai_primary()
+    }
+    return {"stats": stats, "teachers": items, "plans": plans, "queue": queue,
+            "settings": settings, "features": FEATURES}
+
+
+async def api_admin_overview(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    return web.json_response(_admin_overview_payload())
+
+
+async def api_admin_teacher_action(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    try: tid = int(request.match_info["tid"])
+    except (ValueError, KeyError): return web.json_response({"error":"bad_id"}, status=400)
+    body = await _read_json(request)
+    action = str(body.get("action", "")).strip()
+    t = db_teacher(tid)
+    if not t: return web.json_response({"error":"not_found"}, status=404)
+    if action == "approve":
+        run("UPDATE teachers SET verify_status='approved', admin_approved=1, verify_note=NULL WHERE id=?", (tid,))
+        audit(uid, "verify_approve", str(tid))
+        await notify_teacher(tid, "✅ Hisobingiz tasdiqlandi. Endi ilovadan foydalanishingiz mumkin.")
+    elif action == "reject":
+        reason = str(body.get("reason", "Sabab ko‘rsatilmagan")).strip()[:200] or "Sabab ko‘rsatilmagan"
+        run("UPDATE teachers SET verify_status='rejected', admin_approved=0, verify_note=? WHERE id=?", (reason, tid))
+        audit(uid, "verify_reject", str(tid), reason)
+        await notify_teacher(tid, f"❌ Hisobingiz rad etildi. Sabab: {reason}")
+    elif action == "toggle_active":
+        active = 0 if t["active"] else 1
+        run("UPDATE teachers SET active=?, chat_id=CASE WHEN ?=0 THEN NULL ELSE chat_id END WHERE id=?", (active, active, tid))
+        audit(uid, "teacher_active", str(tid), str(active))
+    elif action == "assign_plan":
+        key = str(body.get("plan_key", ""))
+        p = db_plan(key)
+        if not p or not p["active"]: return web.json_response({"error":"bad_plan"}, status=400)
+        expires = (datetime.now().date() + timedelta(days=p["duration_days"])).strftime("%d.%m.%Y") if p["duration_days"] else None
+        run("UPDATE teachers SET plan_key=?, plan_expires=? WHERE id=?", (key, expires, tid))
+        audit(uid, "plan_assign", str(tid), f"{key} until {expires or 'cheksiz'}")
+        await notify_teacher(tid, f"💼 Sizga {p['name']} tarifi berildi.")
+    elif action == "extend":
+        base = datetime.now().date()
+        if t["plan_expires"]:
+            try: base = max(base, datetime.strptime(t["plan_expires"], "%d.%m.%Y").date())
+            except ValueError: pass
+        days = max(1, min(3650, int(body.get("days", 30))))
+        expiry = (base + timedelta(days=days)).strftime("%d.%m.%Y")
+        run("UPDATE teachers SET plan_expires=? WHERE id=?", (expiry, tid))
+        audit(uid, "plan_extend", str(tid), expiry)
+    elif action == "toggle_ai":
+        key = f"ai_allowed_{tid}"
+        enabled = db_get_setting(key) != "1"
+        db_set_setting(key, "1" if enabled else "0")
+        audit(uid, "ai_allowed", str(tid), "on" if enabled else "off")
+    elif action == "regenerate_code":
+        code = new_teacher_code()
+        run("UPDATE teachers SET code_lookup=?, chat_id=NULL WHERE id=?", (teacher_lookup(code), tid))
+        audit(uid, "code_regen", str(tid))
+        return web.json_response({"ok":True, "code":code})
+    elif action == "delete":
+        audit(uid, "teacher_delete", str(tid))
+        delete_teacher(tid)
+    else:
+        return web.json_response({"error":"bad_action"}, status=400)
+    return web.json_response({"ok":True})
+
+
+async def api_admin_plan_action(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    body = await _read_json(request)
+    action = str(body.get("action", "save"))
+    key = str(body.get("key", "")).strip().lower()
+    if action == "create":
+        name = str(body.get("name", "")).strip()[:30]
+        key = re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_")[:24]
+        if not name or not key or db_plan(key): return web.json_response({"error":"bad_plan"}, status=400)
+        price = max(0, min(100000000, int(body.get("price", 0))))
+        limit = max(0, min(1000000, int(body.get("student_limit", 0))))
+        days = max(0, min(3650, int(body.get("duration_days", 0))))
+        run("INSERT INTO plans (key,name,price,student_limit,duration_days,features,active,subject_limit) VALUES (?,?,?,?,?,?,1,?)",
+            (key,name,price,limit,days,"scores,attendance",max(0,int(body.get("subject_limit",0)))))
+        audit(uid, "plan_create", key, name)
+        return web.json_response({"ok":True,"key":key})
+    p = db_plan(key)
+    if not p: return web.json_response({"error":"not_found"}, status=404)
+    if action == "toggle_active":
+        if key == "free": return web.json_response({"error":"free_plan_locked"}, status=400)
+        run("UPDATE plans SET active=? WHERE key=?", (0 if p["active"] else 1,key))
+        audit(uid,"plan_active",key,str(not p["active"]))
+    elif action == "toggle_feature":
+        feature = str(body.get("feature",""))
+        if feature not in FEATURES: return web.json_response({"error":"bad_feature"},status=400)
+        toggle_feature(key,feature)
+        audit(uid,"plan_feature",key,feature)
+    elif action == "save":
+        allowed = {"name","price","student_limit","subject_limit","duration_days"}
+        for field in allowed:
+            if field not in body: continue
+            value = str(body[field]).strip()
+            if field == "name":
+                if not value or len(value)>30: return web.json_response({"error":"bad_value"},status=400)
+            else:
+                try: value = int(value)
+                except ValueError: return web.json_response({"error":"bad_value"},status=400)
+                if value < 0 or value > 100000000: return web.json_response({"error":"bad_value"},status=400)
+            save_plan_field(key,field,value)
+        audit(uid,"plan_edit",key,json.dumps({k:body[k] for k in allowed if k in body},ensure_ascii=False))
+    else:
+        return web.json_response({"error":"bad_action"},status=400)
+    return web.json_response({"ok":True})
+
+
+async def api_admin_settings(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    body = await _read_json(request)
+    key = str(body.get("key",""))
+    value = str(body.get("value","")).strip()
+    if key == "required_channel":
+        if not value:
+            db_set_setting("required_channel",""); db_set_setting("required_channel_url","")
+        else:
+            if not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"-?\\d{6,}",value)):
+                return web.json_response({"error":"bad_channel"},status=400)
+            if not bot: return web.json_response({"error":"bot_unavailable"},status=503)
+            try:
+                chat = await bot.get_chat(value); me = await bot.get_me()
+                member = await bot.get_chat_member(chat.id,me.id)
+                if chat.type not in ("channel","supergroup") or member.status not in ("administrator","creator"):
+                    return web.json_response({"error":"bot_not_admin"},status=400)
+                url = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
+                if not url: url = (await bot.create_chat_invite_link(chat.id)).invite_link
+                db_set_setting("required_channel",value); db_set_setting("required_channel_url",url)
+            except Exception:
+                return web.json_response({"error":"channel_check_failed"},status=400)
+        SUB_CACHE.clear()
+    elif key == "mandatory_sub":
+        if value == "1" and not db_get_setting("required_channel"):
+            return web.json_response({"error":"channel_required"},status=400)
+        db_set_setting(key,value)
+        SUB_CACHE.clear()
+    elif key in {"support_contact","support_label","support_enabled","verify_mode","ai_primary"}:
+        if key == "support_contact":
+            if value and not (re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"\\d{5,15}",value)):
+                return web.json_response({"error":"bad_contact"},status=400)
+            if value and value[0] != "@" and not value.isdigit(): value = "@"+value
+        elif key == "support_label":
+            value = " ".join(value.split())[:32]
+            if len(value)<2: return web.json_response({"error":"bad_label"},status=400)
+        elif key == "support_enabled" and value not in {"0","1"}: return web.json_response({"error":"bad_value"},status=400)
+        elif key == "verify_mode" and value not in {"phone","manual"}: return web.json_response({"error":"bad_value"},status=400)
+        elif key == "ai_primary" and value not in {"gemini","openai"}: return web.json_response({"error":"bad_value"},status=400)
+        db_set_setting(key,value)
+    elif key.startswith("ai_allowed_"):
+        try: tid=int(key.rsplit("_",1)[1])
+        except ValueError: return web.json_response({"error":"bad_value"},status=400)
+        if not db_teacher(tid) or value not in {"0","1"}: return web.json_response({"error":"bad_value"},status=400)
+        db_set_setting(key,value)
+    else:
+        return web.json_response({"error":"bad_setting"},status=400)
+    audit(uid,"admin_setting",key,value)
+    return web.json_response({"ok":True})
+
+
+async def api_admin_password(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    body = await _read_json(request)
+    password = str(body.get("password",""))
+    if len(password)<8 or len(password)>128: return web.json_response({"error":"bad_password"},status=400)
+    db_set_setting("super_admin_password",hash_pw(password))
+    audit(uid,"super_password_change")
+    return web.json_response({"ok":True})
+
+
+async def api_admin_audit(request):
+    uid, err = miniapp_admin(request)
+    if err: return err
+    rows = run("SELECT created_at, action, target, details FROM audit_log ORDER BY id DESC LIMIT 100",fetch="all")
+    return web.json_response({"items":[{"created_at":r[0],"action":r[1],"target":r[2],"details":r[3]} for r in rows]})
+
+
+async def api_teacher_payment_settings(request):
+    t, err = miniapp_teacher(request)
+    if err: return err
+    method = teacher_payment_method(t["id"])
+    return web.json_response({"payment": method or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}})
+
+
+async def api_teacher_payment_save(request):
+    t, err = miniapp_teacher(request)
+    if err: return err
+    body = await _read_json(request)
+    kind = str(body.get("payment_type","card")).strip().lower()
+    if kind not in {"card","cash","click","payme","bank_transfer"}:
+        return web.json_response({"error":"bad_payment_type"},status=400)
+    card = re.sub(r"\\D","",str(body.get("card_number","")))[:19]
+    holder = str(body.get("card_holder","")).strip()[:80]
+    bank = str(body.get("bank_name","")).strip()[:60]
+    details = str(body.get("payment_details","")).strip()[:500]
+    if kind == "card" and (not 16<=len(card)<=19 or len(holder)<3):
+        return web.json_response({"error":"bad_card"},status=400)
+    if kind != "card" and len(details)<3:
+        return web.json_response({"error":"bad_details"},status=400)
+    run("""INSERT INTO teacher_payment_methods
+        (teacher_id,card_number,card_holder,bank_name,updated_at,payment_type,payment_details)
+        VALUES (?,?,?,?,?,?,?) ON CONFLICT(teacher_id) DO UPDATE SET
+        card_number=excluded.card_number,card_holder=excluded.card_holder,bank_name=excluded.bank_name,
+        updated_at=excluded.updated_at,payment_type=excluded.payment_type,payment_details=excluded.payment_details""",
+        (t["id"],card,holder,bank,datetime.now().strftime("%d.%m.%Y %H:%M"),kind,details))
+    audit(t["chat_id"],"miniapp_payment_settings",str(t["id"]),kind)
+    return web.json_response({"ok":True})
+
+
+
 async def api_public_settings(request):
     url = support_url()
     enabled = db_get_setting("support_enabled") == "1" and bool(url)
@@ -4326,6 +4597,7 @@ async def api_teacher_settings(request):
     return web.json_response({
         "channel_id": t.get("channel_id") or "",
         "channel_enabled": has_feature(t, "channel"),
+        "payment": teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""},
         "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
                       "code": r[3], "subject_id": r[4], "subject_name": r[5]} for r in rows]
@@ -4370,6 +4642,8 @@ async def api_me(request):
     kind, obj, err = miniapp_identity(request)
     if err:
         return err
+    if kind == "admin":
+        return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
         return web.json_response({"role": "teacher", "teacher": {"name": teacher_name(obj)},
                                   "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])],
@@ -4592,6 +4866,14 @@ async def start_web_server():
     app.router.add_get("/api/public-settings", api_public_settings)
     app.router.add_get("/api/settings", api_teacher_settings)
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
+    app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
+    app.router.add_post("/api/settings/payment", api_teacher_payment_save)
+    app.router.add_get("/api/admin/overview", api_admin_overview)
+    app.router.add_post("/api/admin/teacher/{tid}", api_admin_teacher_action)
+    app.router.add_post("/api/admin/plan", api_admin_plan_action)
+    app.router.add_post("/api/admin/settings", api_admin_settings)
+    app.router.add_post("/api/admin/password", api_admin_password)
+    app.router.add_get("/api/admin/audit", api_admin_audit)
     app.router.add_get("/api/me", api_me)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
