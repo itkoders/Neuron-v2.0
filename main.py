@@ -1042,10 +1042,14 @@ async def notify_parents_of(student_id, text):
     sent, failed = [], []
     for p_id in parent_ids:
         try:
-            await bot.send_message(p_id, text, parse_mode="Markdown")
+            await asyncio.wait_for(
+                bot.send_message(p_id, text, parse_mode="Markdown"),
+                timeout=8
+            )
             sent.append(p_id)
         except Exception as exc:
-            logging.exception("Ota-onaga xabar yuborilmadi: student_id=%s parent_chat_id=%s", student_id, p_id)
+            logging.warning("Ota-onaga xabar yuborilmadi yoki vaqt tugadi: student_id=%s parent_chat_id=%s error=%s",
+                            student_id, p_id, str(exc)[:180])
             failed.append({"chat_id": p_id, "error": str(exc)[:240]})
     return {"total": len(parent_ids), "sent": len(sent), "failed": failed}
 
@@ -4230,7 +4234,8 @@ async def api_daily_report(request):
     total_parents = sent_parents = 0
     failed_students = []
     for st in students:
-        vals = [st[f"s{k}"] for k in (1, 2, 3)]
+        # Fan nechta baholash ustuniga ega bo‘lsa, faqat shuncha ustunni chiqaramiz.
+        vals = [st[f"s{k}"] for k in range(1, min(len(labels), 3) + 1)]
         avg = score_average(st)
         # 0 ball o'rtachadan chiqarilmaydi, lekin maqtov uchun barcha bo'limlar tekshiriladi.
         message_text = (
@@ -4239,7 +4244,7 @@ async def api_daily_report(request):
             f"👤 {md(st['fio'])}\n"
             f"📚 Fan: {md(subj['name'])}\n"
             f"📅 Sana: {today}\n\n"
-            + "\n".join(f"📝 {md(labels[k])}: {vals[k]}/100" for k in range(3))
+            + "\n".join(f"📝 {md(label)}: {vals[i]}/100" for i, label in enumerate(labels[:3]))
             + f"\n\n📈 O‘rtacha natija: {avg if avg is not None else 0}/100"
             + ("\n🎉 Barakalla! Yaxshi natija."
                if avg is not None and avg >= 60 and all(v >= 50 for v in vals)
