@@ -510,6 +510,9 @@
     <section data-pane="stats" class="hidden">
       <div id="stats" style="margin-top:14px"></div>
     </section>
+    <section data-pane="settings" class="hidden">
+      <div id="settingsContent" style="margin-top:14px"><div class="loading">Sozlamalar yuklanmoqda…</div></div>
+    </section>
   </section>
 
   <!-- O'quvchi -->
@@ -556,6 +559,7 @@
   <button class="tab active" data-tab="grades"><span class="ico">📝</span>Ballar</button>
   <button class="tab" data-tab="attendance"><span class="ico">✅</span>Davomat</button>
   <button class="tab" data-tab="stats"><span class="ico">📊</span>Tahlil</button>
+  <button class="tab" data-tab="settings"><span class="ico">⚙️</span>Sozlama</button>
 </nav>
 <nav class="tabs hidden" id="tabsStudent" role="tablist">
   <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
@@ -576,7 +580,7 @@
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
-  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 } };
+  const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, celebratedToday: false };
 
   /* ---------- Theme ---------- */
   function applyTheme() {
@@ -601,7 +605,8 @@
     requestAnimationFrame(step);
     el.classList.remove("count-pop"); void el.offsetWidth; el.classList.add("count-pop");
   }
-  function burstConfetti(count = 60) {
+  function burstConfetti(count = 12) {
+    count = Math.min(16, Math.max(0, count));
     const colors = ["#818cf8", "#c084fc", "#34d399", "#fbbf24", "#f87171", "#60a5fa"];
     for (let i = 0; i < count; i++) {
       const c = document.createElement("span");
@@ -648,6 +653,85 @@
     const btn = e.target.closest && e.target.closest(".btn");
     if (btn) ripple({ currentTarget: btn, clientX: e.clientX, clientY: e.clientY });
   });
+
+  async function loadTeacherSettings() {
+    const host = $("settingsContent");
+    if (!host) return;
+    host.innerHTML = '<div class="loading">Sozlamalar yuklanmoqda…</div>';
+    try {
+      const data = await api("/api/settings");
+      state.settingsStudents = data.students || [];
+      state.settingsSubjects = data.subjects || [];
+      state.settingsChannel = data.channel_id || "";
+      state.settingsChannelEnabled = !!data.channel_enabled;
+      host.innerHTML = `
+        <div class="card panel settings-card">
+          <h3>📢 Telegram kanalini ulash</h3>
+          <p class="hint">Kanal username yoki ID sini kiriting. Bot kanalga administrator qilib qo‘shilgan bo‘lishi kerak.</p>
+          <div class="settings-row"><input class="field" id="channelSettingInput" value="${esc(state.settingsChannel)}" placeholder="@kanal yoki -100..."><button class="btn" id="saveChannelSetting" ${state.settingsChannelEnabled?"":"disabled"}>Ulash</button></div>
+          <p class="hint" id="channelSettingStatus">${state.settingsChannel ? "Ulangan kanal ID: "+esc(state.settingsChannel) : "Hozircha kanal ulanmagan."}</p>
+          <button type="button" class="chip-btn danger" id="removeChannelSetting" ${state.settingsChannel && state.settingsChannelEnabled?"":"disabled"}>Kanalni uzish</button>
+          ${state.settingsChannelEnabled ? "" : '<p class="settings-warning">Kanal integratsiyasi joriy tarifda yoqilmagan.</p>'}
+        </div>
+        <div class="card panel settings-card">
+          <h3>🔑 O‘quvchilar kirish kodlari</h3>
+          <p class="hint">Faqat sizning fanlaringizdagi o‘quvchilar kodlari ko‘rsatiladi.</p>
+          <div class="settings-row">
+            <input class="field" id="codeSearchInput" type="search" placeholder="O‘quvchi yoki guruhni qidirish…">
+            <select class="field" id="codeSubjectFilter"><option value="">Barcha fanlar</option>${state.settingsSubjects.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select>
+          </div>
+          <div id="studentCodesList" class="codes-list"></div>
+        </div>`;
+      $("saveChannelSetting").onclick = async () => {
+        const value = $("channelSettingInput").value.trim();
+        const button = $("saveChannelSetting");
+        button.disabled = true; button.textContent = "Tekshirilmoqda…";
+        try {
+          const saved = await api("/api/settings/channel", {method:"POST", body:JSON.stringify({channel_id:value})});
+          state.settingsChannel = saved.channel_id || "";
+          toast(saved.channel_title ? "Kanal ulandi: " + saved.channel_title : "Kanal sozlamasi saqlandi.");
+          await loadTeacherSettings();
+        } catch (err) {
+          const code = err.data && err.data.error;
+          const msg = ({bot_not_admin:"Botni kanalga administrator qiling.",not_channel:"Kanal username yoki ID sini kiriting.",channel_check_failed:"Kanal topilmadi yoki botning kanalga kirish huquqi yo‘q.",feature_locked:"Kanal ulash tarifingizda yoqilmagan.",bot_unavailable:"Bot hozir ulanmagan."})[code] || errText(err);
+          $("channelSettingStatus").textContent = msg;
+          button.disabled = false; button.textContent = "Ulash";
+        }
+      };
+      $("removeChannelSetting").onclick = async () => {
+        try { await api("/api/settings/channel", {method:"POST",body:JSON.stringify({channel_id:""})}); toast("Kanal uzildi."); await loadTeacherSettings(); }
+        catch(err) { toast(errText(err)); }
+      };
+      $("codeSearchInput").addEventListener("input", renderStudentCodes);
+      $("codeSubjectFilter").addEventListener("change", renderStudentCodes);
+      renderStudentCodes();
+    } catch (err) {
+      host.innerHTML = '<div class="card empty">' + esc(errText(err)) + '</div>';
+    }
+  }
+
+  function renderStudentCodes() {
+    const host = $("studentCodesList");
+    if (!host) return;
+    const q = ($("codeSearchInput")?.value || "").trim().toLowerCase();
+    const sid = $("codeSubjectFilter")?.value || "";
+    const rows = state.settingsStudents.filter(s => (!sid || String(s.subject_id) === sid) &&
+      (!q || s.fio.toLowerCase().includes(q) || (s.group_name || "").toLowerCase().includes(q) || s.code.includes(q)));
+    if (!rows.length) { host.innerHTML = '<div class="empty">O‘quvchilar topilmadi.</div>'; return; }
+    host.innerHTML = rows.map(s => `
+      <div class="code-row">
+        <div class="code-person"><b>${esc(s.fio)}</b><small>${esc(s.subject_name)} · ${esc(s.group_name)}</small></div>
+        <code>${esc(s.code)}</code><button type="button" class="chip-btn" data-copy-code="${esc(s.code)}">Nusxa</button>
+      </div>`).join("");
+    host.querySelectorAll("[data-copy-code]").forEach(b => b.addEventListener("click", async () => {
+      const value = b.dataset.copyCode;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(value);
+        else { const el=document.createElement("textarea"); el.value=value; document.body.appendChild(el); el.select(); document.execCommand("copy"); el.remove(); }
+        toast("Kod nusxalandi: " + value);
+      } catch (_) { toast("Kod: " + value); }
+    }));
+  }
 
   function renderTeacherHero() {
     const hero = $("teacherHero");
@@ -793,7 +877,7 @@
     $("grid").innerHTML = '<div class="loading">Yuklanmoqda…</div>';
     try {
       const data = await api(`/api/subject/${sid}`);
-      state.subject = data.subject; state.students = data.students; state.today = data.today || "";
+      state.subject = data.subject; state.students = data.students; state.today = data.today || ""; state.page = 0; state.celebratedToday = false;
       state.pendingScores.clear();
       renderTeacherHero();
       renderTeacherTab();
@@ -816,6 +900,7 @@
     if (state.tab === "grades") renderGrid();
     if (state.tab === "attendance") renderAttendance();
     if (state.tab === "stats") renderStats();
+    if (state.tab === "settings") loadTeacherSettings();
   }
 
   function renderGrid() {
@@ -823,7 +908,11 @@
     if (!state.subject) { wrap.innerHTML = '<div class="card empty">Fan tanlang</div>'; return; }
     if (!state.students.length) { wrap.innerHTML = '<div class="card empty">Bu fanda o‘quvchi yo‘q. Botda o‘quvchi qo‘shing.</div>'; return; }
     const labels = (state.subject.labels || []).filter(Boolean).slice(0, 3);
-    const list = visibleStudents();
+    const allList = visibleStudents();
+    const pageSize = 25;
+    const pageCount = Math.max(1, Math.ceil(allList.length / pageSize));
+    state.page = Math.min(state.page, pageCount - 1);
+    const list = allList.slice(state.page * pageSize, (state.page + 1) * pageSize);
     const head = `<tr>
       <th class="name"><button class="sort-btn" id="sortFio">O‘quvchi${state.sort === "fio" ? " ▲" : ""}</button></th>
       ${labels.map(l => `<th>${esc(l)}</th>`).join("")}<th>Amal</th></tr>`;
@@ -834,12 +923,14 @@
       <td><button type="button" class="del-btn" data-delete-student="${s.id}" aria-label="O‘chirish">🗑</button></td>
       </tr>`).join("");
     const avg = labels.map((_, k) => {
-      const vals = list.map(s => s["s" + (k + 1)]).filter(v => v > 0);
+      const vals = allList.map(s => s["s" + (k + 1)]).filter(v => v > 0);
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
     });
+    const pager = pageCount > 1 ? `<div class="pager"><button type="button" class="chip-btn" data-page="-1" ${state.page===0?"disabled":""}>‹ Oldingi</button><span>${state.page+1} / ${pageCount} · ${allList.length} ta</span><button type="button" class="chip-btn" data-page="1" ${state.page>=pageCount-1?"disabled":""}>Keyingi ›</button></div>` : "";
     wrap.innerHTML = `<table class="journal-table"><thead>${head}</thead><tbody>${rows}</tbody>
-      <tfoot><tr><td class="name">O‘rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}<td>—</td></tr></tfoot></table>`;
-    $("sortFio").onclick = () => { state.sort = "fio"; renderGrid(); };
+      <tfoot><tr><td class="name">O‘rtacha</td>${avg.map(a => `<td>${a}</td>`).join("")}<td>—</td></tr></tfoot></table>${pager}`;
+    wrap.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => { state.page += Number(b.dataset.page); renderGrid(); }));
+    $("sortFio").onclick = () => { state.sort = "fio"; state.page = 0; renderGrid(); };
     wrap.querySelectorAll("[data-delete-student]").forEach(btn => btn.addEventListener("click", async () => {
       const studentId = Number(btn.dataset.deleteStudent);
       const student = state.students.find(x => x.id === studentId);
@@ -902,19 +993,19 @@
     try {
       const r = await api("/api/score", { method: "POST", body: JSON.stringify({ student_id: id, idx, value: val }) });
       const s = state.students.find(x => x.id === id);
+      const previousValue = s ? Number(s["s" + idx] || 0) : 0;
       if (s) { s["s" + idx] = val; s.last_score_date = r.last || r.today; }
       state.today = r.today || state.today;
       const td = inp.closest("td");
       td.className = tone(val);
       td.classList.add("pop");
       setTimeout(() => td.classList.remove("pop"), 520);
-      if (val >= 85) sparkleAt(td);
+      if (val >= 85 && val > previousValue) sparkleAt(td);
       const row = inp.closest("tr");
       if (row) { row.classList.remove("row-flash"); void row.offsetWidth; row.classList.add("row-flash"); }
       setStatus("Saqlandi ✓", "ok");
       renderTeacherHero();
-      const allScored = state.students.length && state.students.every(x => state.subject.labels.slice(0, 1).every((_, k) => x["s" + (k + 1)] > 0));
-      if (allScored) burstConfetti(80);
+      if (r.all_scored_today && !state.celebratedToday) { state.celebratedToday = true; burstConfetti(12); }
       if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
     } catch (err) {
       inp.closest("td").className = "cell-err";
@@ -1394,12 +1485,33 @@
     } catch(err) { toast(errText(err)); }
   });
   document.querySelectorAll("[data-theme-choice]").forEach(b => b.addEventListener("click", () => { localStorage.setItem("neuron-theme", b.dataset.themeChoice); applyTheme(); }));
-  $("search").addEventListener("input", e => { state.query = e.target.value; renderTeacherTab(); });
+  $("search").addEventListener("input", e => { state.query = e.target.value; state.page = 0; renderTeacherTab(); });
   $("topicBtn").addEventListener("click", startAi);
   $("topicInput").addEventListener("keydown", e => { if (e.key === "Enter") startAi(); });
   $("answerBtn").addEventListener("click", sendAnswer);
   $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
   $("aiStop").addEventListener("click", stopAi);
+
+  /* Mobil qurilmalarda og‘ir blur va doimiy animatsiyalarni cheklash */
+  const perfStyle = document.createElement("style");
+  perfStyle.textContent = `
+    .pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 4px;color:var(--muted);font-size:12px}
+    .settings-card{margin-top:14px}
+    .settings-card h3{margin:0 0 8px}
+    .settings-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:10px 0}
+    .settings-row .field{min-width:0;width:100%}
+    .settings-warning{color:var(--warn);font-size:12px;margin:8px 0 0}
+    .codes-list{display:grid;gap:8px;margin-top:12px}
+    .code-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px}
+    .code-person{min-width:0;display:grid;gap:3px}
+    .code-person b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .code-person small{color:var(--muted);font-size:11px}
+    .code-row code{font-size:16px;font-weight:800;letter-spacing:2px}
+    @media(max-width:520px){.settings-row{grid-template-columns:1fr}.code-row{grid-template-columns:minmax(0,1fr) auto}.code-row .chip-btn{grid-column:2;grid-row:1 / span 2}.code-row code{justify-self:end}}
+    @media(max-width:700px){.hero,.card,.panel{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+  `;
+  document.head.appendChild(perfStyle);
 
   /* Klaviatura ochilganda pastki navigatsiya yashiriladi, jadval esa scroll qilinadi */
   const journalInputSelector = '.journal-table input';
