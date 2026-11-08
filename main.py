@@ -683,7 +683,7 @@ SCORE_SQL = {
 
 
 def db_set_score(s_id, idx, value):
-    run(SCORE_SQL[idx], (max(0, min(100, value)), datetime.now().strftime("%d.%m.%Y"), s_id))
+    run(SCORE_SQL[idx], (max(0, min(100, value)), local_now().strftime("%d.%m.%Y"), s_id))
     st = db_student(s_id)
     if st:
         db_save_daily_history(s_id, st)
