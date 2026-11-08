@@ -1247,7 +1247,7 @@ def create_daily_report_images(students, subject_name, labels):
         draw = ImageDraw.Draw(img)
         font, bold_font, title_font = get_font(14), get_font(14, True), get_font(18, True)
         draw.rectangle([20, 20, 930, 75], fill="#1E40AF")
-        today = datetime.now().strftime("%d.%m.%Y")
+        today = local_now().strftime("%d.%m.%Y")
         draw.text((475, 47), f"{subject_name} ({today}) — {batch_idx + 1}-sahifa", fill="#FFFFFF", font=title_font, anchor="mm")
         col_tr, col_fio, col_dav, col_sub = 50, 370, 130, 120
         sub_y = 90
@@ -1808,7 +1808,7 @@ async def tp_list(call: types.CallbackQuery):
         return
     icons = {
         "stu": lambda s: "👤",
-        "sc": lambda s: "🟢" if s["last_score_date"] == datetime.now().strftime("%d.%m.%Y") else "🟡",
+        "sc": lambda s: "🟢" if s["last_score_date"] == local_now().strftime("%d.%m.%Y") else "🟡",
         "att": lambda s: "✅" if s["davomat"] == "Keldi" else ("❌" if s["davomat"] == "Kelmadi" else "🟡"),
         "pay": lambda s: "✅" if s["payment_status"] == PAID else "❌",
         "nt": lambda s: "💬",
@@ -4142,7 +4142,7 @@ async def api_subject(request):
     students = db_students(t["id"], sid)
     return web.json_response({"subject": _subj_payload(subj),
                               "students": [_stu_payload(s) for s in students.values()],
-                              "today": datetime.now().strftime("%d.%m.%Y")})
+                              "today": local_now().strftime("%d.%m.%Y")})
 
 
 async def api_score(request):
