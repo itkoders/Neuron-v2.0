@@ -528,7 +528,10 @@
   </section>
   <!-- O'quvchi -->
   <section id="studentView" class="hidden">
-    <section data-spane="mine"><div id="mine" style="margin-top:14px"></div></section>
+    <section data-spane="mine">
+      <button type="button" class="chip-btn" id="refreshStudent" style="width:100%;margin-top:12px">↻ Natijalarni yangilash</button>
+      <div id="mine" style="margin-top:14px"></div>
+    </section>
     <section data-spane="ai" class="hidden">
       <div class="card panel" id="aiTopicCard" style="margin-top:14px">
         <h3>🤖 Mavzuni tanlang</h3>
@@ -561,6 +564,7 @@
       <h3>👨‍👩‍👧 Ota-ona kabineti</h3>
       <p class="hint" style="margin:0 0 6px">Farzandingizning o‘quv natijalari va holati</p>
       <select id="parentChildSelect" aria-label="Farzandni tanlang" style="width:100%"></select>
+      <button type="button" class="chip-btn" id="refreshParent" style="margin-top:10px;width:100%">↻ Natijalarni yangilash</button>
     </div>
     <div id="parentContent" style="display:grid;gap:12px;margin-top:12px"><div class="loading">Ma’lumotlar yuklanmoqda…</div></div>
   </section>
@@ -1548,6 +1552,14 @@
     if (state.stab === "mine") loadOverview();
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  $("refreshStudent").addEventListener("click", async () => {
+    const b = $("refreshStudent"); b.disabled = true; b.textContent = "⏳ Yangilanmoqda";
+    try { await loadOverview(); } finally { b.disabled = false; b.textContent = "↻ Natijalarni yangilash"; }
+  });
+  $("refreshParent").addEventListener("click", async () => {
+    const b = $("refreshParent"); b.disabled = true; b.textContent = "⏳ Yangilanmoqda";
+    try { await loadParentOverview(); } finally { b.disabled = false; b.textContent = "↻ Natijalarni yangilash"; }
+  });
   $("refreshJournal").addEventListener("click", async () => {
     if (!state.subject) { toast("Avval fan tanlang."); return; }
     if (state.pendingScores.size) { toast("Ball saqlanishini kuting."); return; }
