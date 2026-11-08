@@ -4505,7 +4505,7 @@ async def api_admin_settings(request):
         SUB_CACHE.clear()
     elif key in {"support_contact","support_label","support_enabled","verify_mode","ai_primary"}:
         if key == "support_contact":
-            if value and not (re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"\\d{5,15}",value)):
+            if value and not (re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"\d{5,15}",value)):
                 return web.json_response({"error":"bad_contact"},status=400)
             if value and value[0] != "@" and not value.isdigit(): value = "@"+value
         elif key == "support_label":
@@ -4558,7 +4558,7 @@ async def api_teacher_payment_save(request):
     kind = str(body.get("payment_type","card")).strip().lower()
     if kind not in {"card","cash","click","payme","bank_transfer"}:
         return web.json_response({"error":"bad_payment_type"},status=400)
-    card = re.sub(r"\\D","",str(body.get("card_number","")))[:19]
+    card = re.sub(r"\D","",str(body.get("card_number","")))[:19]
     holder = str(body.get("card_holder","")).strip()[:80]
     bank = str(body.get("bank_name","")).strip()[:60]
     details = str(body.get("payment_details","")).strip()[:500]
@@ -4758,12 +4758,14 @@ async def api_parent_payment(request):
     if st["payment_status"] == PAID:
         return web.json_response({"error": "already_paid"}, status=409)
     method = str(fields.get("method", "")).strip()
-    if method not in {"Karta orqali", "Naqd pul", "Boshqa usul"}:
-        return web.json_response({"error": "bad_method"}, status=400)
+    card = teacher_payment_method(st["teacher_id"])
+    payment_labels = {"card":"Karta orqali","cash":"Naqd pul","click":"Click","payme":"Payme","bank_transfer":"Bank o‘tkazmasi"}
+    expected_method = payment_labels.get((card or {}).get("payment_type", "card"), "Karta orqali")
+    if not card or method != expected_method:
+        return web.json_response({"error": "payment_method_not_configured"}, status=400)
     if not receipt:
         return web.json_response({"error": "receipt_required"}, status=400)
-    card = teacher_payment_method(st["teacher_id"])
-    if method == "Karta orqali" and not card:
+    if expected_method == "Karta orqali" and not card.get("card_number"):
         return web.json_response({"error": "card_not_set"}, status=400)
     pending = run("SELECT id FROM payment_requests WHERE student_id=? AND parent_chat_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
                   (sid, parent_id), fetch="one")
