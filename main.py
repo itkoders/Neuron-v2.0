@@ -3949,6 +3949,8 @@ async def scheduled_broadcast_once():
 async def background_loop():
     while True:
         try:
+            # Yangi kun kirganda jurnalni bir daqiqa ichida avtomatik yangilash.
+            check_and_reset_daily_data()
             await auto_notify_once()
             await scheduled_broadcast_once()
         except Exception:
