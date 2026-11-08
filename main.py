@@ -4281,41 +4281,60 @@ AI_SESSIONS = {}  # student_id -> MemState (bot qayta ishga tushsa, tozalanadi)
 
 
 def miniapp_identity(request):
-    """Telegram WebApp imzosini tekshiradi va teacher/student/parent rolini alohida tasdiqlaydi."""
+    """Telegram WebApp imzosini tekshiradi va faqat kerakli rol uchun DB tekshiruvini bajaradi."""
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
+
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
     if requested_role == "admin":
-        if is_super(uid): return "admin", uid, None
+        if is_super(uid):
+            return "admin", uid, None
         return None, None, web.json_response({"error": "forbidden"}, status=403)
-    if requested_role not in {"", "teacher", "student", "parent", "admin"}:
+    if requested_role not in {"", "teacher", "student", "parent"}:
         return None, None, web.json_response({"error": "forbidden"}, status=403)
-    t = teacher_by_chat(uid)
-    row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
-    st = db_student(row[0]) if row else None
-    parent_ids = db_parent_miniapp_student_ids(uid)
-    if not requested_role:
-        roles = (["teacher"] if t else []) + (["student"] if st else []) + (["parent"] if parent_ids else [])
-        if len(roles) > 1:
-            return None, None, web.json_response({"error": "role_required"}, status=409)
-        requested_role = roles[0] if roles else ""
+
+    # Bot havolasida rol aniq berilgan bo'lsa, boshqa rollar bazasini tekshirmaymiz.
     if requested_role == "teacher":
-        if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "mini_app"):
-            return None, None, web.json_response({"error": "forbidden"}, status=403)
-        return "teacher", t, None
+        t = teacher_by_chat(uid)
+        if t and t["active"] and t["verify_status"] == "approved" and t.get("admin_approved") and has_feature(t, "mini_app"):
+            return "teacher", t, None
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
+
     if requested_role == "student":
+        row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
+        st = db_student(row[0]) if row else None
         teacher = db_teacher(st["teacher_id"]) if st else None
         if st and teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher.get("admin_approved") and has_feature(teacher, "mini_app"):
             return "student", st, None
         return None, None, web.json_response({"error": "forbidden"}, status=403)
+
     if requested_role == "parent":
-        if not parent_ids:
-            return None, None, web.json_response({"error": "forbidden"}, status=403)
+        if db_parent_miniapp_student_ids(uid):
+            return "parent", uid, None
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
+
+    # Rol parametrisiz eski havolalar uchun avtomatik aniqlash.
+    t = teacher_by_chat(uid)
+    row = run("SELECT student_id FROM student_links WHERE chat_id = ?", (uid,), fetch="one")
+    st = db_student(row[0]) if row else None
+    parent_ids = db_parent_miniapp_student_ids(uid)
+    roles = (["teacher"] if t else []) + (["student"] if st else []) + (["parent"] if parent_ids else [])
+    if len(roles) > 1:
+        return None, None, web.json_response({"error": "role_required"}, status=409)
+    if not roles:
+        return None, None, web.json_response({"error": "forbidden"}, status=403)
+
+    role = roles[0]
+    if role == "teacher" and t and t["active"] and t["verify_status"] == "approved" and t.get("admin_approved") and has_feature(t, "mini_app"):
+        return "teacher", t, None
+    if role == "student" and st:
+        teacher = db_teacher(st["teacher_id"])
+        if teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher.get("admin_approved") and has_feature(teacher, "mini_app"):
+            return "student", st, None
+    if role == "parent" and parent_ids:
         return "parent", uid, None
     return None, None, web.json_response({"error": "forbidden"}, status=403)
-
-
 
 
 def miniapp_admin(request):
