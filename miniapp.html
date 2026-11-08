@@ -958,7 +958,7 @@
     try {
       if(a==="refresh"){await loadAdminOverview();return;}
       if(a==="go-queue"){state.adminTab="queue";renderAdminTab();return;}
-      if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:$('[data-plan-for="'+id+'"]').value});}
+      if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:document.querySelector('[data-plan-for="'+id+'"]').value});}
       else if(["extend","toggle_active","toggle_ai","approve"].includes(a)){await adminPost("/api/admin/teacher/"+id,{action:a});}
       else if(a==="reject"){const reason=prompt("Rad etish sababini kiriting:")||"Sabab ko‘rsatilmagan";await adminPost("/api/admin/teacher/"+id,{action:"reject",reason});}
       else if(a==="regen"){const z=await adminPost("/api/admin/teacher/"+id,{action:"regenerate_code"});alert("Yangi kod: "+z.code);}
