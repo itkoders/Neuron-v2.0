@@ -4313,6 +4313,59 @@ async def api_public_settings(request):
     return web.json_response({"support": {"enabled": enabled, "label": label, "url": url if enabled else ""}})
 
 
+async def api_teacher_settings(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    rows = run(
+        "SELECT s.id, s.fio, s.group_name, s.code, s.subject_id, sub.name "
+        "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
+        "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
+        (t["id"],), fetch="all"
+    )
+    return web.json_response({
+        "channel_id": t.get("channel_id") or "",
+        "channel_enabled": has_feature(t, "channel"),
+        "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
+        "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
+                      "code": r[3], "subject_id": r[4], "subject_name": r[5]} for r in rows]
+    })
+
+
+async def api_teacher_channel_save(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    if not has_feature(t, "channel"):
+        return web.json_response({"error": "feature_locked", "feature": "channel"}, status=403)
+    body = await _read_json(request)
+    channel = str(body.get("channel_id", "")).strip()
+    if not channel:
+        run("UPDATE teachers SET channel_id = NULL WHERE id = ?", (t["id"],))
+        audit(t["chat_id"], "miniapp_channel_remove")
+        return web.json_response({"ok": True, "channel_id": ""})
+    if len(channel) > 120:
+        return web.json_response({"error": "bad_channel"}, status=400)
+    if not bot:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+    try:
+        chat = await bot.get_chat(channel)
+        if chat.type not in ("channel", "supergroup"):
+            return web.json_response({"error": "not_channel"}, status=400)
+        me = await bot.get_me()
+        member = await bot.get_chat_member(chat.id, me.id)
+        if member.status not in ("administrator", "creator"):
+            return web.json_response({"error": "bot_not_admin"}, status=400)
+        saved_id = str(chat.id)
+        run("UPDATE teachers SET channel_id = ? WHERE id = ?", (saved_id, t["id"]))
+        audit(t["chat_id"], "miniapp_channel_save", saved_id, getattr(chat, "title", "") or "")
+        return web.json_response({"ok": True, "channel_id": saved_id,
+                                  "channel_title": getattr(chat, "title", "") or saved_id})
+    except Exception:
+        logging.exception("Mini App kanalini ulashda xato")
+        return web.json_response({"error": "channel_check_failed"}, status=400)
+
+
 async def api_me(request):
     kind, obj, err = miniapp_identity(request)
     if err:
@@ -4537,6 +4590,8 @@ async def start_web_server():
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/public-settings", api_public_settings)
+    app.router.add_get("/api/settings", api_teacher_settings)
+    app.router.add_post("/api/settings/channel", api_teacher_channel_save)
     app.router.add_get("/api/me", api_me)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
