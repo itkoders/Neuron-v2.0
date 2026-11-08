@@ -1617,19 +1617,19 @@
   $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
   $("aiStop").addEventListener("click", stopAi);
 
-  .admin-nav{display:flex;gap:7px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
-  .admin-nav .chip-btn{min-height:38px;padding:0 11px;font-size:12px}
-  .admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
-  .admin-kpi{padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
-  .admin-kpi b{display:block;font-size:23px;font-weight:850}.admin-kpi span,.admin-muted{font-size:12px;color:var(--muted)}
-  .admin-item{padding:14px;margin-top:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
-  .admin-item h4{margin:0 0 5px;font-size:15px}.admin-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-  .admin-actions .chip-btn{min-height:38px;padding:0 10px;font-size:12px}.admin-form{display:grid;gap:9px;margin-top:10px}
-  .admin-form .field{width:100%}.admin-feature{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px}
-  .admin-feature input{width:18px;height:18px}
   /* Mobil qurilmalarda og‘ir blur va doimiy animatsiyalarni cheklash */
   const perfStyle = document.createElement("style");
   perfStyle.textContent = `
+    .admin-nav{display:flex;gap:7px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+    .admin-nav .chip-btn{min-height:38px;padding:0 11px;font-size:12px}
+    .admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+    .admin-kpi{padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    .admin-kpi b{display:block;font-size:23px;font-weight:850}.admin-kpi span,.admin-muted{font-size:12px;color:var(--muted)}
+    .admin-item{padding:14px;margin-top:10px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    .admin-item h4{margin:0 0 5px;font-size:15px}.admin-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+    .admin-actions .chip-btn{min-height:38px;padding:0 10px;font-size:12px}.admin-form{display:grid;gap:9px;margin-top:10px}
+    .admin-form .field{width:100%}.admin-feature{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px}
+    .admin-feature input{width:18px;height:18px}
     .pager{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 4px;color:var(--muted);font-size:12px}
     .settings-card{margin-top:14px}
     .settings-card h3{margin:0 0 8px}
