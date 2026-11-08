@@ -498,6 +498,10 @@
 
   <!-- O'qituvchi -->
   <section id="teacherView" class="hidden">
+    <div class="journal-toolbar">
+      <div><b id="todayLabel">📅 Bugungi jurnal</b><small>Yangi kun boshida ball va davomat avtomatik yangilanadi</small></div>
+      <button type="button" class="chip-btn" id="refreshJournal">↻ Yangilash</button>
+    </div>
     <section data-pane="grades">
       <p class="hint" style="margin-top:14px">Katakka ball yozing (0–100). Enter — pastdagi o‘quvchiga o‘tadi. Saqlash avtomatik.</p>
       <div class="journal-shell"><div class="grid-wrap" id="grid"></div></div>
@@ -1001,6 +1005,8 @@
     try {
       const data = await api(`/api/subject/${sid}`);
       state.subject = data.subject; state.students = data.students; state.today = data.today || ""; state.page = 0; state.celebratedToday = false;
+      const dateLabel = $("todayLabel");
+      if (dateLabel) dateLabel.textContent = "📅 Bugungi jurnal · " + state.today;
       state.pendingScores.clear();
       renderTeacherHero();
       renderTeacherTab();
@@ -1542,6 +1548,14 @@
     if (state.stab === "mine") loadOverview();
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  $("refreshJournal").addEventListener("click", async () => {
+    if (!state.subject) { toast("Avval fan tanlang."); return; }
+    if (state.pendingScores.size) { toast("Ball saqlanishini kuting."); return; }
+    const button = $("refreshJournal");
+    button.disabled = true; button.textContent = "⏳ Yuklanmoqda";
+    try { await loadSubject(state.subject.id); toast("Jurnal yangilandi."); }
+    finally { button.disabled = false; button.textContent = "↻ Yangilash"; }
+  });
   $("addSubjectBtn").addEventListener("click", async () => {
     const res = await openSheet({
       title: "Yangi fan",
@@ -1616,6 +1630,11 @@
   $("answerBtn").addEventListener("click", sendAnswer);
   $("answerInput").addEventListener("keydown", e => { if (e.key === "Enter") sendAnswer(); });
   $("aiStop").addEventListener("click", stopAi);
+
+  /* Kundalik jurnal boshqaruvi */
+  const journalToolbarStyle = document.createElement("style");
+  journalToolbarStyle.textContent = ".journal-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:15px;background:var(--surface)}.journal-toolbar div{display:grid;gap:4px;min-width:0}.journal-toolbar small{font-size:11px;color:var(--muted)}";
+  document.head.appendChild(journalToolbarStyle);
 
   /* Mobil qurilmalarda og‘ir blur va doimiy animatsiyalarni cheklash */
   const perfStyle = document.createElement("style");
