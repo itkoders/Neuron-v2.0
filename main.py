@@ -532,11 +532,22 @@ def has_feature(t, feat):
 
 
 # --- Kunlik va oylik yangilanish ---
+def local_now():
+    # NEYRON kundalik jurnali O‘zbekiston vaqti (UTC+5) bo‘yicha yuritiladi.
+    return datetime.now(timezone(timedelta(hours=5)))
+
+
 def check_and_reset_daily_data():
-    now = datetime.now()
+    now = local_now()
     today = now.strftime("%d.%m.%Y")
     if db_get_setting("last_daily_reset") != today:
-        run("UPDATE students SET davomat = ?", ("Kutilmoqda",))
+        # Avval kechagi jurnalni tarixga yozamiz, keyin bugungi jurnalni bo‘shatamiz.
+        rows = run(f"SELECT {STU_COLS} FROM students ORDER BY id", fetch="all")
+        for row in rows:
+            student = _student(row)
+            db_save_daily_history(student["id"], student)
+        run("UPDATE students SET s1 = 0, s2 = 0, s3 = 0, davomat = ?, last_score_date = ''",
+            ("Kutilmoqda",))
         db_set_setting("last_daily_reset", today)
     month = now.strftime("%m.%Y")
     last_month = db_get_setting("last_payment_reset")
@@ -650,7 +661,7 @@ def delete_teacher(tid):
 
 
 def db_save_daily_history(s_id, st):
-    today = datetime.now().strftime("%d.%m.%Y")
+    today = local_now().strftime("%d.%m.%Y")
     row = run("SELECT id FROM attendance_history WHERE student_id = ? AND date_str = ?", (s_id, today), fetch="one")
     vals = (st["davomat"], st["s1"], st["s2"], st["s3"])
     if row:
@@ -4153,7 +4164,7 @@ async def api_score(request):
         return web.json_response({"error": "bad"}, status=400)
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
-    today = datetime.now().strftime("%d.%m.%Y")
+    today = local_now().strftime("%d.%m.%Y")
     students = list(db_students(t["id"], st["subject_id"]).values())
     all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
     return web.json_response({
@@ -4186,7 +4197,7 @@ async def api_daily_report(request):
     students = list(db_students(t["id"], subject_id).values())
     if not students:
         return web.json_response({"error": "no_students"}, status=400)
-    today = datetime.now().strftime("%d.%m.%Y")
+    today = local_now().strftime("%d.%m.%Y")
     labels = subj["labels"]
     if report_type == "group":
         target = t.get("channel_id")
@@ -4282,6 +4293,7 @@ AI_SESSIONS = {}  # student_id -> MemState (bot qayta ishga tushsa, tozalanadi)
 
 def miniapp_identity(request):
     """Telegram WebApp imzosini tekshiradi va faqat kerakli rol uchun DB tekshiruvini bajaradi."""
+    check_and_reset_daily_data()
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
