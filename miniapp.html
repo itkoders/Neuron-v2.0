@@ -827,8 +827,13 @@
     const timeout = setTimeout(() => controller.abort(), 45000);
     let res;
     try {
-      res = await fetch(path, { ...opts, signal: controller.signal,
-        headers: { "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(opts.headers || {}) } });
+      const method = String(opts.method || "GET").toUpperCase();
+      // Telegram WebView eski GET javoblarini keshlab qolmasligi uchun API javoblarini keshlamaymiz.
+      const requestPath = method === "GET"
+        ? path + (path.includes("?") ? "&" : "?") + "_ts=" + Date.now()
+        : path;
+      res = await fetch(requestPath, { ...opts, cache: "no-store", signal: controller.signal,
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache", "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(opts.headers || {}) } });
     } catch (err) {
       if (err.name === "AbortError") throw new Error("So'rov vaqti tugadi. Qayta urinib ko'ring.");
       throw err;
