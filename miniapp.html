@@ -990,6 +990,23 @@
     $("roleLabel").textContent = "O‘qituvchi";
     $("who").textContent = me.teacher.name;
     $("teacherView").classList.remove("hidden");
+    // Tugmani aynan o‘qituvchi kabineti ishga tushganda bog‘laymiz.
+    const refreshJournalButton = $("refreshJournal");
+    if (refreshJournalButton) refreshJournalButton.onclick = async () => {
+      if (!state.subject) { toast("Avval fan tanlang."); return; }
+      if (state.pendingScores.size) { toast("Ball saqlanishini kuting."); return; }
+      refreshJournalButton.disabled = true;
+      refreshJournalButton.textContent = "⏳ Yuklanmoqda";
+      try {
+        const ok = await loadSubject(state.subject.id);
+        toast(ok ? "Jurnal muvaffaqiyatli yangilandi." : "Jurnal yuklanmadi. Xato holatini tekshiring.");
+      } catch (err) {
+        toast(errText(err));
+      } finally {
+        refreshJournalButton.disabled = false;
+        refreshJournalButton.textContent = "↻ Yangilash";
+      }
+    };
     $("tabsTeacher").classList.remove("hidden");
     $("teacherControls").classList.remove("hidden");
     state.subjects = me.subjects;
@@ -1015,9 +1032,11 @@
       renderTeacherHero();
       renderTeacherTab();
       setStatus("Tayyor");
+      return true;
     } catch (err) {
       $("grid").innerHTML = `<div class="card empty">${esc(errText(err))}</div>`;
       setStatus("Xato", "err");
+      return false;
     }
   }
 
@@ -1559,14 +1578,6 @@
   $("refreshParent").addEventListener("click", async () => {
     const b = $("refreshParent"); b.disabled = true; b.textContent = "⏳ Yangilanmoqda";
     try { await loadParentOverview(); } finally { b.disabled = false; b.textContent = "↻ Natijalarni yangilash"; }
-  });
-  $("refreshJournal").addEventListener("click", async () => {
-    if (!state.subject) { toast("Avval fan tanlang."); return; }
-    if (state.pendingScores.size) { toast("Ball saqlanishini kuting."); return; }
-    const button = $("refreshJournal");
-    button.disabled = true; button.textContent = "⏳ Yuklanmoqda";
-    try { await loadSubject(state.subject.id); toast("Jurnal yangilandi."); }
-    finally { button.disabled = false; button.textContent = "↻ Yangilash"; }
   });
   $("addSubjectBtn").addEventListener("click", async () => {
     const res = await openSheet({
