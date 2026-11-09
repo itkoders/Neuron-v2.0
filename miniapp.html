@@ -2377,6 +2377,10 @@
   /* ===== NEYRON MOTION ENGINE: automatic entrance + optional 3D tilt ===== */
   (() => {
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const touchDevice = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    // Telefonlarda katta jadval va ko‘p kartalar chizilayotganda MutationObserver/3D effektlar
+    // asosiy oqimni band qilmasin: mobil qurilmada dekorativ animatsiyalar o‘chiriladi.
+    if (touchDevice) return;
     const selector = ".hero,.card,.panel,.score-card,.fact,.stat,.hero-stat,.att-item,.admin-item,.admin-kpi,.profile,.report-actions,.settings-card,.journal-toolbar,.journal-shell";
     const toggle = document.createElement("button");
     toggle.className = "motion-toggle";
