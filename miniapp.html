@@ -710,6 +710,40 @@
     .admin-kpi:hover,.score-card:hover,.fact:hover{transform:translateY(-3px);border-color:rgba(125,211,252,.4)!important}
   }
 
+
+  /* ===== NEYRON VISIBLE MOTION SYSTEM ===== */
+  body{isolation:isolate}
+  body::before{
+    content:"";position:fixed;inset:-22%;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(ellipse at 18% 24%,rgba(34,211,238,.18),transparent 28%),
+      radial-gradient(ellipse at 78% 34%,rgba(139,92,246,.16),transparent 30%),
+      radial-gradient(ellipse at 52% 82%,rgba(16,185,129,.10),transparent 32%);
+    background-size:140% 140%;animation:neuronAurora 18s ease-in-out infinite alternate;
+    will-change:background-position,transform
+  }
+  @keyframes neuronAurora{0%{background-position:0% 0%;transform:translate3d(-1%,0,0) scale(1)}50%{background-position:65% 35%;transform:translate3d(1%,1%,0) scale(1.035)}100%{background-position:100% 100%;transform:translate3d(0,-1%,0) scale(1.015)}}
+  .hero{overflow:hidden;isolation:isolate;animation:neuronHeroIn .9s cubic-bezier(.18,.75,.25,1) both,neuronHeroGlow 5s ease-in-out 1s infinite alternate!important;background-size:220% 220%!important}
+  .hero::after{animation:neuronOrbit 18s linear infinite!important}
+  .hero::before{animation:neuronHeroShine 6s ease-in-out infinite!important}
+  @keyframes neuronHeroIn{from{opacity:0;transform:translateY(26px) scale(.975);filter:blur(7px)}to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+  @keyframes neuronHeroGlow{from{background-position:0% 50%;box-shadow:0 18px 48px -26px rgba(34,211,238,.28)}to{background-position:100% 50%;box-shadow:0 24px 64px -24px rgba(99,102,241,.48)}}
+  @keyframes neuronHeroShine{0%,58%{transform:translateX(-115%)}82%,100%{transform:translateX(115%)}}
+  @keyframes neuronOrbit{to{transform:rotate(360deg)}}
+  .neuron-animate{animation:neuronCardIn .72s cubic-bezier(.18,.72,.22,1) both!important;will-change:transform,opacity}
+  @keyframes neuronCardIn{0%{opacity:0;transform:translate3d(0,24px,0) scale(.965);filter:blur(5px)}65%{opacity:1;filter:blur(0)}100%{opacity:1;transform:translate3d(0,0,0) scale(1)}}
+  .hero-stat{animation:neuronStatFloat 4.2s ease-in-out infinite alternate}
+  .hero-stat:nth-child(2){animation-delay:.45s}.hero-stat:nth-child(3){animation-delay:.9s}
+  @keyframes neuronStatFloat{from{transform:translateY(0)}to{transform:translateY(-6px)}}
+  .admin-nav .chip-btn,.tabs .tab,.btn,.chip-btn{transition:transform .22s cubic-bezier(.2,.8,.2,1),filter .22s ease,box-shadow .22s ease!important}
+  .admin-nav .chip-btn:active,.tabs .tab:active,.btn:active,.chip-btn:active{transform:translateY(2px) scale(.96)!important}
+  @media(hover:hover) and (prefers-reduced-motion:no-preference){
+    .card:hover,.panel:hover,.score-card:hover,.fact:hover,.admin-kpi:hover,.admin-item:hover{transform:translateY(-5px) scale(1.008);border-color:rgba(91,220,255,.42)!important;box-shadow:0 24px 55px -30px rgba(34,211,238,.36),inset 0 1px 0 rgba(255,255,255,.1)!important}
+  }
+  @media(prefers-reduced-motion:reduce){
+    body::before,.hero,.hero::before,.hero::after,.hero-stat,.neuron-animate{animation:none!important;filter:none!important;transform:none!important}
+  }
+
 </style>
 </head>
 <body>
@@ -1982,76 +2016,105 @@
   document.addEventListener("focusout", () => requestAnimationFrame(syncKeyboard));
 
 
-  /* ===== NEYRON MOTION ENGINE: touch tilt + optional device orientation ===== */
+  /* ===== NEYRON MOTION ENGINE: automatic entrance + optional 3D tilt ===== */
   (() => {
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const selector = ".hero,.card,.panel,.score-card,.fact,.stat,.hero-stat,.att-item,.admin-item,.admin-kpi,.profile,.report-actions,.settings-card,.journal-toolbar,.journal-shell";
     const toggle = document.createElement("button");
     toggle.className = "motion-toggle";
     toggle.type = "button";
-    toggle.textContent = "✧ 3D harakat: OFF";
+    toggle.textContent = reduced ? "Harakat: kamaytirilgan" : "✧ 3D sensor: OFF";
     toggle.setAttribute("aria-pressed","false");
-    toggle.setAttribute("aria-label","Telefon sensori va 3D harakat effektlarini yoqish");
+    toggle.setAttribute("aria-label","Telefon sensori bilan 3D effektni yoqish");
     document.body.appendChild(toggle);
 
-    let enabled = false, sensorActive = false;
+    let enabled = false;
     const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
     const addMotionCards = (root=document) => {
-      root.querySelectorAll(".hero,.card,.panel,.score-card,.fact,.stat,.hero-stat,.att-item,.admin-item,.admin-kpi,.profile,.report-actions,.settings-card").forEach(el => el.classList.add("motion-card"));
+      const found = [];
+      if (root.nodeType === 1 && root.matches && root.matches(selector)) found.push(root);
+      if (root.querySelectorAll) found.push(...root.querySelectorAll(selector));
+      found.forEach((el) => {
+        el.classList.add("motion-card");
+        if (!reduced && !el.classList.contains("neuron-animate")) {
+          el.classList.add("neuron-animate");
+          el.addEventListener("animationend", (event) => {
+            if (event.animationName === "neuronCardIn") el.classList.remove("neuron-animate");
+          }, {once:false});
+        }
+      });
     };
     addMotionCards();
-    const observer = new MutationObserver(() => addMotionCards());
+    const observer = new MutationObserver((records) => {
+      records.forEach(record => record.addedNodes.forEach(node => {
+        if (node.nodeType === 1) addMotionCards(node);
+      }));
+    });
     observer.observe(document.body,{childList:true,subtree:true});
 
     const resetCards = () => document.querySelectorAll(".motion-card").forEach(el => {
-      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+      el.style.setProperty("--motion-rx","0deg");
+      el.style.setProperty("--motion-ry","0deg");
+      el.classList.remove("motion-hover");
     });
-    const onPointerMove = e => {
-      if(!enabled || reduced) return;
-      const el=e.target.closest(".motion-card"); if(!el) return;
-      const r=el.getBoundingClientRect(), x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
-      el.style.setProperty("--motion-rx",((.5-y)*5).toFixed(2)+"deg");
-      el.style.setProperty("--motion-ry",((x-.5)*6).toFixed(2)+"deg");
+    const onPointerMove = (event) => {
+      if (!enabled || reduced || event.pointerType === "touch") return;
+      const el = event.target.closest(".motion-card");
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const x = (event.clientX - rect.left) / rect.width;
+      const y = (event.clientY - rect.top) / rect.height;
+      el.style.setProperty("--motion-rx",((.5-y)*7).toFixed(2)+"deg");
+      el.style.setProperty("--motion-ry",((x-.5)*8).toFixed(2)+"deg");
       el.classList.add("motion-hover");
     };
-    const onPointerOut = e => {
-      const el=e.target.closest(".motion-card"); if(!el || el.contains(e.relatedTarget)) return;
-      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+    const onPointerOut = (event) => {
+      const el = event.target.closest(".motion-card");
+      if (!el || el.contains(event.relatedTarget)) return;
+      el.style.setProperty("--motion-rx","0deg");
+      el.style.setProperty("--motion-ry","0deg");
+      el.classList.remove("motion-hover");
     };
-    const onOrientation = e => {
-      if(!enabled || reduced) return;
-      const gamma=clamp(Number(e.gamma)||0,-25,25), beta=clamp((Number(e.beta)||0)-35,-25,25);
-      const rx=clamp(beta*.12,-3,3), ry=clamp(gamma*.12,-3,3);
-      document.querySelectorAll(".motion-card").forEach(el=>{
+    const onOrientation = (event) => {
+      if (!enabled || reduced) return;
+      const gamma = clamp(Number(event.gamma)||0,-25,25);
+      const beta = clamp((Number(event.beta)||0)-35,-25,25);
+      const rx = clamp(beta*.16,-4,4), ry = clamp(gamma*.16,-4,4);
+      document.querySelectorAll(".motion-card").forEach(el => {
         el.style.setProperty("--motion-rx",rx.toFixed(2)+"deg");
         el.style.setProperty("--motion-ry",ry.toFixed(2)+"deg");
       });
-      sensorActive=true;
     };
     const enable = async () => {
-      if(reduced){toggle.textContent="Harakat kamaytirilgan";return;}
-      try{
-        if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
-          const permission=await DeviceOrientationEvent.requestPermission();
-          if(permission!=="granted") throw new Error("sensor permission denied");
+      if (reduced) return;
+      try {
+        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+          const permission = await DeviceOrientationEvent.requestPermission();
+          if (permission !== "granted") throw new Error("permission denied");
         }
-        enabled=true;
+        enabled = true;
         window.addEventListener("deviceorientation",onOrientation,{passive:true});
-        toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ 3D harakat: ON";
-        document.addEventListener("pointermove",onPointerMove,{passive:true});
-        document.addEventListener("pointerout",onPointerOut,{passive:true});
-      }catch(err){
-        enabled=true;toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ Touch 3D: ON";
-        document.addEventListener("pointermove",onPointerMove,{passive:true});
-        document.addEventListener("pointerout",onPointerOut,{passive:true});
+        toggle.textContent = "✦ 3D sensor: ON";
+      } catch (error) {
+        enabled = true;
+        toggle.textContent = "✦ 3D sensor: ON";
       }
+      toggle.setAttribute("aria-pressed","true");
+      document.addEventListener("pointermove",onPointerMove,{passive:true});
+      document.addEventListener("pointerout",onPointerOut,{passive:true});
     };
     const disable = () => {
-      enabled=false;window.removeEventListener("deviceorientation",onOrientation);
-      document.removeEventListener("pointermove",onPointerMove);document.removeEventListener("pointerout",onPointerOut);
-      toggle.setAttribute("aria-pressed","false");toggle.textContent="✧ 3D harakat: OFF";resetCards();
+      enabled = false;
+      window.removeEventListener("deviceorientation",onOrientation);
+      document.removeEventListener("pointermove",onPointerMove);
+      document.removeEventListener("pointerout",onPointerOut);
+      toggle.setAttribute("aria-pressed","false");
+      toggle.textContent = "✧ 3D sensor: OFF";
+      resetCards();
     };
-    toggle.addEventListener("click",()=>enabled?disable():enable());
-    document.addEventListener("visibilitychange",()=>{if(document.hidden)resetCards();});
+    toggle.addEventListener("click",() => enabled ? disable() : enable());
+    document.addEventListener("visibilitychange",() => { if (document.hidden) resetCards(); });
   })();
 
   init();
