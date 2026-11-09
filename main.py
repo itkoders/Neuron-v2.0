@@ -4856,6 +4856,121 @@ async def api_onboard_teacher_login(request):
     return web.json_response({"ok": True, "pending": False})
 
 
+async def api_teacher_tools(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    events = run("SELECT id,title,event_date FROM calendar_events WHERE teacher_id=? ORDER BY event_date,id",
+                 (teacher["id"],), fetch="all") if has_feature(teacher, "calendar") else []
+    notes = run("SELECT id,note_text FROM admin_notes WHERE teacher_id=? ORDER BY id DESC",
+                (teacher["id"],), fetch="all") if has_feature(teacher, "notes") else []
+    scheduled = run("SELECT id,text,send_at,sent FROM scheduled_broadcasts WHERE teacher_id=? AND sent IN (0,1,-1) ORDER BY send_at DESC LIMIT 30",
+                    (teacher["id"],), fetch="all") if has_feature(teacher, "scheduled_broadcast") else []
+    return web.json_response({
+        "features": sorted(effective_plan(teacher)[0]["features"]),
+        "events":[{"id":r[0],"title":r[1],"date":r[2]} for r in events],
+        "notes":[{"id":r[0],"text":r[1]} for r in notes],
+        "scheduled":[{"id":r[0],"text":r[1],"send_at":r[2],"sent":r[3]} for r in scheduled]
+    })
+
+
+async def api_teacher_tool_action(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    body = await _read_json(request)
+    action = str(body.get("action", "")).strip()
+    def locked(feature):
+        return not has_feature(teacher, feature)
+    if action == "calendar_add":
+        if locked("calendar"): return web.json_response({"error":"feature_locked"},status=403)
+        title = str(body.get("title","")).strip()[:100]
+        date = str(body.get("date","")).strip()
+        try: datetime.strptime(date, "%Y-%m-%d")
+        except ValueError: return web.json_response({"error":"bad_date"},status=400)
+        if len(title)<2: return web.json_response({"error":"bad_title"},status=400)
+        run("INSERT INTO calendar_events (teacher_id,title,event_date) VALUES (?,?,?)",(teacher["id"],title,date))
+        audit(teacher["chat_id"],"miniapp_calendar_add",date,title)
+        return web.json_response({"ok":True})
+    if action == "calendar_delete":
+        if locked("calendar"): return web.json_response({"error":"feature_locked"},status=403)
+        try: item_id=int(body.get("id"))
+        except (TypeError,ValueError): return web.json_response({"error":"bad"},status=400)
+        run("DELETE FROM calendar_events WHERE id=? AND teacher_id=?",(item_id,teacher["id"]))
+        audit(teacher["chat_id"],"miniapp_calendar_delete",str(item_id))
+        return web.json_response({"ok":True})
+    if action == "note_add":
+        if locked("notes"): return web.json_response({"error":"feature_locked"},status=403)
+        note = str(body.get("text","")).strip()[:700]
+        if len(note)<2: return web.json_response({"error":"bad_note"},status=400)
+        run("INSERT INTO admin_notes (teacher_id,note_text) VALUES (?,?)",(teacher["id"],note))
+        audit(teacher["chat_id"],"miniapp_note_add","",note[:100])
+        return web.json_response({"ok":True})
+    if action == "note_delete":
+        if locked("notes"): return web.json_response({"error":"feature_locked"},status=403)
+        try: item_id=int(body.get("id"))
+        except (TypeError,ValueError): return web.json_response({"error":"bad"},status=400)
+        run("DELETE FROM admin_notes WHERE id=? AND teacher_id=?",(item_id,teacher["id"]))
+        audit(teacher["chat_id"],"miniapp_note_delete",str(item_id))
+        return web.json_response({"ok":True})
+    if action == "broadcast_send":
+        if locked("broadcast"): return web.json_response({"error":"feature_locked"},status=403)
+        message = str(body.get("text","")).strip()[:1500]
+        if len(message)<2: return web.json_response({"error":"bad_message"},status=400)
+        if not bot: return web.json_response({"error":"bot_unavailable"},status=503)
+        parents = {r[0] for r in run("SELECT DISTINCT pc.parent_chat_id FROM parent_children pc JOIN students s ON s.id=pc.student_id WHERE s.teacher_id=?",(teacher["id"],),fetch="all")}
+        sent=failed=0
+        for parent_id in parents:
+            try:
+                await bot.send_message(parent_id,"📢 O‘qituvchidan e’lon:\n\n"+message)
+                sent += 1
+            except Exception:
+                failed += 1
+        audit(teacher["chat_id"],"miniapp_broadcast","",f"sent={sent}; failed={failed}")
+        return web.json_response({"ok":True,"sent":sent,"failed":failed,"total":len(parents)})
+    if action == "schedule_add":
+        if locked("scheduled_broadcast"): return web.json_response({"error":"feature_locked"},status=403)
+        message = str(body.get("text","")).strip()[:1500]
+        raw_time = str(body.get("send_at","")).strip()
+        try:
+            scheduled_at = datetime.strptime(raw_time,"%Y-%m-%dT%H:%M").replace(tzinfo=local_now().tzinfo)
+        except ValueError:
+            return web.json_response({"error":"bad_date"},status=400)
+        if len(message)<2: return web.json_response({"error":"bad_message"},status=400)
+        if scheduled_at <= local_now(): return web.json_response({"error":"date_in_past"},status=400)
+        send_at = scheduled_at.strftime("%Y-%m-%d %H:%M")
+        run("INSERT INTO scheduled_broadcasts (teacher_id,text,send_at,sent) VALUES (?,?,?,0)",(teacher["id"],message,send_at))
+        audit(teacher["chat_id"],"miniapp_schedule_add",send_at,message[:100])
+        return web.json_response({"ok":True})
+    if action == "schedule_cancel":
+        if locked("scheduled_broadcast"): return web.json_response({"error":"feature_locked"},status=403)
+        try: item_id=int(body.get("id"))
+        except (TypeError,ValueError): return web.json_response({"error":"bad"},status=400)
+        run("UPDATE scheduled_broadcasts SET sent=-1 WHERE id=? AND teacher_id=? AND sent=0",(item_id,teacher["id"]))
+        audit(teacher["chat_id"],"miniapp_schedule_cancel",str(item_id))
+        return web.json_response({"ok":True})
+    return web.json_response({"error":"bad_action"},status=400)
+
+
+async def api_teacher_export(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "export"):
+        return web.json_response({"error":"feature_locked"},status=403)
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["O‘quvchi","Guruh","Fan","Baholash 1","Baholash 2","Baholash 3","Davomat","To‘lov","To‘lov summasi"])
+    subjects = {x["id"]:x for x in db_subjects(teacher["id"])}
+    for st in db_students(teacher["id"]).values():
+        subj = subjects.get(st["subject_id"])
+        writer.writerow([st["fio"],st["group_name"],subj["name"] if subj else "",
+                         st["s1"],st["s2"],st["s3"],st["davomat"],st["payment_status"],st["payment_amount"]])
+    audit(teacher["chat_id"],"miniapp_export_csv","","student records")
+    data = "\ufeff" + output.getvalue()
+    return web.Response(text=data,content_type="text/csv",headers={"Content-Disposition":"attachment; filename=neyron_jurnal.csv"})
+
+
 async def api_teacher_requests(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
@@ -5154,6 +5269,9 @@ async def start_web_server():
     app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
+    app.router.add_get("/api/teacher/tools", api_teacher_tools)
+    app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
+    app.router.add_get("/api/teacher/export.csv", api_teacher_export)
     app.router.add_post("/api/teacher/requests/{kind}/{rid}", api_teacher_request_action)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
