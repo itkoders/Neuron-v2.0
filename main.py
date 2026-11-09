@@ -3717,7 +3717,7 @@ async def _request_link(student, parent_chat_id, parent_name):
     run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
         (student["id"], parent_chat_id, parent_name), fetch="lastid")
     await notify_teacher(student["teacher_id"],
-        f"📨 **Yangi ota-ona so‘rovi**\\nO‘quvchi: **{md(student['fio'])}**\\nOta-ona: {md(parent_name)}\\nTasdiqlash uchun NEYRON ilovasidagi “So‘rovlar” bo‘limini oching.")
+        f"📨 **Yangi ota-ona so‘rovi**\nO‘quvchi: **{md(student['fio'])}**\nOta-ona: {md(parent_name)}\nTasdiqlash uchun NEYRON ilovasidagi “So‘rovlar” bo‘limini oching.")
 
 
 @dp.message(ParentStates.waiting_for_code, F.chat.type == "private")
