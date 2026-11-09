@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "").strip()
 # Yagona egasi: Super Admin huquqi faqat shu Telegram ID ga beriladi.
-OWNER_TELEGRAM_ID = 6359925487
+OWNER_TELEGRAM_ID = int(os.environ.get("OWNER_TELEGRAM_ID") or os.environ.get("ADMIN_ID") or os.environ.get("SUPER_ADMIN_ID") or "6359925487")
 # Maxfiy qiymatlar Render Environment bo'limiga keyin kiritilishi mumkin.
 # BOT_TOKEN bo'lmasa web server ishga tushadi, bot polling esa kutadi.
 PEPPER = os.environ.get("PEPPER", "").strip() or TOKEN or "neuron-v2-initial-pepper-change-me"
@@ -985,14 +985,17 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
+    # Oddiy foydalanuvchiga faqat uchta rol. Loyiha egasiga Admin ilovasi ham ko'rinadi.
     rows = [
-        [btn("🎓 O'quvchi Kabineti", "student_login_prompt"), btn("👨‍👩‍👧‍👦 Ota-ona Kabineti", "auth_parent")],
-        [btn("👩‍🏫 O'qituvchi Kabineti", "teacher_login_prompt"), btn("🆕 O'qituvchi bo'lish", "t_reg")],
-        [btn("💼 Tariflar", "public_plans"), btn("❓ Ko'p so'raladigan savollar", "faq_menu")],
+        [btn("👨‍👩‍👧 Ota-ona", "auth_parent")],
+        [btn("🎓 O'quvchi", "student_login_prompt")],
+        [btn("👨‍🏫 O'qituvchi", "teacher_role_menu")],
     ]
-    if user_id is not None and is_super(user_id):
-        rows.append([InlineKeyboardButton(text="🛡 Super Admin ilovasi", web_app=WebAppInfo(url=miniapp_role_url("admin"))) ] if MINIAPP_URL else [btn("⚙️ Super Admin", "super_admin_login_prompt")])
-        rows.append([btn("⚙️ Bot orqali boshqarish", "super_admin_login_prompt")])
+    if is_super(user_id) and MINIAPP_URL:
+        rows.append([InlineKeyboardButton(
+            text="🛡 Admin ilovasi",
+            web_app=WebAppInfo(url=miniapp_role_url("admin"))
+        )])
     return kb(rows)
 
 
@@ -1398,6 +1401,29 @@ async def back_home(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
                                  reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data == "teacher_role_menu")
+async def teacher_role_menu(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.clear()
+    teacher = teacher_by_chat(call.from_user.id)
+    if teacher:
+        await call.message.edit_text(
+            teacher_panel_text(teacher),
+            reply_markup=teacher_panel_kb(teacher),
+            parse_mode="Markdown"
+        )
+        return
+    await call.message.edit_text(
+        "👨‍🏫 **O'qituvchi bo'limi**\\n\\nDavom etish uchun ro'yxatdan o'ting yoki hisobingizga kiring.",
+        reply_markup=kb([
+            [btn("🔐 Hisobga kirish", "teacher_login_prompt")],
+            [btn("📝 Ro'yxatdan o'tish", "t_reg")],
+            [btn("⬅️ Asosiy menyu", "back_home")],
+        ]),
+        parse_mode="Markdown"
+    )
 
 
 @dp.callback_query(F.data == "public_plans")
