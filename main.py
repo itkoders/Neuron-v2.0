@@ -931,37 +931,11 @@ def teacher_panel_text(t):
 
 
 def teacher_panel_kb(t=None):
-    # Tarif ruxsatiga ega bo'lmagan tugmalar menyuga umuman qo'shilmaydi.
-    if t is None:
-        rows = [[btn("📚 Fanlarim", "tp_subjects"), btn("🔍 Qidirish", "tp_search")],
-                [btn("🪪 Tasdiqlash holati", "tp_verify")],
-                [btn("🔙 Chiqish", "back_home")]]
-        return kb(rows)
-    rows = [[btn("📚 Fanlarim", "tp_subjects"), btn("🔍 Qidirish", "tp_search")]]
-    feature_rows = [
-        ("calendar", [btn("📅 Taqvim", "tp_cal")]),
-        ("notes", [btn("📝 Eslatmalar", "tp_notes")]),
-        ("reports", [btn("📊 Dashboard", "tp_dash"), btn("👁 Kirganlar", "tp_logs")]),
-        ("broadcast", [btn("📢 E'lon yuborish", "tp_bcast")]),
-        ("channel", [btn("📢 Kanalni sozlash", "tp_chan"), btn("📊 Kunlik hisobotni kanalga", "tp_post")]),
-        ("reports", [btn("🏆 Reytingni kanalga", "tp_post_lb")]),
-        ("scheduled_broadcast", [btn("⏰ Rejalashtirilgan e'lon", "tp_sbc")]),
-        ("ai_tutor", [btn("🤖 AI tutor", "tp_ai")]),
-        ("payments", [btn("💳 To‘lov kartalarini sozlash", "tp_paycard_global")]),
-    ]
-    for feature, row in feature_rows:
-        if has_feature(t, feature):
-            rows.append(row)
-    rows.append([btn("🪪 Tasdiqlash holati", "tp_verify")])
-    if has_feature(t, "mini_app") and MINIAPP_URL:
-        rows.append([InlineKeyboardButton(text="📱 Ballar jurnali (ilova)", web_app=WebAppInfo(url=miniapp_role_url("teacher")))])
-    url = support_url()
-    if url:
-        rows.append([InlineKeyboardButton(text="💰 Pullik yordam", url=url)])
-    if t is not None and is_super(t.get("chat_id")):
-        rows.append([btn("⚙️ Super Admin", "super_admin_login_prompt")])
-    rows.append([btn("🔙 Chiqish", "back_home")])
-    return kb(rows)
+    if MINIAPP_URL:
+        role = "teacher" if t and t.get("admin_approved") and t.get("verify_status") == "approved" else "entry"
+        return kb([[InlineKeyboardButton(text="📱 Ilovani ochish", web_app=WebAppInfo(url=miniapp_role_url(role))) ]])
+    return kb([[btn("📱 Ilovani ochish", "back_home")]])
+
 
 
 def subject_menu_kb(sid, t=None):
@@ -985,18 +959,14 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    # Oddiy foydalanuvchiga faqat uchta rol. Loyiha egasiga Admin ilovasi ham ko'rinadi.
-    rows = [
-        [btn("👨‍👩‍👧 Ota-ona", "auth_parent")],
-        [btn("🎓 O'quvchi", "student_login_prompt")],
-        [btn("👨‍🏫 O'qituvchi", "teacher_role_menu")],
-    ]
-    if is_super(user_id) and MINIAPP_URL:
-        rows.append([InlineKeyboardButton(
-            text="🛡 Admin ilovasi",
-            web_app=WebAppInfo(url=miniapp_role_url("admin"))
-        )])
-    return kb(rows)
+    # Telegram chatida faqat Mini App ishga tushirish tugmasi ko'rsatiladi.
+    if MINIAPP_URL:
+        return kb([[InlineKeyboardButton(
+            text="📱 Ilovani ochish",
+            web_app=WebAppInfo(url=miniapp_role_url("entry"))
+        )]])
+    return kb([[btn("📱 Ilovani ochish", "back_home")]])
+
 
 
 def owned_subject(t, sid):
@@ -4332,6 +4302,8 @@ def miniapp_identity(request):
         return None, None, web.json_response({"error": "auth"}, status=401)
 
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
+    if requested_role == "entry":
+        return "entry", uid, None
     if requested_role == "admin":
         if is_super(uid):
             return "admin", uid, None
@@ -4706,6 +4678,11 @@ async def api_me(request):
     kind, obj, err = miniapp_identity(request)
     if err:
         return err
+    if kind == "entry":
+        teacher = teacher_by_chat(obj)
+        pending = bool(teacher and (not teacher.get("admin_approved") or teacher.get("verify_status") != "approved"))
+        return web.json_response({"role":"entry", "teacher_pending": pending,
+                                  "teacher_name": teacher_name(teacher) if teacher else ""})
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
@@ -4725,6 +4702,118 @@ async def api_me(request):
     return web.json_response({"role": "student", "student": {
         "fio": obj["fio"], "group_name": obj["group_name"], "teacher_name": teacher_name(teacher),
         "subject": subj["name"] if subj else "-", "ai": ai_teacher_allowed(teacher)}})
+
+
+def miniapp_entry_uid(request):
+    if request.headers.get("X-App-Role", "").strip().lower() != "entry":
+        return None, web.json_response({"error": "forbidden"}, status=403)
+    uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    if not uid:
+        return None, web.json_response({"error": "auth"}, status=401)
+    return uid, None
+
+
+async def api_onboard_student(request):
+    uid, err = miniapp_entry_uid(request)
+    if err: return err
+    body = await _read_json(request)
+    code = str(body.get("code", "")).strip()
+    if not code.isdigit() or len(code) != 4:
+        return web.json_response({"error": "bad_code"}, status=400)
+    if is_blocked(uid):
+        return web.json_response({"error": "too_many_attempts"}, status=429)
+    matched = db_find_student_by_code(code)
+    if not matched:
+        register_fail(uid)
+        return web.json_response({"error": "bad_code"}, status=404)
+    reset_fails(uid)
+    sid, st = matched
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
+        return web.json_response({"error": "teacher_pending"}, status=403)
+    run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id",
+        (uid, sid))
+    db_log_student_login(sid, st["fio"])
+    audit(uid, "miniapp_student_login", str(sid), st["fio"])
+    return web.json_response({"ok": True})
+
+
+async def api_onboard_parent(request):
+    uid, err = miniapp_entry_uid(request)
+    if err: return err
+    body = await _read_json(request)
+    code = str(body.get("code", "")).strip()
+    parent_name = str(body.get("name", "Ota-ona")).strip()[:80] or "Ota-ona"
+    if not code.isdigit() or len(code) != 4:
+        return web.json_response({"error": "bad_code"}, status=400)
+    if is_blocked(uid):
+        return web.json_response({"error": "too_many_attempts"}, status=429)
+    matched = db_find_student_by_code(code)
+    if not matched:
+        register_fail(uid)
+        return web.json_response({"error": "bad_code"}, status=404)
+    reset_fails(uid)
+    sid, st = matched
+    teacher = db_teacher(st["teacher_id"])
+    if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
+        return web.json_response({"error": "teacher_pending"}, status=403)
+    current = db_parent_student_ids(uid)
+    if sid in current:
+        return web.json_response({"error": "already_linked"}, status=409)
+    if len(current) >= MAX_CHILDREN:
+        return web.json_response({"error": "max_children"}, status=409)
+    exists = run("SELECT id FROM pending_requests WHERE student_id=? AND parent_chat_id=?",
+                 (sid, uid), fetch="one")
+    if not exists:
+        run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
+            (sid, uid, parent_name))
+    audit(uid, "miniapp_parent_link_request", str(sid), parent_name)
+    return web.json_response({"ok": True, "pending": True})
+
+
+async def api_onboard_teacher_register(request):
+    uid, err = miniapp_entry_uid(request)
+    if err: return err
+    if teacher_by_chat(uid):
+        return web.json_response({"error": "teacher_exists"}, status=409)
+    if verify_mode() == "manual":
+        return web.json_response({"error": "manual_verification_required"}, status=409)
+    body = await _read_json(request)
+    data = {
+        "first_name": str(body.get("first_name", "")).strip(),
+        "last_name": str(body.get("last_name", "")).strip(),
+        "phone": str(body.get("phone", "")).strip()
+    }
+    if not is_valid_name(data["first_name"]) or not is_valid_name(data["last_name"]) or not is_valid_phone(data["phone"]):
+        return web.json_response({"error": "bad_details"}, status=400)
+    t, code = create_teacher(uid, data, "admin_pending")
+    audit(uid, "miniapp_teacher_register", str(t["id"]), "Admin approval pending")
+    return web.json_response({"ok": True, "pending": True, "code": code})
+
+
+async def api_onboard_teacher_login(request):
+    uid, err = miniapp_entry_uid(request)
+    if err: return err
+    body = await _read_json(request)
+    code = str(body.get("code", "")).strip()
+    if not code.isdigit() or len(code) != 6:
+        return web.json_response({"error": "bad_teacher_code"}, status=400)
+    row = run("SELECT id, active FROM teachers WHERE code_lookup=?", (teacher_lookup(code),), fetch="one")
+    if not row:
+        register_fail(uid)
+        return web.json_response({"error": "bad_teacher_code"}, status=404)
+    if not row[1]:
+        return web.json_response({"error": "teacher_blocked"}, status=403)
+    reset_fails(uid)
+    run("UPDATE teachers SET chat_id=NULL WHERE chat_id=?", (uid,))
+    run("UPDATE teachers SET chat_id=? WHERE id=?", (uid, row[0]))
+    teacher = db_teacher(row[0])
+    audit(uid, "miniapp_teacher_login", str(row[0]))
+    if not teacher.get("admin_approved") or teacher.get("verify_status") != "approved":
+        return web.json_response({"ok": True, "pending": True})
+    if not has_feature(teacher, "mini_app"):
+        return web.json_response({"error": "feature_locked"}, status=403)
+    return web.json_response({"ok": True, "pending": False})
 
 
 async def api_teacher_requests(request):
@@ -5022,6 +5111,10 @@ async def start_web_server():
     app.router.add_post("/api/admin/password", api_admin_password)
     app.router.add_get("/api/admin/audit", api_admin_audit)
     app.router.add_get("/api/me", api_me)
+    app.router.add_post("/api/onboard/student", api_onboard_student)
+    app.router.add_post("/api/onboard/parent", api_onboard_parent)
+    app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
+    app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
     app.router.add_post("/api/teacher/requests/{kind}/{rid}", api_teacher_request_action)
     app.router.add_post("/api/subject", api_add_subject)
