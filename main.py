@@ -985,15 +985,12 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    rows = [
-        [btn("🎓 O'quvchi Kabineti", "student_login_prompt"), btn("👨‍👩‍👧‍👦 Ota-ona Kabineti", "auth_parent")],
-        [btn("👩‍🏫 O'qituvchi Kabineti", "teacher_login_prompt"), btn("🆕 O'qituvchi bo'lish", "t_reg")],
-        [btn("💼 Tariflar", "public_plans"), btn("❓ Ko'p so'raladigan savollar", "faq_menu")],
-    ]
-    if user_id is not None and is_super(user_id):
-        rows.append([InlineKeyboardButton(text="🛡 Super Admin ilovasi", web_app=WebAppInfo(url=miniapp_role_url("admin"))) ] if MINIAPP_URL else [btn("⚙️ Super Admin", "super_admin_login_prompt")])
-        rows.append([btn("⚙️ Bot orqali boshqarish", "super_admin_login_prompt")])
-    return kb(rows)
+    # /start menyusi faqat uchta rolni ko'rsatadi.
+    return kb([
+        [btn("👨‍👩‍👧 Ota-ona", "auth_parent")],
+        [btn("🎓 O'quvchi", "student_login_prompt")],
+        [btn("👨‍🏫 O'qituvchi", "teacher_role_menu")],
+    ])
 
 
 def owned_subject(t, sid):
@@ -1398,6 +1395,29 @@ async def back_home(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
                                  reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data == "teacher_role_menu")
+async def teacher_role_menu(call: types.CallbackQuery, state: FSMContext):
+    await call.answer()
+    await state.clear()
+    teacher = teacher_by_chat(call.from_user.id)
+    if teacher:
+        await call.message.edit_text(
+            teacher_panel_text(teacher),
+            reply_markup=teacher_panel_kb(teacher),
+            parse_mode="Markdown"
+        )
+        return
+    await call.message.edit_text(
+        "👨‍🏫 **O'qituvchi bo'limi**\\n\\nDavom etish uchun ro'yxatdan o'ting yoki hisobingizga kiring.",
+        reply_markup=kb([
+            [btn("🔐 Hisobga kirish", "teacher_login_prompt")],
+            [btn("📝 Ro'yxatdan o'tish", "t_reg")],
+            [btn("⬅️ Asosiy menyu", "back_home")],
+        ]),
+        parse_mode="Markdown"
+    )
 
 
 @dp.callback_query(F.data == "public_plans")
