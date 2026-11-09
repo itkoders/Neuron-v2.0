@@ -670,7 +670,9 @@ def delete_teacher(tid):
 
 
 def db_save_daily_history(s_id, st, date_str=None):
-    today = date_str or local_now().strftime("%d.%m.%Y")
+    now = local_now()
+    # Jurnal kuni 12:00 dan 12:00 gacha hisoblanadi.
+    today = date_str or (now if now.hour >= 12 else now - timedelta(days=1)).strftime("%d.%m.%Y")
     row = run("SELECT id FROM attendance_history WHERE student_id = ? AND date_str = ?", (s_id, today), fetch="one")
     vals = (st["davomat"], st["s1"], st["s2"], st["s3"])
     if row:
