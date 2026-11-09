@@ -1278,7 +1278,7 @@
     $("roleLabel").textContent = "Kirish";
     $("who").textContent = "NEYRON kabinetlari";
     $("entryView").classList.remove("hidden");
-    const host = $("entryForm");
+    const host = $("entryForm");\n    const adminRoleButton = document.querySelector('[data-entry-role="admin"]');\n    if (adminRoleButton) adminRoleButton.classList.toggle("hidden", !me.is_admin);
     if (me.teacher_pending) {
       host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
     }
