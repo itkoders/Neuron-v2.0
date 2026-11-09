@@ -801,6 +801,14 @@
     <section data-pane="settings" class="hidden">
       <div id="settingsContent" style="margin-top:14px"><div class="loading">Sozlamalar yuklanmoqda…</div></div>
     </section>
+    <section data-pane="requests" class="hidden">
+      <div class="card panel" style="margin-top:14px">
+        <h3>📨 Ota-ona va to‘lov so‘rovlari</h3>
+        <p class="hint">So‘rovlarni shu ilovadan tasdiqlang yoki rad eting.</p>
+        <button class="chip-btn primary" id="refreshRequests" type="button">↻ Yangilash</button>
+      </div>
+      <div id="teacherRequests" style="display:grid;gap:10px;margin-top:12px"><div class="loading">So‘rovlar yuklanmoqda…</div></div>
+    </section>
   </section>
 
   <section id="adminView" class="hidden">
@@ -859,6 +867,7 @@
   <button class="tab" data-tab="attendance"><span class="ico">✅</span>Davomat</button>
   <button class="tab" data-tab="stats"><span class="ico">📊</span>Tahlil</button>
   <button class="tab" data-tab="settings"><span class="ico">⚙️</span>Sozlama</button>
+  <button class="tab" data-tab="requests"><span class="ico">📨</span>So‘rovlar</button>
 </nav>
 <nav class="tabs hidden" id="tabsStudent" role="tablist">
   <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
@@ -1322,11 +1331,32 @@
       : list.slice().sort((a, b) => a.fio.localeCompare(b.fio));
   }
 
+  async function loadTeacherRequests() {
+    const wrap = $("teacherRequests");
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="loading">So‘rovlar yuklanmoqda…</div>';
+    try {
+      const data = await api("/api/teacher/requests");
+      const links = (data.links || []).map(x => '<div class="card panel"><b>👨‍👩‍👧 Farzandni ulash</b><div class="hint">' +
+        esc(x.parent_name) + ' · ' + esc(x.student) + '</div><div class="admin-actions">' +
+        '<button class="chip-btn primary" data-request-action="approve" data-kind="link" data-id="' + x.id + '">Tasdiqlash</button>' +
+        '<button class="chip-btn" data-request-action="reject" data-kind="link" data-id="' + x.id + '">Rad etish</button></div></div>').join("");
+      const payments = (data.payments || []).map(x => '<div class="card panel"><b>💳 To‘lov so‘rovi</b><div class="hint">' +
+        esc(x.student) + ' · ' + Number(x.amount || 0).toLocaleString("uz-UZ") + ' so‘m · ' + esc(x.method) +
+        '<br>' + esc(x.created_at || "") + '</div><div class="admin-actions">' +
+        '<button class="chip-btn primary" data-request-action="approve" data-kind="payment" data-id="' + x.id + '">Tasdiqlash</button>' +
+        '<button class="chip-btn" data-request-action="reject" data-kind="payment" data-id="' + x.id + '">Rad etish</button></div></div>').join("");
+      wrap.innerHTML = links + payments || '<div class="card empty">Hozircha yangi so‘rov yo‘q.</div>';
+      if (!links && !payments) wrap.innerHTML = '<div class="card empty">Hozircha yangi so‘rov yo‘q.</div>';
+    } catch(err) { wrap.innerHTML = '<div class="card empty">' + esc(errText(err)) + '</div>'; }
+  }
+
   function renderTeacherTab() {
     if (state.tab === "grades") renderGrid();
     if (state.tab === "attendance") renderAttendance();
     if (state.tab === "stats") renderStats();
     if (state.tab === "settings" && !state.settingsLoaded) loadTeacherSettings();
+    if (state.tab === "requests") loadTeacherRequests();
   }
 
   function renderGrid() {
@@ -1847,6 +1877,21 @@
     if (state.stab === "mine") loadOverview();
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
+  $("refreshRequests").addEventListener("click", loadTeacherRequests);
+  $("teacherRequests").addEventListener("click", async e => {
+    const b = e.target.closest("[data-request-action]");
+    if (!b) return;
+    const kind = b.dataset.kind, id = b.dataset.id, action = b.dataset.requestAction;
+    if (!confirm(action === "approve" ? "So‘rovni tasdiqlaysizmi?" : "So‘rovni rad etasizmi?")) return;
+    b.disabled = true;
+    try {
+      await api("/api/teacher/requests/" + kind + "/" + id, {
+        method:"POST", body:JSON.stringify({action})
+      });
+      toast(action === "approve" ? "So‘rov tasdiqlandi." : "So‘rov rad etildi.");
+      await loadTeacherRequests();
+    } catch(err) { toast(errText(err)); b.disabled = false; }
+  });
   $("refreshStudent").addEventListener("click", async () => {
     const b = $("refreshStudent"); b.disabled = true; b.textContent = "⏳ Yangilanmoqda";
     try { await loadOverview(); } finally { b.disabled = false; b.textContent = "↻ Natijalarni yangilash"; }
