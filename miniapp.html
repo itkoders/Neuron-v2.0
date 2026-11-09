@@ -774,24 +774,19 @@
 </header>
 
 <main>
-  <div id="teacherHero" class="hero hidden">
-    <div class="kicker">Neuron · Smart Jurnal</div>
-    <div class="title">Darslaringiz nazorat ostida</div>
-    <div class="sub" id="heroSubject">O‘quvchilar natijalarini boshqaring</div>
-    <div class="hero-stats">
-      <div class="hero-stat"><b id="heroStudents">—</b><span>O‘QUVCHI</span></div>
-      <div class="hero-stat"><b id="heroAverage">—</b><span>O‘RTACHA</span></div>
-      <div class="hero-stat"><b id="heroAttendance">—</b><span>BUGUN KELDI</span></div>
-    </div>
-  </div>
-
   <!-- O'qituvchi -->
   <section id="teacherView" class="hidden">
-    <div class="journal-toolbar">
-      <div><b id="todayLabel">📅 Bugungi jurnal</b><small>Yangi kun boshida ball va davomat avtomatik yangilanadi</small></div>
-      <button type="button" class="chip-btn" id="refreshJournal">↻ Yangilash</button>
-    </div>
     <section data-pane="grades">
+      <div id="teacherHero" class="hero">
+        <div class="kicker">Neuron · Smart Jurnal</div>
+        <div class="title">Darslaringiz nazorat ostida</div>
+        <div class="sub" id="heroSubject">O‘quvchilar natijalarini boshqaring</div>
+        <div class="hero-stats">
+          <div class="hero-stat"><b id="heroStudents">—</b><span>O‘QUVCHI</span></div>
+          <div class="hero-stat"><b id="heroAverage">—</b><span>O‘RTACHA</span></div>
+          <div class="hero-stat"><b id="heroAttendance">—</b><span>BUGUN KELDI</span></div>
+        </div>
+      </div>
       <p class="hint" style="margin-top:14px">Katakka ball yozing (0–100). Enter — pastdagi o‘quvchiga o‘tadi. Saqlash avtomatik.</p>
       <div class="journal-shell"><div class="grid-wrap" id="grid"></div></div>
       <div id="reportActions" class="report-actions"></div>
@@ -1286,23 +1281,6 @@
     $("roleLabel").textContent = "O‘qituvchi";
     $("who").textContent = me.teacher.name;
     $("teacherView").classList.remove("hidden");
-    // Tugmani aynan o‘qituvchi kabineti ishga tushganda bog‘laymiz.
-    const refreshJournalButton = $("refreshJournal");
-    if (refreshJournalButton) refreshJournalButton.onclick = async () => {
-      if (!state.subject) { toast("Avval fan tanlang."); return; }
-      if (state.pendingScores.size) { toast("Ball saqlanishini kuting."); return; }
-      refreshJournalButton.disabled = true;
-      refreshJournalButton.textContent = "⏳ Yuklanmoqda";
-      try {
-        const ok = await loadSubject(state.subject.id);
-        toast(ok ? "Jurnal muvaffaqiyatli yangilandi." : "Jurnal yuklanmadi. Xato holatini tekshiring.");
-      } catch (err) {
-        toast(errText(err));
-      } finally {
-        refreshJournalButton.disabled = false;
-        refreshJournalButton.textContent = "↻ Yangilash";
-      }
-    };
     $("tabsTeacher").classList.remove("hidden");
     $("teacherControls").classList.remove("hidden");
     state.subjects = me.subjects;
@@ -1985,6 +1963,47 @@
     @media(max-width:520px){.settings-row{grid-template-columns:1fr}.code-row{grid-template-columns:minmax(0,1fr) auto}.code-row .chip-btn{grid-column:2;grid-row:1 / span 2}.code-row code{justify-self:end}}
     @media(max-width:700px){.hero,.card,.panel{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+    /* DESKTOP: haqiqiy keng ekranli ish muhiti */
+    @media(min-width:1100px){
+      body{padding-bottom:36px!important;min-width:1000px}
+      header{padding:24px 38px 10px 286px!important}
+      .topbar,.controls{max-width:none!important;width:100%;margin-left:0!important;margin-right:0!important}
+      .topbar{gap:16px}
+      .logo{width:48px;height:48px;border-radius:15px;font-size:21px}
+      .who h1{font-size:21px}
+      .controls{display:flex;flex-wrap:nowrap;overflow:visible}
+      .controls #subject{width:250px;min-width:220px}
+      .controls #search{max-width:420px}
+      main{width:calc(100% - 286px)!important;max-width:none!important;margin:0 0 0 286px!important;padding:24px 38px 64px!important}
+      .hero{max-width:none!important;width:100%;padding:34px 38px!important;border-radius:30px!important;margin:0 0 24px!important}
+      .hero .title{font-size:34px!important}
+      .hero .sub{font-size:15px!important}
+      .hero-stats{max-width:920px!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px!important}
+      .hero-stat{padding:20px 24px!important}
+      .hero-stat b{font-size:32px!important}
+      #teacherView,#studentView,#parentView,#adminView{width:100%;max-width:none!important}
+      #teacherView [data-pane="grades"]{width:100%}
+      .journal-shell,.grid-wrap{width:100%}
+      .journal-table{min-width:100%;table-layout:auto}
+      .journal-table th.name,.journal-table td.name{width:clamp(220px,22vw,340px);min-width:220px}
+      .journal-table td:not(.name),.journal-table th:not(.name){min-width:120px}
+      .journal-table td input{height:60px;font-size:18px}
+      .tabs{position:fixed!important;left:22px!important;top:50%!important;bottom:auto!important;transform:translateY(-50%)!important;width:232px!important;max-width:232px!important;padding:12px!important;display:flex;flex-direction:column!important;gap:8px!important;border-radius:24px!important}
+      .tab{width:100%;min-height:54px;justify-content:flex-start!important;padding:14px 18px!important;border-radius:15px!important;font-size:14px!important}
+      .tab .ico{width:26px;text-align:center;font-size:19px!important}
+      .motion-toggle{right:30px!important;bottom:26px!important}
+      .help-wrap{max-width:none!important;width:calc(100% - 286px);margin-left:286px;padding:0 38px}
+      #parentView{max-width:none!important}
+      #parentContent{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+    }
+    @media(min-width:1500px){
+      header{padding-left:310px!important;padding-right:56px!important}
+      main{width:calc(100% - 310px)!important;margin-left:310px!important;padding-left:56px!important;padding-right:56px!important}
+      .tabs{left:28px!important;width:250px!important;max-width:250px!important}
+      .help-wrap{width:calc(100% - 310px);margin-left:310px;padding-left:56px;padding-right:56px}
+      .hero .title{font-size:38px!important}
+    }
   `;
   document.head.appendChild(perfStyle);
 
