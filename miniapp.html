@@ -811,6 +811,20 @@
     </section>
   </section>
 
+
+  <section id="entryView" class="hidden">
+    <div class="hero"><div class="kicker">NEYRON · SMART SCHOOL</div><div class="title">Barcha kabinetlar bitta ilovada</div><div class="sub">O‘z rolingizni tanlang va tizimga kiring.</div></div>
+    <div class="card panel" style="margin-top:14px">
+      <div class="entry-actions">
+        <button class="chip-btn primary" data-entry-role="parent">👨‍👩‍👧 Ota-ona</button>
+        <button class="chip-btn" data-entry-role="student">🎓 O‘quvchi</button>
+        <button class="chip-btn" data-entry-role="teacher">👨‍🏫 O‘qituvchi</button>
+        <button class="chip-btn" data-entry-role="admin">🛡 Super Admin</button>
+      </div>
+      <div id="entryForm" style="margin-top:16px"><p class="hint">Davom etish uchun yuqoridan rolingizni tanlang.</p></div>
+    </div>
+  </section>
+
   <section id="adminView" class="hidden">
     <div class="card panel" style="margin-top:14px"><h3>🛡 Super Admin boshqaruvi</h3><p class="hint">NEYRON tizimini ilovaning o‘zidan boshqaring.</p>
       <div class="admin-nav" id="adminNav">
@@ -1150,7 +1164,17 @@
     const code = err.data && err.data.error;
     if (code === "ai_fail" && err.data.message) return err.data.message;
     return ({
-      auth: "Avtorizatsiya xatosi. Ilovani botdan qayta oching.",
+      auth: "Avtorizatsiya xatosi. Ilovani Telegram botidan qayta oching.",
+      bad_code: "Kod noto‘g‘ri. Qayta tekshiring.",
+      bad_teacher_code: "6 xonali kod noto‘g‘ri.",
+      teacher_pending: "O‘qituvchi hisobi hali Super Admin tomonidan tasdiqlanmagan.",
+      teacher_blocked: "O‘qituvchi hisobi bloklangan.",
+      teacher_exists: "Sizda o‘qituvchi hisobi mavjud. 6 xonali kod bilan kiring.",
+      bad_details: "Ism, familiya yoki telefon raqamini tekshiring.",
+      manual_verification_required: "Hozir hujjat orqali tekshiruv rejimi yoqilgan. Hujjatni yuborish uchun administrator bilan bog‘laning.",
+      already_linked: "Bu farzand avvaldan kabinetingizga ulangan.",
+      max_children: "Farzandlar soni limiti to‘ldi.",
+      too_many_attempts: "Urinishlar soni ko‘payib ketdi. Keyinroq urinib ko‘ring.",
       role_required: "Rol aniqlanmadi. Botdagi tegishli kabinet tugmasidan qayta oching.",
       forbidden: "Bu ilova sizning hisobingiz yoki tarifingiz uchun yoqilmagan.",
       feature_locked: "Bu funksiya tarifingizda mavjud emas. Tarifni yangilang.",
@@ -1175,7 +1199,7 @@
   };
 
   function hideAllViews() {
-    ["teacherView","studentView","parentView","teacherControls","tabsTeacher","tabsStudent","teacherHero"]
+    ["teacherView","studentView","parentView","adminView","entryView","teacherControls","tabsTeacher","tabsStudent","teacherHero"]
       .forEach(id => $(id).classList.add("hidden"));
   }
 
@@ -1191,7 +1215,8 @@
     try {
       const me = await api("/api/me");
       state.role = me.role;
-      if (me.role === "admin") initAdmin(me);
+      if (me.role === "entry") initEntry(me);
+      else if (me.role === "admin") initAdmin(me);
       else if (me.role === "teacher") initTeacher(me);
       else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
@@ -1205,6 +1230,78 @@
     }
   }
 
+
+  function initEntry(me) {
+    hideAllViews();
+    $("roleLabel").textContent = "Kirish";
+    $("who").textContent = "NEYRON kabinetlari";
+    $("entryView").classList.remove("hidden");
+    const host = $("entryForm");
+    if (me.teacher_pending) {
+      host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
+    }
+    let selected = "parent";
+    const render = () => {
+      document.querySelectorAll("[data-entry-role]").forEach(b => b.classList.toggle("primary", b.dataset.entryRole === selected));
+      if (selected === "parent") host.innerHTML = '<h3>👨‍👩‍👧 Ota-ona kabineti</h3><p class="hint">Farzandingizning 4 xonali kodini kiriting. O‘qituvchi ulanishni tasdiqlaydi.</p><form class="entry-form" id="parentEntryForm"><input class="field" name="name" maxlength="80" placeholder="Ism-familiya (ixtiyoriy)"><input class="field" name="code" inputmode="numeric" maxlength="4" placeholder="4 xonali o‘quvchi kodi" required><button class="chip-btn primary" type="submit">Ulanish so‘rovini yuborish</button></form><div id="entryMessage"></div>';
+      else if (selected === "student") host.innerHTML = '<h3>🎓 O‘quvchi kabineti</h3><p class="hint">O‘qituvchingiz bergan 4 xonali kodni kiriting.</p><form class="entry-form" id="studentEntryForm"><input class="field" name="code" inputmode="numeric" maxlength="4" placeholder="4 xonali kod" required><button class="chip-btn primary" type="submit">Kabinetga kirish</button></form><div id="entryMessage"></div>';
+      else if (selected === "teacher") host.innerHTML = '<h3>👨‍🏫 O‘qituvchi kabineti</h3><p class="hint">Yangi hisob yarating yoki 6 xonali kodingiz bilan kiring.</p><form class="entry-form" id="teacherRegisterForm"><input class="field" name="first_name" maxlength="40" placeholder="Ism" required><input class="field" name="last_name" maxlength="40" placeholder="Familiya" required><input class="field" name="phone" inputmode="tel" placeholder="+998901234567" required><button class="chip-btn primary" type="submit">Ro‘yxatdan o‘tish</button></form><div class="hint">Hisobingiz bor bo‘lsa:</div><form class="entry-form" id="teacherLoginForm"><input class="field" name="code" inputmode="numeric" maxlength="6" placeholder="6 xonali kirish kodi" required><button class="chip-btn" type="submit">Hisobga kirish</button></form><div id="entryMessage"></div>';
+      else host.innerHTML = '<h3>🛡 Super Admin</h3><p class="hint">Faqat loyiha egasining Telegram akkaunti orqali kirish mumkin.</p><button class="chip-btn primary" id="adminEntryBtn">Admin kabinetini ochish</button><div id="entryMessage"></div>';
+      bindEntryForms();
+    };
+    document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = () => { selected = b.dataset.entryRole; render(); });
+    render();
+  }
+
+  function setEntryMessage(message) {
+    const el = $("entryMessage");
+    if (el) el.innerHTML = '<div class="entry-message">' + esc(message) + '</div>';
+  }
+  async function enterRole(role) {
+    const u = new URL(location.href);
+    u.searchParams.set("role", role);
+    history.replaceState({}, "", u.pathname + u.search);
+    await init();
+  }
+  function bindEntryForms() {
+    const parent = $("parentEntryForm");
+    if (parent) parent.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(parent);
+      try {
+        await api("/api/onboard/parent", {method:"POST",body:JSON.stringify({code:fd.get("code"),name:fd.get("name")})});
+        setEntryMessage("⏳ So‘rov o‘qituvchiga yuborildi. Tasdiqlangach ota-ona kabineti ochiladi.");
+      } catch(err) { setEntryMessage(errText(err)); }
+    };
+    const student = $("studentEntryForm");
+    if (student) student.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(student);
+      try { await api("/api/onboard/student",{method:"POST",body:JSON.stringify({code:fd.get("code")})}); await enterRole("student"); }
+      catch(err) { setEntryMessage(errText(err)); }
+    };
+    const reg = $("teacherRegisterForm");
+    if (reg) reg.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(reg);
+      try {
+        const out = await api("/api/onboard/teacher/register",{method:"POST",body:JSON.stringify({first_name:fd.get("first_name"),last_name:fd.get("last_name"),phone:fd.get("phone")})});
+        setEntryMessage("✅ Ro‘yxatdan o‘tish qabul qilindi. Sizning 6 xonali kodingiz: " + out.code + ". Uni saqlab qo‘ying. Super Admin tasdiqlagach kabinet ochiladi.");
+      } catch(err) { setEntryMessage(errText(err)); }
+    };
+    const login = $("teacherLoginForm");
+    if (login) login.onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(login);
+      try {
+        const out = await api("/api/onboard/teacher/login",{method:"POST",body:JSON.stringify({code:fd.get("code")})});
+        if (out.pending) setEntryMessage("⏳ Hisobingiz Super Admin tasdig‘ini kutmoqda.");
+        else await enterRole("teacher");
+      } catch(err) { setEntryMessage(errText(err)); }
+    };
+    const admin = $("adminEntryBtn");
+    if (admin) admin.onclick = () => enterRole("admin");
+  }
 
   function initAdmin() {
     document.body.dataset.role = "admin";
