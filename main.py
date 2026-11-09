@@ -4727,6 +4727,87 @@ async def api_me(request):
         "subject": subj["name"] if subj else "-", "ai": ai_teacher_allowed(teacher)}})
 
 
+async def api_teacher_requests(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    links = run("""SELECT pr.id, pr.student_id, pr.parent_chat_id, pr.parent_name, s.fio
+                   FROM pending_requests pr JOIN students s ON s.id=pr.student_id
+                   WHERE s.teacher_id=? ORDER BY pr.id DESC""", (teacher["id"],), fetch="all")
+    payments = run("""SELECT pr.id, pr.student_id, pr.parent_chat_id, pr.amount, pr.method,
+                             pr.created_at, s.fio
+                      FROM payment_requests pr JOIN students s ON s.id=pr.student_id
+                      WHERE s.teacher_id=? AND pr.status='pending' ORDER BY pr.id DESC""",
+                   (teacher["id"],), fetch="all")
+    return web.json_response({
+        "links": [{"id": r[0], "student_id": r[1], "parent_id": r[2],
+                   "parent_name": r[3] or "Ota-ona", "student": r[4]} for r in links],
+        "payments": [{"id": r[0], "student_id": r[1], "parent_id": r[2],
+                      "amount": r[3], "method": r[4], "created_at": r[5],
+                      "student": r[6]} for r in payments]
+    })
+
+
+async def api_teacher_request_action(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    req_kind = request.match_info.get("kind", "")
+    try:
+        req_id = int(request.match_info.get("rid", ""))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad"}, status=400)
+    body = await _read_json(request)
+    action = str(body.get("action", "")).lower()
+    if action not in {"approve", "reject"} or req_kind not in {"link", "payment"}:
+        return web.json_response({"error": "bad"}, status=400)
+    now = local_now().strftime("%d.%m.%Y %H:%M")
+    if req_kind == "link":
+        req = run("""SELECT pr.student_id, pr.parent_chat_id, pr.parent_name, s.fio
+                     FROM pending_requests pr JOIN students s ON s.id=pr.student_id
+                     WHERE pr.id=? AND s.teacher_id=?""", (req_id, teacher["id"]), fetch="one")
+        if not req:
+            return web.json_response({"error": "not_found"}, status=404)
+        sid, parent_id, parent_name, student_name = req
+        if action == "approve":
+            if len(db_parent_student_ids(parent_id)) >= MAX_CHILDREN and sid not in db_parent_student_ids(parent_id):
+                return web.json_response({"error": "max_children"}, status=409)
+            run("INSERT INTO parent_children (parent_chat_id, student_id) VALUES (?, ?) ON CONFLICT(parent_chat_id, student_id) DO NOTHING",
+                (parent_id, sid))
+        run("DELETE FROM pending_requests WHERE id=?", (req_id,))
+        audit(teacher["chat_id"], "miniapp_parent_link_" + action, str(req_id), student_name)
+        try:
+            await bot.send_message(parent_id,
+                ("🎉 O‘qituvchi farzandingizni kabinetga ulashni tasdiqladi." if action == "approve"
+                 else "❌ Farzandni ulash so‘rovi rad etildi. O‘qituvchi bilan bog‘laning."))
+        except Exception:
+            logging.exception("Ota-onaga ulanish natijasi yuborilmadi")
+        return web.json_response({"ok": True})
+    req = run("""SELECT pr.student_id, pr.parent_chat_id, pr.amount, pr.method,
+                        pr.status, s.fio
+                 FROM payment_requests pr JOIN students s ON s.id=pr.student_id
+                 WHERE pr.id=? AND s.teacher_id=?""", (req_id, teacher["id"]), fetch="one")
+    if not req:
+        return web.json_response({"error": "not_found"}, status=404)
+    sid, parent_id, amount, method, status, student_name = req
+    if status != "pending":
+        return web.json_response({"error": "already_reviewed"}, status=409)
+    new_status = "approved" if action == "approve" else "rejected"
+    run("UPDATE payment_requests SET status=?, reviewed_at=? WHERE id=? AND status='pending'",
+        (new_status, now, req_id))
+    if action == "approve":
+        db_set_payment_status(sid, PAID)
+    audit(teacher["chat_id"], "miniapp_payment_" + action, str(req_id), student_name)
+    try:
+        await bot.send_message(parent_id,
+            (f"✅ TO‘LOV TASDIQLANDI\nO‘quvchi: {student_name}\nSumma: {amount:,} so‘m"
+             if action == "approve" else
+             f"❌ TO‘LOV RAD ETILDI\nO‘quvchi: {student_name}\nIltimos, ma’lumotlarni tekshirib qayta yuboring."))
+    except Exception:
+        logging.exception("Ota-onaga to‘lov natijasi yuborilmadi")
+    return web.json_response({"ok": True})
+
+
 async def api_student_overview(request):
     kind, st, err = miniapp_identity(request)
     if err or kind != "student":
@@ -4941,6 +5022,8 @@ async def start_web_server():
     app.router.add_post("/api/admin/password", api_admin_password)
     app.router.add_get("/api/admin/audit", api_admin_audit)
     app.router.add_get("/api/me", api_me)
+    app.router.add_get("/api/teacher/requests", api_teacher_requests)
+    app.router.add_post("/api/teacher/requests/{kind}/{rid}", api_teacher_request_action)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
     app.router.add_delete("/api/student/{sid}", api_delete_student)
