@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD", "").strip()
 # Yagona egasi: Super Admin huquqi faqat shu Telegram ID ga beriladi.
-OWNER_TELEGRAM_ID = 6359925487
+OWNER_TELEGRAM_ID = int(os.environ.get("OWNER_TELEGRAM_ID") or os.environ.get("ADMIN_ID") or os.environ.get("SUPER_ADMIN_ID") or "6359925487")
 # Maxfiy qiymatlar Render Environment bo'limiga keyin kiritilishi mumkin.
 # BOT_TOKEN bo'lmasa web server ishga tushadi, bot polling esa kutadi.
 PEPPER = os.environ.get("PEPPER", "").strip() or TOKEN or "neuron-v2-initial-pepper-change-me"
