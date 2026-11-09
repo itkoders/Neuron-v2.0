@@ -1486,6 +1486,41 @@ async def t_reg_contact_fallback(message: types.Message, state: FSMContext):
     await message.answer("📱 Iltimos, \"Raqamni tasdiqlash\" tugmasidan foydalaning.")
 
 
+@dp.message(F.contact, F.chat.type == "private")
+async def miniapp_teacher_contact(message: types.Message):
+    """Complete Mini App teacher registration only after Telegram contact confirmation."""
+    uid = message.from_user.id
+    key = f"mini_teacher_reg_{uid}"
+    raw = db_get_setting(key)
+    if not raw:
+        return
+    try:
+        data = json.loads(raw)
+    except Exception:
+        db_set_setting(key, "")
+        return
+    contact = message.contact
+    if not contact or contact.user_id != uid or _digits(contact.phone_number) != _digits(data.get("phone", "")):
+        db_set_setting(key, "")
+        await message.answer("❌ Telefon raqami tasdiqlanmadi. Ilovada qayta ro‘yxatdan o‘ting.")
+        return
+    if teacher_by_chat(uid):
+        db_set_setting(key, "")
+        await message.answer("ℹ️ O‘qituvchi hisobingiz avvaldan mavjud.")
+        return
+    try:
+        teacher, code = create_teacher(uid, data, "admin_pending")
+        db_set_setting(key, "")
+        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram contact confirmed; admin approval pending")
+        await message.answer(
+            f"✅ Ro‘yxatdan o‘tish yakunlandi.\\n6 xonali kirish kodingiz: {code}\\n"
+            "Hisob Super Admin tasdig‘ini kutmoqda. Kodni xavfsiz saqlang."
+        )
+    except Exception:
+        logging.exception("Mini App teacher registration failed")
+        await message.answer("❌ Ro‘yxatdan o‘tishda xato. Keyinroq urinib ko‘ring.")
+
+
 async def _finish_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if verify_mode() == "manual":
@@ -4740,6 +4775,11 @@ async def api_onboard_parent(request):
         run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
             (sid, uid, parent_name))
     audit(uid, "miniapp_parent_link_request", str(sid), parent_name)
+    await notify_teacher(
+        st["teacher_id"],
+        f"📨 **Yangi ota-ona so‘rovi**\\nO‘quvchi: **{md(st['fio'])}**\\n"
+        "Tasdiqlash yoki rad etish uchun NEYRON ilovasidagi **So‘rovlar** bo‘limini oching."
+    )
     return web.json_response({"ok": True, "pending": True})
 
 
@@ -4758,9 +4798,9 @@ async def api_onboard_teacher_register(request):
     }
     if not is_valid_name(data["first_name"]) or not is_valid_name(data["last_name"]) or not is_valid_phone(data["phone"]):
         return web.json_response({"error": "bad_details"}, status=400)
-    t, code = create_teacher(uid, data, "admin_pending")
-    audit(uid, "miniapp_teacher_register", str(t["id"]), "Admin approval pending")
-    return web.json_response({"ok": True, "pending": True, "code": code})
+    db_set_setting(f"mini_teacher_reg_{uid}", json.dumps(data, ensure_ascii=False))
+    audit(uid, "miniapp_teacher_register_started", str(uid), "Telegram contact confirmation pending")
+    return web.json_response({"ok": True, "contact_required": True})
 
 
 async def api_onboard_teacher_login(request):
