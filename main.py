@@ -1472,13 +1472,11 @@ async def t_reg_phone(message: types.Message, state: FSMContext):
     if not is_valid_phone(phone):
         await send_and_clean_both(message, "❌ Telefon noto'g'ri. Masalan: +998901234567", delay=20)
         return
-    await state.update_data(phone=phone)
-    await state.set_state(TeacherStates.reg_contact)
+    await state.clear()
     await message.answer(
-        "📱 **Telefon raqamingizni tasdiqlang.**\n\nQuyidagi tugmani bosing. Telegram raqamingizni o'zi yuboradi.",
-        reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📱 Raqamni tasdiqlash", request_contact=True)]],
-                                         resize_keyboard=True, one_time_keyboard=True),
-        parse_mode="Markdown")
+        "📱 Telefonni tasdiqlash va ro‘yxatdan o‘tish NEYRON ilovasida amalga oshiriladi.",
+        reply_markup=main_menu_kb(message.from_user.id)
+    )
 
 
 @dp.message(TeacherStates.reg_contact, F.contact)
