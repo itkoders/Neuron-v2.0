@@ -985,12 +985,18 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    # /start menyusi faqat uchta rolni ko'rsatadi.
-    return kb([
+    # Oddiy foydalanuvchiga faqat uchta rol. Loyiha egasiga Admin ilovasi ham ko'rinadi.
+    rows = [
         [btn("👨‍👩‍👧 Ota-ona", "auth_parent")],
         [btn("🎓 O'quvchi", "student_login_prompt")],
         [btn("👨‍🏫 O'qituvchi", "teacher_role_menu")],
-    ])
+    ]
+    if is_super(user_id) and MINIAPP_URL:
+        rows.append([InlineKeyboardButton(
+            text="🛡 Admin ilovasi",
+            web_app=WebAppInfo(url=miniapp_role_url("admin"))
+        )])
+    return kb(rows)
 
 
 def owned_subject(t, sid):
