@@ -1519,6 +1519,7 @@
 
   /* ---------- O'QITUVCHI ---------- */
   function initTeacher(me) {
+    hideAllViews();
     document.body.dataset.role = "teacher";
     $("roleLabel").textContent = "O‘qituvchi";
     $("who").textContent = me.teacher.name;
@@ -1898,6 +1899,7 @@
 
   /* ---------- OTA-ONA ---------- */
   function initParent(parent) {
+    hideAllViews();
     document.body.dataset.role = "parent";
     $("roleLabel").textContent = "Ota-ona";
     state.parentChildren = parent.children || [];
@@ -2016,6 +2018,7 @@
 
   /* ---------- O'QUVCHI ---------- */
   function initStudent(st) {
+    hideAllViews();
     document.body.dataset.role = "student";
     $("roleLabel").textContent = "O‘quvchi";
     $("who").textContent = st.fio;
