@@ -4736,7 +4736,7 @@ async def api_me(request):
         parent_pending = bool(run("SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"))
         teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved" and has_feature(teacher, "mini_app"))
         return web.json_response({
-            "role":"entry", "teacher_pending":pending, "teacher_ready":teacher_ready,
+            "role":"entry", "is_admin":is_super(obj), "teacher_pending":pending, "teacher_ready":teacher_ready,
             "teacher_name":teacher_name(teacher) if teacher else "",
             "student_linked":bool(student_link), "parent_linked":parent_linked,
             "parent_pending":parent_pending
