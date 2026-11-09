@@ -1522,7 +1522,7 @@ async def miniapp_teacher_contact(message: types.Message):
         db_set_setting(key, "")
         audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram contact confirmed; admin approval pending")
         await message.answer(
-            f"✅ Ro‘yxatdan o‘tish yakunlandi.\\n6 xonali kirish kodingiz: {code}\\n"
+            f"✅ Ro‘yxatdan o‘tish yakunlandi.\n6 xonali kirish kodingiz: {code}\n"
             "Hisob Super Admin tasdig‘ini kutmoqda. Kodni xavfsiz saqlang."
         )
     except Exception:
