@@ -5318,6 +5318,8 @@ async def start_web_server():
         if not request.path.startswith("/api/") or request.path == "/api/public-settings":
             return await handler(request)
         uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+        if uid and request.path == "/api/me":
+            SUB_CACHE.pop(uid, None)
         if uid and not await is_subscribed(uid):
             channel = db_get_setting("required_channel") or ""
             join_url = db_get_setting("required_channel_url") or ""
