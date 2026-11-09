@@ -809,6 +809,9 @@
       </div>
       <div id="teacherRequests" style="display:grid;gap:10px;margin-top:12px"><div class="loading">So‘rovlar yuklanmoqda…</div></div>
     </section>
+    <section data-pane="tools" class="hidden">
+      <div id="teacherTools" style="display:grid;gap:12px;margin-top:14px"><div class="loading">Vositalar yuklanmoqda…</div></div>
+    </section>
   </section>
 
 
@@ -882,6 +885,7 @@
   <button class="tab" data-tab="stats"><span class="ico">📊</span>Tahlil</button>
   <button class="tab" data-tab="settings"><span class="ico">⚙️</span>Sozlama</button>
   <button class="tab" data-tab="requests"><span class="ico">📨</span>So‘rovlar</button>
+  <button class="tab" data-tab="tools"><span class="ico">🧰</span>Vositalar</button>
 </nav>
 <nav class="tabs hidden" id="tabsStudent" role="tablist">
   <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
@@ -1467,12 +1471,69 @@
     } catch(err) { wrap.innerHTML = '<div class="card empty">' + esc(errText(err)) + '</div>'; }
   }
 
+  async function loadTeacherTools() {
+    const host=$("teacherTools");
+    if(!host)return;
+    host.innerHTML='<div class="loading">Vositalar yuklanmoqda…</div>';
+    try {
+      const data=await api("/api/teacher/tools");
+      const f=new Set(data.features||[]);
+      const parts=[];
+      if(f.has("calendar")) {
+        const rows=(data.events||[]).map(x=>'<div class="history-item card"><b>'+esc(x.date)+'</b><div>'+esc(x.title)+'</div><button class="chip-btn danger" data-tool-action="calendar_delete" data-id="'+x.id+'">O‘chirish</button></div>').join("")||'<p class="hint">Taqvim bo‘sh.</p>';
+        parts.push('<div class="card panel"><h3>📅 Taqvim</h3><form id="toolCalendarForm" class="entry-form"><input class="field" name="title" maxlength="100" placeholder="Tadbir nomi" required><input class="field" name="date" type="date" required><button class="chip-btn primary">Taqvimga qo‘shish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
+      }
+      if(f.has("notes")) {
+        const rows=(data.notes||[]).map(x=>'<div class="history-item card">'+esc(x.text)+'<button class="chip-btn danger" data-tool-action="note_delete" data-id="'+x.id+'">O‘chirish</button></div>').join("")||'<p class="hint">Eslatma yo‘q.</p>';
+        parts.push('<div class="card panel"><h3>📝 Eslatmalar</h3><form id="toolNoteForm" class="entry-form"><textarea class="field" name="text" rows="3" maxlength="700" placeholder="Shaxsiy eslatma..." required></textarea><button class="chip-btn primary">Eslatmani saqlash</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
+      }
+      if(f.has("broadcast")) {
+        parts.push('<div class="card panel"><h3>📢 Ota-onalarga e’lon</h3><p class="hint">E’lon barcha ulangan ota-onalarga yuboriladi.</p><form id="toolBroadcastForm" class="entry-form"><textarea class="field" name="text" rows="3" maxlength="1500" placeholder="E’lon matni..." required></textarea><button class="chip-btn primary">E’lonni yuborish</button></form></div>');
+      }
+      if(f.has("scheduled_broadcast")) {
+        const rows=(data.scheduled||[]).map(x=>'<div class="history-item card"><b>'+esc(x.send_at)+'</b><div>'+esc(x.text)+'</div><div class="hint">'+(x.sent===0?'Kutilmoqda':x.sent===1?'Yuborilgan':'Bekor qilingan')+'</div>'+(x.sent===0?'<button class="chip-btn danger" data-tool-action="schedule_cancel" data-id="'+x.id+'">Bekor qilish</button>':'')+'</div>').join("")||'<p class="hint">Rejalashtirilgan e’lon yo‘q.</p>';
+        parts.push('<div class="card panel"><h3>⏰ Rejalashtirilgan e’lon</h3><p class="hint">Vaqt O‘zbekiston vaqti bo‘yicha olinadi.</p><form id="toolScheduleForm" class="entry-form"><textarea class="field" name="text" rows="2" maxlength="1500" placeholder="E’lon matni..." required></textarea><input class="field" name="send_at" type="datetime-local" required><button class="chip-btn primary">Rejalashtirish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
+      }
+      if(f.has("export")) parts.push('<div class="card panel"><h3>📥 Jurnalni yuklab olish</h3><p class="hint">O‘quvchilar va natijalar CSV formatida.</p><button class="chip-btn primary" id="toolExport">CSV yuklab olish</button></div>');
+      if(!parts.length) parts.push('<div class="card panel"><h3>🧰 Qo‘shimcha vositalar</h3><p class="hint">Bu bo‘limlar joriy tarifingizda yoqilmagan. Tarifni Super Admin orqali yangilashingiz mumkin.</p></div>');
+      host.innerHTML=parts.join("");
+      const cf=$("toolCalendarForm");
+      if(cf)cf.onsubmit=async e=>{e.preventDefault();const d=new FormData(cf);await submitTool({action:"calendar_add",title:d.get("title"),date:d.get("date")});};
+      const nf=$("toolNoteForm");
+      if(nf)nf.onsubmit=async e=>{e.preventDefault();const d=new FormData(nf);await submitTool({action:"note_add",text:d.get("text")});};
+      const bf=$("toolBroadcastForm");
+      if(bf)bf.onsubmit=async e=>{e.preventDefault();const d=new FormData(bf);if(!confirm("E’lon barcha ota-onalarga yuborilsinmi?"))return;const out=await submitTool({action:"broadcast_send",text:d.get("text")},false);if(out)toast("Yuborildi: "+out.sent+" ta ota-ona.");};
+      const sf=$("toolScheduleForm");
+      if(sf)sf.onsubmit=async e=>{e.preventDefault();const d=new FormData(sf);await submitTool({action:"schedule_add",text:d.get("text"),send_at:d.get("send_at")});};
+      const ex=$("toolExport");
+      if(ex)ex.onclick=downloadTeacherCsv;
+    } catch(err) { host.innerHTML='<div class="card empty">'+esc(errText(err))+'</div>'; }
+  }
+  async function submitTool(payload, refresh=true) {
+    try {
+      const out=await api("/api/teacher/tools",{method:"POST",body:JSON.stringify(payload)});
+      if(refresh) {toast("Saqlandi.");await loadTeacherTools();}
+      return out;
+    } catch(err) {toast(errText(err));return null;}
+  }
+  async function downloadTeacherCsv() {
+    const b=$("toolExport");if(b){b.disabled=true;b.textContent="Tayyorlanmoqda…";}
+    try {
+      const res=await fetch("/api/teacher/export.csv",{headers:{"X-Init-Data":INIT,"X-App-Role":new URLSearchParams(location.search).get("role")||""}});
+      if(!res.ok){let data={};try{data=await res.json();}catch(_){}throw Object.assign(new Error(data.error||"export_failed"),{data});}
+      const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
+      a.href=url;a.download="neyron_jurnal.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast("CSV tayyor.");
+    } catch(err){toast(errText(err));}
+    finally{if(b){b.disabled=false;b.textContent="CSV yuklab olish";}}
+  }
+
   function renderTeacherTab() {
     if (state.tab === "grades") renderGrid();
     if (state.tab === "attendance") renderAttendance();
     if (state.tab === "stats") renderStats();
     if (state.tab === "settings" && !state.settingsLoaded) loadTeacherSettings();
     if (state.tab === "requests") loadTeacherRequests();
+    if (state.tab === "tools") loadTeacherTools();
   }
 
   function renderGrid() {
@@ -1994,6 +2055,12 @@
   }));
   $("subject").addEventListener("change", e => loadSubject(+e.target.value));
   $("refreshRequests").addEventListener("click", loadTeacherRequests);
+  $("teacherTools").addEventListener("click", async e => {
+    const b=e.target.closest("[data-tool-action]");if(!b)return;
+    const action=b.dataset.toolAction,id=b.dataset.id;
+    if(!confirm("Ushbu elementni o‘chirish/bekor qilishni tasdiqlaysizmi?"))return;
+    b.disabled=true;await submitTool({action,id});
+  });
   $("teacherRequests").addEventListener("click", async e => {
     const b = e.target.closest("[data-request-action]");
     if (!b) return;
