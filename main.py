@@ -4325,17 +4325,7 @@ def miniapp_identity(request):
 
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
     if requested_role == "entry":
-        existing_teacher = teacher_by_chat(uid)
-        if existing_teacher and existing_teacher["active"] and existing_teacher["verify_status"] == "approved" and existing_teacher.get("admin_approved") and has_feature(existing_teacher, "mini_app"):
-            return "teacher", existing_teacher, None
-        linked_student = run("SELECT student_id FROM student_links WHERE chat_id=?", (uid,), fetch="one")
-        existing_student = db_student(linked_student[0]) if linked_student else None
-        if existing_student:
-            owner = db_teacher(existing_student["teacher_id"])
-            if owner and owner["active"] and owner["verify_status"] == "approved" and owner.get("admin_approved") and has_feature(owner, "mini_app"):
-                return "student", existing_student, None
-        if db_parent_miniapp_student_ids(uid):
-            return "parent", uid, None
+        # Har bir rolni ilova ichidan tanlashga ruxsat beramiz; bir akkaunt bir nechta rolga ega bo‘lishi mumkin.
         return "entry", uid, None
     if requested_role == "admin":
         if is_super(uid):
