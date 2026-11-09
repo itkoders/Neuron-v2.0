@@ -1193,7 +1193,7 @@
       teacher_pending: "O‘qituvchi hisobi hali Super Admin tomonidan tasdiqlanmagan.",
       teacher_blocked: "O‘qituvchi hisobi bloklangan.",
       teacher_exists: "Sizda o‘qituvchi hisobi mavjud. 6 xonali kod bilan kiring.",
-      bad_details: "Ism, familiya yoki telefon raqamini tekshiring.",\n      bad_date: "Sana yoki vaqt noto‘g‘ri.",\n      date_in_past: "O‘tgan vaqtni rejalashtirib bo‘lmaydi.",\n      bad_title: "Tadbir nomini kiriting.",\n      bad_note: "Eslatma matnini kiriting.",\n      bad_message: "E’lon matnini kiriting.",\n      bot_unavailable: "Telegram bot hozir ulanmagan.",
+      bad_details: "Ism, familiya yoki telefon raqamini tekshiring.",\n      bad_date: "Sana yoki vaqt noto‘g‘ri.",\n      date_in_past: "O‘tgan vaqtni rejalashtirib bo‘lmaydi.",\n      bad_title: "Tadbir nomini kiriting.",\n      bad_note: "Eslatma matnini kiriting.",\n      bad_message: "E’lon matnini kiriting.",\n      receipt_not_found: "To‘lov cheki topilmadi.",\n      receipt_unavailable: "Chekni yuklab bo‘lmadi. Qayta urinib ko‘ring.",\n      bot_unavailable: "Telegram bot hozir ulanmagan.",
       manual_verification_required: "Hozir hujjat orqali tekshiruv rejimi yoqilgan. Hujjatni yuborish uchun administrator bilan bog‘laning.",
       already_linked: "Bu farzand avvaldan kabinetingizga ulangan.",
       max_children: "Farzandlar soni limiti to‘ldi.",
@@ -1483,11 +1483,30 @@
       const payments = (data.payments || []).map(x => '<div class="card panel"><b>💳 To‘lov so‘rovi</b><div class="hint">' +
         esc(x.student) + ' · ' + Number(x.amount || 0).toLocaleString("uz-UZ") + ' so‘m · ' + esc(x.method) +
         '<br>' + esc(x.created_at || "") + '</div><div class="admin-actions">' +
+        (x.has_receipt ? '<button class="chip-btn" data-receipt-id="' + x.id + '">🧾 Chekni ko‘rish</button>' : '') +
         '<button class="chip-btn primary" data-request-action="approve" data-kind="payment" data-id="' + x.id + '">Tasdiqlash</button>' +
         '<button class="chip-btn" data-request-action="reject" data-kind="payment" data-id="' + x.id + '">Rad etish</button></div></div>').join("");
       wrap.innerHTML = links + payments || '<div class="card empty">Hozircha yangi so‘rov yo‘q.</div>';
       if (!links && !payments) wrap.innerHTML = '<div class="card empty">Hozircha yangi so‘rov yo‘q.</div>';
     } catch(err) { wrap.innerHTML = '<div class="card empty">' + esc(errText(err)) + '</div>'; }
+  }
+
+  async function openTeacherReceipt(id) {
+    try {
+      const res=await fetch("/api/teacher/payment/"+id+"/receipt",{headers:{
+        "X-Init-Data":INIT,
+        "X-App-Role":new URLSearchParams(location.search).get("role")||""
+      }});
+      if(!res.ok){let data={};try{data=await res.json();}catch(_){}throw Object.assign(new Error(data.error||"receipt_unavailable"),{data});}
+      const blob=await res.blob(),url=URL.createObjectURL(blob);
+      const overlay=document.createElement("div");
+      overlay.className="sheet-overlay open";
+      overlay.innerHTML='<div class="sheet" role="dialog" aria-modal="true"><div class="sheet-handle"></div><h2>🧾 To‘lov cheki</h2><img src="'+url+'" alt="To‘lov cheki" style="display:block;width:100%;max-height:65vh;object-fit:contain;border-radius:12px;background:#111"><button class="sheet-btn ghost" id="closeReceipt" style="margin-top:12px">Yopish</button></div>';
+      document.body.appendChild(overlay);
+      const close=()=>{overlay.remove();URL.revokeObjectURL(url);};
+      overlay.querySelector("#closeReceipt").onclick=close;
+      overlay.addEventListener("click",e=>{if(e.target===overlay)close();});
+    } catch(err) { toast(errText(err)); }
   }
 
   async function loadTeacherTools() {
@@ -2081,6 +2100,8 @@
     b.disabled=true;await submitTool({action,id});
   });
   $("teacherRequests").addEventListener("click", async e => {
+    const receipt = e.target.closest("[data-receipt-id]");
+    if (receipt) { openTeacherReceipt(receipt.dataset.receiptId); return; }
     const b = e.target.closest("[data-request-action]");
     if (!b) return;
     const kind = b.dataset.kind, id = b.dataset.id, action = b.dataset.requestAction;
