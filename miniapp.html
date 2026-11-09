@@ -455,6 +455,172 @@
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
   }
+
+
+  /* ===== DESKTOP / LAPTOP RESPONSIVE EXPERIENCE ===== */
+  @media (min-width: 900px){
+    body{padding-bottom:34px}
+    header{padding:18px 28px 10px}
+    .topbar,.controls{max-width:1360px}
+    main{max-width:1360px;padding:24px 28px 40px}
+    .help-wrap{max-width:1360px;padding:0 28px}
+    .hero{max-width:1360px;margin-top:20px;padding:28px 32px;border-radius:28px}
+    .hero .title{font-size:30px}
+    .hero .sub{font-size:14px}
+    .hero-stats{max-width:760px;gap:14px;margin-top:22px}
+    .hero-stat{padding:16px 18px;border-radius:18px}
+    .hero-stat b{font-size:26px}
+    .controls{gap:10px;margin-top:16px}
+    .controls .field,.controls select,.controls .chip-btn{min-height:46px}
+    .tabs{
+      width:min(calc(100% - 64px),760px);bottom:20px;padding:8px;gap:8px;
+      border-radius:24px;box-shadow:0 20px 56px -24px rgba(0,0,0,.72),0 0 28px rgba(34,211,238,.08)
+    }
+    .tab{flex-direction:row;justify-content:center;gap:8px;padding:12px 16px;font-size:13px}
+    .tab .ico{font-size:17px}
+    .motion-toggle{right:28px;bottom:28px}
+    .toast{bottom:100px}
+    .section-title{font-size:12px;margin-top:28px}
+    .panel{padding:22px}
+    .card{border-radius:22px}
+    .grid-wrap{border-radius:20px}
+    .journal-table th.name,.journal-table td.name{width:230px;min-width:230px;padding-left:18px}
+    .journal-table td:not(.name),.journal-table th:not(.name){width:auto;min-width:82px}
+    .journal-table td input{height:54px}
+    .summary{gap:14px}
+    .kpis{gap:14px}
+    .score-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .att-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .admin-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+  }
+  @media (min-width: 1280px){
+    main{max-width:1480px}
+    .topbar,.controls,.hero{max-width:1480px}
+    .help-wrap{max-width:1480px}
+    .score-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  }
+  @media (hover:hover) and (pointer:fine){
+    .card:hover,.panel:hover,.score-card:hover,.fact:hover,.att-item:hover,.admin-item:hover,.admin-kpi:hover,.settings-card:hover{
+      border-color:rgba(53,216,242,.38);
+      box-shadow:0 24px 54px -28px rgba(34,211,238,.30),var(--shadow);
+    }
+    .chip-btn:hover,.btn:hover,.tab:hover,.theme-switch button:hover{
+      filter:brightness(1.08);transform:translateY(-1px)
+    }
+    .field:hover,select:hover{border-color:rgba(53,216,242,.38)}
+  }
+  :focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+  @media (max-width: 899px){
+    .motion-toggle{right:12px;bottom:calc(88px + env(safe-area-inset-bottom))}
+  }
+
+  /* ===== NEYRON FUTURISTIC LIQUID GLASS LAYER ===== */
+  :root{
+    --bg:#070b14;--surface:rgba(17,25,42,.76);--surface-2:rgba(24,37,59,.72);
+    --text:#eaf5ff;--muted:#91a8bd;--line:rgba(111,190,224,.19);
+    --brand:#35d8f2;--brand-2:#668cff;--brand-soft:rgba(53,216,242,.13);--brand-ink:#9af1ff;
+    --grad:linear-gradient(125deg,#22d3ee 0%,#3b82f6 52%,#8b5cf6 100%);
+    --shadow:0 18px 48px -22px rgba(0,0,0,.78),inset 0 1px 0 rgba(255,255,255,.07);
+    --r:22px;--r-sm:16px;
+  }
+  :root[data-theme="light"]{
+    --bg:#eaf3fa;--surface:rgba(255,255,255,.78);--surface-2:rgba(235,246,252,.82);
+    --text:#102235;--muted:#5e768c;--line:rgba(33,126,160,.18);
+    --brand:#0891b2;--brand-2:#4f70d8;--brand-soft:rgba(8,145,178,.12);--brand-ink:#087b99;
+    --shadow:0 18px 42px -24px rgba(30,75,105,.35),inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  html,body{background-color:var(--bg)}
+  body{
+    background-image:radial-gradient(ellipse at 8% 0%,rgba(34,211,238,.12),transparent 34%),
+      radial-gradient(ellipse at 92% 18%,rgba(99,102,241,.13),transparent 32%),
+      radial-gradient(ellipse at 50% 100%,rgba(14,165,233,.08),transparent 42%);
+    background-attachment:fixed;
+  }
+  header{background:rgba(7,11,20,.76);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border-bottom:1px solid var(--line)}
+  :root[data-theme="light"] header{background:rgba(234,243,250,.78)}
+  .logo{border-radius:14px;background:linear-gradient(145deg,#22d3ee,#2563eb 65%,#8b5cf6);box-shadow:0 0 28px rgba(34,211,238,.3)}
+  .who .label{color:#52dff4}
+  .hero{background:linear-gradient(125deg,rgba(8,145,178,.94),rgba(30,64,175,.94) 56%,rgba(91,33,182,.92));border:1px solid rgba(145,230,255,.25);box-shadow:0 22px 54px -24px rgba(14,165,233,.48),inset 0 1px 0 rgba(255,255,255,.18)}
+  .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.10) 48%,transparent 72%);transform:translateX(-110%);animation:neuronSheen 8s ease-in-out infinite;pointer-events:none}
+  @keyframes neuronSheen{0%,55%{transform:translateX(-110%)}80%,100%{transform:translateX(110%)}}
+  .hero-stat,.card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.stat,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card{
+    background:var(--surface);border-color:var(--line);box-shadow:var(--shadow);
+  }
+  .card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card{
+    backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);
+  }
+  .card,.panel,.score-card,.fact,.att-item,.admin-item,.admin-kpi,.settings-card{transition:border-color .22s ease,box-shadow .22s ease,background .22s ease,transform .22s ease}
+  .card:active,.score-card:active,.fact:active,.att-item:active,.admin-item:active{border-color:rgba(53,216,242,.48)}
+  .chip-btn,.btn,.parent-pay-quick,.theme-switch,.field,select,input[type="search"]{transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease,filter .2s ease}
+  .chip-btn:active,.btn:active,.parent-pay-quick:active{transform:scale(.97);filter:brightness(1.12)}
+  .chip-btn.primary,.btn,.parent-pay-quick{background:var(--grad);box-shadow:0 10px 28px -13px rgba(34,211,238,.55)}
+  .field:focus,select:focus,input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft),0 0 24px rgba(34,211,238,.10)}
+  .tabs{background:rgba(11,20,36,.82);border:1px solid rgba(116,207,235,.22);border-radius:22px;backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);box-shadow:0 16px 44px -20px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.08)}
+  :root[data-theme="light"] .tabs{background:rgba(255,255,255,.84)}
+  .tabs button.active,.tabs .active{color:#5ce7f8}
+  .bar>i,.score-card .meter>i{background:linear-gradient(90deg,#22d3ee,#3b82f6,#a78bfa)}
+  .status.ok{box-shadow:0 0 18px rgba(52,211,153,.12)}
+  .motion-toggle{
+    position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:45;
+    border:1px solid rgba(96,220,244,.34);border-radius:999px;padding:10px 14px;
+    color:#dffaff;background:rgba(10,25,43,.86);font-family:inherit;font-size:12px;font-weight:700;line-height:1.2;
+    box-shadow:0 8px 28px rgba(0,0,0,.35),0 0 22px rgba(34,211,238,.12);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;
+  }
+  .motion-toggle[aria-pressed="true"]{background:linear-gradient(120deg,#0e7490,#1d4ed8);box-shadow:0 0 26px rgba(34,211,238,.28)}
+  :root[data-theme="light"] .motion-toggle{color:#073047;background:rgba(255,255,255,.9)}
+  .motion-card{will-change:transform;transform:perspective(1000px) rotateX(var(--motion-rx,0deg)) rotateY(var(--motion-ry,0deg));transition:transform .16s ease-out}
+  .motion-card.motion-hover{box-shadow:0 24px 55px -25px rgba(34,211,238,.24),inset 0 1px 0 rgba(255,255,255,.12)}
+  @media(max-width:700px){.card,.panel,.grid-wrap,.report-actions,.att-item,.score-card,.fact,.profile,.admin-item,.admin-kpi{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}}
+  @media(prefers-reduced-motion:reduce){.hero::before{animation:none}.motion-card{transform:none!important;transition:none!important}}
+
+
+  /* ===== NEYRON ROLE EXPERIENCE LAYER ===== */
+  body[data-role="teacher"]{
+    --brand:#22d3ee;--brand-2:#3b82f6;--brand-soft:rgba(34,211,238,.14);--brand-ink:#a5f3fc;
+    --line:rgba(65,214,239,.2);
+    background-image:radial-gradient(ellipse at 10% 0%,rgba(34,211,238,.17),transparent 36%),radial-gradient(ellipse at 90% 15%,rgba(59,130,246,.15),transparent 34%),radial-gradient(ellipse at 50% 100%,rgba(14,165,233,.08),transparent 42%);
+  }
+  body[data-role="parent"]{
+    --brand:#34d399;--brand-2:#06b6d4;--brand-soft:rgba(52,211,153,.14);--brand-ink:#a7f3d0;
+    --line:rgba(52,211,153,.22);
+    background-image:radial-gradient(ellipse at 8% 0%,rgba(52,211,153,.17),transparent 36%),radial-gradient(ellipse at 92% 18%,rgba(6,182,212,.14),transparent 34%),radial-gradient(ellipse at 50% 100%,rgba(16,185,129,.08),transparent 42%);
+  }
+  body[data-role="admin"]{
+    --brand:#a78bfa;--brand-2:#22d3ee;--brand-soft:rgba(167,139,250,.16);--brand-ink:#ddd6fe;
+    --line:rgba(167,139,250,.23);
+    background-image:radial-gradient(ellipse at 8% 0%,rgba(139,92,246,.2),transparent 36%),radial-gradient(ellipse at 92% 18%,rgba(34,211,238,.15),transparent 34%),radial-gradient(ellipse at 50% 100%,rgba(99,102,241,.1),transparent 42%);
+  }
+  body[data-role="teacher"] .who .label{color:#67e8f9}
+  body[data-role="parent"] .who .label{color:#6ee7b7}
+  body[data-role="admin"] .who .label{color:#c4b5fd}
+  body[data-role="teacher"] .hero{background:linear-gradient(125deg,rgba(8,145,178,.96),rgba(29,78,216,.94) 65%,rgba(14,116,144,.94))}
+  body[data-role="parent"] #parentView > .panel:first-child{border-color:rgba(52,211,153,.3);background:linear-gradient(145deg,rgba(6,40,44,.9),rgba(8,34,47,.82))}
+  body[data-role="parent"] #parentChildSelect{border-color:rgba(52,211,153,.28)}
+  body[data-role="parent"] #refreshParent{background:linear-gradient(110deg,#059669,#0891b2);color:#ecfdf5}
+  body[data-role="admin"] #adminView > .panel{border-color:rgba(167,139,250,.32);background:linear-gradient(145deg,rgba(32,22,59,.84),rgba(8,28,47,.86))}
+  body[data-role="admin"] .admin-nav{display:flex;gap:8px;overflow-x:auto;padding:8px 2px 10px;scrollbar-width:thin}
+  body[data-role="admin"] .admin-nav .chip-btn{flex:0 0 auto;white-space:nowrap;border-color:rgba(167,139,250,.22)}
+  body[data-role="admin"] .admin-nav .chip-btn.primary{background:linear-gradient(110deg,#7c3aed,#0891b2);color:white;box-shadow:0 8px 24px -12px rgba(167,139,250,.8)}
+  body[data-role="admin"] .admin-item,body[data-role="admin"] .admin-kpi{border-color:rgba(167,139,250,.2)}
+  body[data-role="admin"] .admin-item h4{color:#e9ddff}
+  body[data-role="teacher"] .journal-toolbar{border-color:rgba(34,211,238,.22)}
+  body[data-role="teacher"] .journal-toolbar small{color:#9bb8ca}
+  body[data-role="parent"] .score-card,body[data-role="parent"] .fact,body[data-role="parent"] .history-item{border-color:rgba(52,211,153,.2)}
+  body[data-role="teacher"] .tabs .tab.active{background:rgba(8,145,178,.22);color:#67e8f9}
+  @media(min-width:900px){
+    body[data-role="admin"] #adminContent{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+    body[data-role="admin"] #adminContent > .admin-kpi-grid,
+    body[data-role="admin"] #adminContent > .admin-wide{grid-column:1/-1}
+    body[data-role="parent"] #parentView{max-width:1080px}
+    body[data-role="parent"] #parentContent{grid-template-columns:repeat(2,minmax(0,1fr))}
+    body[data-role="teacher"] #teacherView{max-width:1440px}
+  }
+  @media(max-width:700px){
+    body[data-role="admin"] #adminView > .panel{padding:14px}
+    body[data-role="parent"] #parentView > .panel:first-child{padding:16px}
+  }
+
 </style>
 </head>
 <body>
@@ -914,6 +1080,7 @@
 
 
   function initAdmin() {
+    document.body.dataset.role = "admin";
     hideAllViews(); $("roleLabel").textContent="Super Admin"; $("who").textContent="NEYRON boshqaruv markazi";
     $("adminView").classList.remove("hidden");
     $("adminNav").addEventListener("click",e=>{const b=e.target.closest("[data-admin-tab]");if(!b)return;state.adminTab=b.dataset.adminTab;document.querySelectorAll("[data-admin-tab]").forEach(z=>z.classList.toggle("primary",z===b));renderAdminTab();});
@@ -992,6 +1159,7 @@
 
   /* ---------- O'QITUVCHI ---------- */
   function initTeacher(me) {
+    document.body.dataset.role = "teacher";
     $("roleLabel").textContent = "O‘qituvchi";
     $("who").textContent = me.teacher.name;
     $("teacherView").classList.remove("hidden");
@@ -1290,6 +1458,7 @@
 
   /* ---------- OTA-ONA ---------- */
   function initParent(parent) {
+    document.body.dataset.role = "parent";
     $("roleLabel").textContent = "Ota-ona";
     state.parentChildren = parent.children || [];
     $("parentView").classList.remove("hidden");
@@ -1407,6 +1576,7 @@
 
   /* ---------- O'QUVCHI ---------- */
   function initStudent(st) {
+    document.body.dataset.role = "student";
     $("roleLabel").textContent = "O‘quvchi";
     $("who").textContent = st.fio;
     $("studentView").classList.remove("hidden");
@@ -1721,6 +1891,79 @@
     }
   });
   document.addEventListener("focusout", () => requestAnimationFrame(syncKeyboard));
+
+
+  /* ===== NEYRON MOTION ENGINE: touch tilt + optional device orientation ===== */
+  (() => {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const toggle = document.createElement("button");
+    toggle.className = "motion-toggle";
+    toggle.type = "button";
+    toggle.textContent = "✧ 3D harakat: OFF";
+    toggle.setAttribute("aria-pressed","false");
+    toggle.setAttribute("aria-label","Telefon sensori va 3D harakat effektlarini yoqish");
+    document.body.appendChild(toggle);
+
+    let enabled = false, sensorActive = false;
+    const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+    const addMotionCards = (root=document) => {
+      root.querySelectorAll(".hero,.card,.panel,.score-card,.fact,.stat,.hero-stat,.att-item,.admin-item,.admin-kpi,.profile,.report-actions,.settings-card").forEach(el => el.classList.add("motion-card"));
+    };
+    addMotionCards();
+    const observer = new MutationObserver(() => addMotionCards());
+    observer.observe(document.body,{childList:true,subtree:true});
+
+    const resetCards = () => document.querySelectorAll(".motion-card").forEach(el => {
+      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+    });
+    const onPointerMove = e => {
+      if(!enabled || reduced) return;
+      const el=e.target.closest(".motion-card"); if(!el) return;
+      const r=el.getBoundingClientRect(), x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+      el.style.setProperty("--motion-rx",((.5-y)*5).toFixed(2)+"deg");
+      el.style.setProperty("--motion-ry",((x-.5)*6).toFixed(2)+"deg");
+      el.classList.add("motion-hover");
+    };
+    const onPointerOut = e => {
+      const el=e.target.closest(".motion-card"); if(!el || el.contains(e.relatedTarget)) return;
+      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+    };
+    const onOrientation = e => {
+      if(!enabled || reduced) return;
+      const gamma=clamp(Number(e.gamma)||0,-25,25), beta=clamp((Number(e.beta)||0)-35,-25,25);
+      const rx=clamp(beta*.12,-3,3), ry=clamp(gamma*.12,-3,3);
+      document.querySelectorAll(".motion-card").forEach(el=>{
+        el.style.setProperty("--motion-rx",rx.toFixed(2)+"deg");
+        el.style.setProperty("--motion-ry",ry.toFixed(2)+"deg");
+      });
+      sensorActive=true;
+    };
+    const enable = async () => {
+      if(reduced){toggle.textContent="Harakat kamaytirilgan";return;}
+      try{
+        if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
+          const permission=await DeviceOrientationEvent.requestPermission();
+          if(permission!=="granted") throw new Error("sensor permission denied");
+        }
+        enabled=true;
+        window.addEventListener("deviceorientation",onOrientation,{passive:true});
+        toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ 3D harakat: ON";
+        document.addEventListener("pointermove",onPointerMove,{passive:true});
+        document.addEventListener("pointerout",onPointerOut,{passive:true});
+      }catch(err){
+        enabled=true;toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ Touch 3D: ON";
+        document.addEventListener("pointermove",onPointerMove,{passive:true});
+        document.addEventListener("pointerout",onPointerOut,{passive:true});
+      }
+    };
+    const disable = () => {
+      enabled=false;window.removeEventListener("deviceorientation",onOrientation);
+      document.removeEventListener("pointermove",onPointerMove);document.removeEventListener("pointerout",onPointerOut);
+      toggle.setAttribute("aria-pressed","false");toggle.textContent="✧ 3D harakat: OFF";resetCards();
+    };
+    toggle.addEventListener("click",()=>enabled?disable():enable());
+    document.addEventListener("visibilitychange",()=>{if(document.hidden)resetCards();});
+  })();
 
   init();
 })();
