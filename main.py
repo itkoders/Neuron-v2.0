@@ -4310,8 +4310,6 @@ def miniapp_identity(request):
 
     requested_role = request.headers.get("X-App-Role", "").strip().lower()
     if requested_role == "entry":
-        if is_super(uid):
-            return "admin", uid, None
         existing_teacher = teacher_by_chat(uid)
         if existing_teacher and existing_teacher["active"] and existing_teacher["verify_status"] == "approved" and existing_teacher.get("admin_approved") and has_feature(existing_teacher, "mini_app"):
             return "teacher", existing_teacher, None
