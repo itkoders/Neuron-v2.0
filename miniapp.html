@@ -760,6 +760,7 @@
         <button type="button" data-theme-choice="dark">🌙</button>
         <button type="button" data-theme-choice="system">Auto</button>
       </div>
+      <button type="button" id="switchCabinetBtn" class="chip-btn hidden" style="min-height:34px;padding:0 9px;font-size:11px">⇄ Kabinet</button>
       <span id="status" class="status">Tayyor</span>
     </div>
   </div>
@@ -1251,12 +1252,16 @@
       if (me.role === "entry") {
         let savedRole = "";
         try { savedRole = localStorage.getItem("neuron-last-role") || ""; } catch (_) {}
+        if (!savedRole) savedRole = me.last_role || "";
+        const roles = Array.isArray(me.available_roles) ? me.available_roles : [];
+        if (roles.length === 1) savedRole = roles[0];
         const canOpen = savedRole === "admin" ? !!me.is_admin
           : savedRole === "teacher" ? !!me.teacher_ready
           : savedRole === "student" ? !!me.student_linked
           : savedRole === "parent" ? !!me.parent_linked
           : false;
         if (canOpen) {
+          try { localStorage.setItem("neuron-last-role", savedRole); } catch (_) {}
           const u = new URL(location.href);
           u.searchParams.set("role", savedRole);
           history.replaceState({}, "", u.pathname + u.search);
@@ -1269,6 +1274,8 @@
         }
       }
       state.role = me.role;
+      const switcher = $("switchCabinetBtn");
+      if (switcher) switcher.classList.toggle("hidden", me.role === "entry");
       if (me.role === "entry") initEntry(me);
       else if (me.role === "admin") initAdmin(me);
       else if (me.role === "teacher") initTeacher(me);
@@ -1337,6 +1344,7 @@
     document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = () => {
       selected = b.dataset.entryRole;
       try { localStorage.setItem("neuron-last-role", selected); } catch (_) {}
+      api("/api/role/preference", {method:"POST",body:JSON.stringify({role:selected})}).catch(() => {});
       render();
     });
     render();
@@ -2466,6 +2474,15 @@
     toggle.addEventListener("click",() => enabled ? disable() : enable());
     document.addEventListener("visibilitychange",() => { if (document.hidden) resetCards(); });
   })();
+
+  const switchCabinet = $("switchCabinetBtn");
+  if (switchCabinet) switchCabinet.addEventListener("click", () => {
+    try { localStorage.removeItem("neuron-last-role"); } catch (_) {}
+    const u = new URL(location.href);
+    u.searchParams.set("role", "entry");
+    history.replaceState({}, "", u.pathname + u.search);
+    init();
+  });
 
   init();
 })();
