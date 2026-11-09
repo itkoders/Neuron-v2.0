@@ -505,7 +505,7 @@
   .motion-toggle{
     position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:45;
     border:1px solid rgba(96,220,244,.34);border-radius:999px;padding:10px 14px;
-    color:#dffaff;background:rgba(10,25,43,.86);font:700 12px/1.2 inherit;
+    color:#dffaff;background:rgba(10,25,43,.86);font-family:inherit;font-size:12px;font-weight:700;line-height:1.2;
     box-shadow:0 8px 28px rgba(0,0,0,.35),0 0 22px rgba(34,211,238,.12);
     backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;
   }
@@ -1808,7 +1808,7 @@
       el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
     });
     const onPointerMove = e => {
-      if(!enabled || reduced || e.pointerType==="touch") return;
+      if(!enabled || reduced) return;
       const el=e.target.closest(".motion-card"); if(!el) return;
       const r=el.getBoundingClientRect(), x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
       el.style.setProperty("--motion-rx",((.5-y)*5).toFixed(2)+"deg");
