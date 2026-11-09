@@ -2476,12 +2476,18 @@
   })();
 
   const switchCabinet = $("switchCabinetBtn");
-  if (switchCabinet) switchCabinet.addEventListener("click", () => {
+  if (switchCabinet) switchCabinet.addEventListener("click", async () => {
+    switchCabinet.disabled = true;
+    setStatus("Kabinetlar ochilmoqda…", "saving");
     try { localStorage.removeItem("neuron-last-role"); } catch (_) {}
+    try {
+      await api("/api/role/preference", {method:"POST", body:JSON.stringify({role:"entry"}), headers:{"X-App-Role":"entry"}});
+    } catch (_) {}
     const u = new URL(location.href);
     u.searchParams.set("role", "entry");
     history.replaceState({}, "", u.pathname + u.search);
-    init();
+    await init();
+    switchCabinet.disabled = false;
   });
 
   init();
