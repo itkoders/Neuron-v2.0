@@ -5008,7 +5008,7 @@ async def api_teacher_requests(request):
                    FROM pending_requests pr JOIN students s ON s.id=pr.student_id
                    WHERE s.teacher_id=? ORDER BY pr.id DESC""", (teacher["id"],), fetch="all")
     payments = run("""SELECT pr.id, pr.student_id, pr.parent_chat_id, pr.amount, pr.method,
-                             pr.created_at, s.fio
+                             pr.created_at, s.fio, pr.reference
                       FROM payment_requests pr JOIN students s ON s.id=pr.student_id
                       WHERE s.teacher_id=? AND pr.status='pending' ORDER BY pr.id DESC""",
                    (teacher["id"],), fetch="all")
@@ -5017,8 +5017,35 @@ async def api_teacher_requests(request):
                    "parent_name": r[3] or "Ota-ona", "student": r[4]} for r in links],
         "payments": [{"id": r[0], "student_id": r[1], "parent_id": r[2],
                       "amount": r[3], "method": r[4], "created_at": r[5],
-                      "student": r[6]} for r in payments]
+                      "student": r[6], "has_receipt": str(r[7] or "").startswith("tgfile:")} for r in payments]
     })
+
+
+async def api_teacher_payment_receipt(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"},status=403)
+    try:
+        req_id = int(request.match_info.get("rid",""))
+    except (TypeError,ValueError):
+        return web.json_response({"error":"bad"},status=400)
+    row = run("""SELECT pr.reference FROM payment_requests pr
+                 JOIN students s ON s.id=pr.student_id
+                 WHERE pr.id=? AND s.teacher_id=?""",(req_id,teacher["id"]),fetch="one")
+    reference = str(row[0] or "") if row else ""
+    if not reference.startswith("tgfile:"):
+        return web.json_response({"error":"receipt_not_found"},status=404)
+    if not bot:
+        return web.json_response({"error":"bot_unavailable"},status=503)
+    try:
+        file = await bot.get_file(reference.split(":",1)[1])
+        output = io.BytesIO()
+        await bot.download_file(file.file_path,destination=output)
+        return web.Response(body=output.getvalue(),content_type="image/jpeg",
+                            headers={"Cache-Control":"no-store"})
+    except Exception:
+        logging.exception("Payment receipt could not be loaded in Mini App: request=%s",req_id)
+        return web.json_response({"error":"receipt_unavailable"},status=502)
 
 
 async def api_teacher_request_action(request):
@@ -5210,12 +5237,15 @@ async def api_parent_payment(request):
         run("DELETE FROM payment_requests WHERE id=?", (req_id,))
         return web.json_response({"error": "teacher_unavailable"}, status=503)
     try:
-        await bot.send_photo(
+        sent_message = await bot.send_photo(
             teacher["chat_id"],
             BufferedInputFile(receipt, filename=receipt_name),
             caption="\n".join(lines),
             parse_mode="Markdown"
         )
+        if sent_message.photo:
+            run("UPDATE payment_requests SET reference=? WHERE id=?",
+                ("tgfile:" + sent_message.photo[-1].file_id, req_id))
     except Exception:
         logging.exception("O‘qituvchiga to‘lov cheki rasmi yuborilmadi: request=%s", req_id)
         run("DELETE FROM payment_requests WHERE id=?", (req_id,))
@@ -5299,6 +5329,7 @@ async def start_web_server():
     app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
+    app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
     app.router.add_get("/api/teacher/tools", api_teacher_tools)
     app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
     app.router.add_get("/api/teacher/export.csv", api_teacher_export)
