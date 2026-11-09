@@ -902,14 +902,11 @@ def cabinet_text(st, subject, subj_students, header):
 
 
 def student_cabinet_kb(s_id):
-    return kb([
-        [btn("🖼 Shaxsiy Karta", f"get_student_card_img_{s_id}"), btn("📅 Kunlik Tarix", f"view_full_history_{s_id}")],
-        [btn("📞 Telefon raqam", "set_student_phone")],
-        [btn("🤖 AI bilan mashq", "stu_ai")],
-        *([[InlineKeyboardButton(text="📱 Kabinet ilovasi", web_app=WebAppInfo(url=miniapp_role_url("student")))]] if MINIAPP_URL else []),
-        [btn("🔄 Boshqa kod bilan kirish", "student_login_prompt")],
-        [btn("🔙 Asosiy Menyu", "back_home")],
-    ])
+    if MINIAPP_URL:
+        return kb([[InlineKeyboardButton(text="📱 Ilovani ochish",
+            web_app=WebAppInfo(url=miniapp_role_url("student")))]])
+    return kb([[btn("📱 Ilovani ochish", "back_home")]])
+
 
 
 def plan_line(t):
@@ -1377,23 +1374,8 @@ async def back_home(call: types.CallbackQuery, state: FSMContext):
 async def teacher_role_menu(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.clear()
-    teacher = teacher_by_chat(call.from_user.id)
-    if teacher:
-        await call.message.edit_text(
-            teacher_panel_text(teacher),
-            reply_markup=teacher_panel_kb(teacher),
-            parse_mode="Markdown"
-        )
-        return
-    await call.message.edit_text(
-        "👨‍🏫 **O'qituvchi bo'limi**\\n\\nDavom etish uchun ro'yxatdan o'ting yoki hisobingizga kiring.",
-        reply_markup=kb([
-            [btn("🔐 Hisobga kirish", "teacher_login_prompt")],
-            [btn("📝 Ro'yxatdan o'tish", "t_reg")],
-            [btn("⬅️ Asosiy menyu", "back_home")],
-        ]),
-        parse_mode="Markdown"
-    )
+    await call.message.edit_text("Barcha o‘qituvchi funksiyalari NEYRON ilovasida.",
+                                 reply_markup=main_menu_kb(call.from_user.id))
 
 
 @dp.callback_query(F.data == "public_plans")
@@ -3584,9 +3566,10 @@ async def sa_pass_save(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data == "student_login_prompt")
 async def student_login_prompt(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
-    await state.set_state(ParentStates.waiting_for_student_code)
-    await call.message.edit_text("🎓 **O'quvchi kabinetiga kirish**\n\n🔑 O'qituvchingiz bergan **4 xonali kodni** kiriting:",
-                                 reply_markup=kb([[btn("❌ Bekor qilish", "back_home")]]), parse_mode="Markdown")
+    await state.clear()
+    markup = student_cabinet_kb(0)
+    await call.message.edit_text("O‘quvchi kabineti va kirish kodi NEYRON ilovasida boshqariladi.",
+                                 reply_markup=markup)
 
 
 @dp.message(ParentStates.waiting_for_student_code, F.chat.type == "private")
@@ -3659,36 +3642,14 @@ async def set_student_phone_start(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "auth_parent")
 async def open_parent_cabinet(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
-    children = db_parent_children(call.from_user.id)
-    if not children:
-        await call.message.edit_text("👨‍👩‍👧‍👦 **Kabinetga kirish uchun farzandingizning 4 xonali kodini kiriting:**",
-                                     reply_markup=kb([[btn("🔑 Kod bilan ulanish", "reg_enter_code")], [btn("🔙 Orqaga", "back_home")]]),
-                                     parse_mode="Markdown")
-        return
-    ids = [sid for sid, _ in children]
-    active = (await state.get_data()).get("active_child_id")
-    s_id = active if active in ids else ids[0]
-    st = db_student(s_id)
-    db_log_student_login(s_id, st["fio"])
-    subj = db_subject(st["subject_id"])
-    rows = []
-    if len(children) > 1:
-        rows.append([btn(f"{'🔘' if sid == s_id else '👶'} {normalize_button_name(c['fio'], 12)}", f"switch_child_{sid}") for sid, c in children[:3]])
-    rows.append([btn("🖼 Shaxsiy Karta", f"get_student_card_img_{s_id}"), btn("📅 Kunlik Tarix", f"view_full_history_{s_id}")])
-    if len(children) < MAX_CHILDREN:
-        rows.append([btn("➕ Yana farzand ulash", "reg_enter_code")])
+    await state.clear()
     if MINIAPP_URL:
-        parent_app = miniapp_role_url("parent") + f"&child_id={s_id}"
-        rows.append([InlineKeyboardButton(text="💳 To‘lov qilish", web_app=WebAppInfo(url=parent_app))])
-        rows.append([InlineKeyboardButton(text="📱 Ota-ona ilovasini ochish", web_app=WebAppInfo(url=parent_app))])
-    rows.extend([
-        [btn("📞 Telefon raqam", "set_phone_number")],
-        [btn("📝 Sababli Ariza", f"send_leave_req_{s_id}"), btn("🔄 Profilni uzish", "reset_account")],
-        [btn("🔙 Asosiy Menyu", "back_home")],
-    ])
-    await state.update_data(active_child_id=s_id)
-    await call.message.edit_text(cabinet_text(st, subj, db_students(st["teacher_id"], st["subject_id"]), "👨‍👩‍👧‍👦 **Farzandingiz nazorat paneli:**"),
-                                 parse_mode="Markdown", reply_markup=kb(rows))
+        markup = kb([[InlineKeyboardButton(text="📱 Ilovani ochish",
+            web_app=WebAppInfo(url=miniapp_role_url("entry")))]])
+    else:
+        markup = main_menu_kb(call.from_user.id)
+    await call.message.edit_text("Ota-ona kabineti, farzand ulash va to‘lovlar NEYRON ilovasida.",
+                                 reply_markup=markup)
 
 
 @dp.callback_query(F.data.startswith("switch_child_"))
