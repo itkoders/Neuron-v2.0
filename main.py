@@ -3714,11 +3714,10 @@ async def reg_enter_code_start(call: types.CallbackQuery, state: FSMContext):
 
 
 async def _request_link(student, parent_chat_id, parent_name):
-    req_id = run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
-                 (student["id"], parent_chat_id, parent_name), fetch="lastid")
+    run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
+        (student["id"], parent_chat_id, parent_name), fetch="lastid")
     await notify_teacher(student["teacher_id"],
-                         f"🚨 **Ota-ona ulanish so'rovi!**\n\n👤 O'quvchi: **{md(student['fio'])}**\n👨‍👩‍👧 Ota-ona: {md(parent_name)}",
-                         reply_markup=kb([[btn("✅ Tasdiqlash", f"tp_app_{req_id}"), btn("❌ Rad etish", f"tp_rej_{req_id}")]]))
+        f"📨 **Yangi ota-ona so‘rovi**\\nO‘quvchi: **{md(student['fio'])}**\\nOta-ona: {md(parent_name)}\\nTasdiqlash uchun NEYRON ilovasidagi “So‘rovlar” bo‘limini oching.")
 
 
 @dp.message(ParentStates.waiting_for_code, F.chat.type == "private")
