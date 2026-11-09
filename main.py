@@ -4164,8 +4164,20 @@ async def api_score(request):
     subj = owned_subject(t, st["subject_id"])
     if not subj or idx < 1 or idx > len(subj["labels"]) or not 0 <= val <= 100:
         return web.json_response({"error": "bad"}, status=400)
+    previous_value = int(st.get(f"s{idx}", 0) or 0)
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
+    notification = {"total": 0, "sent": 0, "failed": []}
+    if previous_value != val:
+        label = subj["labels"][idx - 1]
+        message_text = (
+            "📚 **NEYRON — YANGI NATIJA**\\n"
+            f"👤 O‘quvchi: {md(st['fio'])}\\n"
+            f"📖 Fan: {md(subj['name'])}\\n"
+            f"📝 {md(label)}: **{val}/100 ball**\\n"
+            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
+        )
+        notification = await notify_parents_of(sid, message_text)
     today = local_now().strftime("%d.%m.%Y")
     students = list(db_students(t["id"], st["subject_id"]).values())
     all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
@@ -4174,7 +4186,7 @@ async def api_score(request):
         "last": db_student(sid)["last_score_date"],
         "today": today,
         "all_scored_today": all_scored,
-        "parent_notifications": {"total": 0, "sent": 0, "failed": []}
+        "parent_notifications": notification
     })
 
 
@@ -5030,9 +5042,7 @@ async def api_parent_payment(request):
             teacher["chat_id"],
             BufferedInputFile(receipt, filename=receipt_name),
             caption="\n".join(lines),
-            parse_mode="Markdown",
-            reply_markup=kb([[btn("✅ Tasdiqlash", f"payreq_ok_{req_id}"),
-                              btn("❌ Rad etish", f"payreq_no_{req_id}")]])
+            parse_mode="Markdown"
         )
     except Exception:
         logging.exception("O‘qituvchiga to‘lov cheki rasmi yuborilmadi: request=%s", req_id)
