@@ -760,7 +760,7 @@
         <button type="button" data-theme-choice="dark">🌙</button>
         <button type="button" data-theme-choice="system">Auto</button>
       </div>
-      <button type="button" id="switchCabinetBtn" class="chip-btn hidden" style="min-height:34px;padding:0 9px;font-size:11px">⇄ Kabinet</button>
+      <button type="button" id="switchCabinetBtn" class="chip-btn hidden" style="min-height:38px;padding:0 11px;font-size:12px">↩ Chiqish</button>
       <span id="status" class="status">Tayyor</span>
     </div>
   </div>
@@ -1282,7 +1282,7 @@
       const switcher = $("switchCabinetBtn");
       if (switcher) {
         switcher.classList.toggle("hidden", me.role === "entry");
-        switcher.textContent = "⇄ Kabinetni almashtirish";
+        switcher.textContent = "↩ Kabinetdan chiqish";
         switcher.onclick = async () => {
           if (switcher.dataset.busy === "1") return;
           switcher.dataset.busy = "1";
