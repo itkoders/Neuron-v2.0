@@ -4779,7 +4779,7 @@ async def api_save_role_preference(request):
         return err
     body = await _read_json(request)
     role = str(body.get("role", "")).strip().lower()
-    if role not in {"parent", "student", "teacher", "admin"}:
+    if role not in {"entry", "parent", "student", "teacher", "admin"}:
         return web.json_response({"error": "bad_role"}, status=400)
     if role == "admin" and not is_super(uid):
         return web.json_response({"error": "forbidden"}, status=403)
