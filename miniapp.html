@@ -1245,7 +1245,29 @@
       return;
     }
     try {
-      const me = await api("/api/me");
+      let me = await api("/api/me");
+      // Telegram bot har safar role=entry havolasini ochadi. Oldin tanlangan va
+      // hozir ham ruxsat etilgan rolni avtomatik tiklaymiz.
+      if (me.role === "entry") {
+        let savedRole = "";
+        try { savedRole = localStorage.getItem("neuron-last-role") || ""; } catch (_) {}
+        const canOpen = savedRole === "admin" ? !!me.is_admin
+          : savedRole === "teacher" ? !!me.teacher_ready
+          : savedRole === "student" ? !!me.student_linked
+          : savedRole === "parent" ? !!me.parent_linked
+          : false;
+        if (canOpen) {
+          const u = new URL(location.href);
+          u.searchParams.set("role", savedRole);
+          history.replaceState({}, "", u.pathname + u.search);
+          try { me = await api("/api/me"); }
+          catch (_) {
+            u.searchParams.set("role", "entry");
+            history.replaceState({}, "", u.pathname + u.search);
+            me = await api("/api/me");
+          }
+        }
+      }
       state.role = me.role;
       if (me.role === "entry") initEntry(me);
       else if (me.role === "admin") initAdmin(me);
@@ -1292,7 +1314,14 @@
     if (me.teacher_pending) {
       host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
     }
-    let selected = (me.teacher_pending || me.teacher_ready) ? "teacher" : (me.parent_linked || me.parent_pending) ? "parent" : me.student_linked ? "student" : "parent";
+    let savedRole = "";
+    try { savedRole = localStorage.getItem("neuron-last-role") || ""; } catch (_) {}
+    const allowedSaved = ["parent","student","teacher","admin"].includes(savedRole)
+      && (savedRole !== "admin" || !!me.is_admin);
+    let selected = allowedSaved ? savedRole
+      : (me.teacher_pending || me.teacher_ready) ? "teacher"
+      : (me.parent_linked || me.parent_pending) ? "parent"
+      : me.student_linked ? "student" : "parent";
     const render = () => {
       document.querySelectorAll("[data-entry-role]").forEach(b => b.classList.toggle("primary", b.dataset.entryRole === selected));
       if (me.teacher_pending && selected === "teacher") host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
@@ -1305,7 +1334,11 @@
       else host.innerHTML = '<h3>🛡 Super Admin</h3><p class="hint">Faqat loyiha egasining Telegram akkaunti orqali kirish mumkin.</p><button class="chip-btn primary" id="adminEntryBtn">Admin kabinetini ochish</button><div id="entryMessage"></div>';
       bindEntryForms();
     };
-    document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = () => { selected = b.dataset.entryRole; render(); });
+    document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = () => {
+      selected = b.dataset.entryRole;
+      try { localStorage.setItem("neuron-last-role", selected); } catch (_) {}
+      render();
+    });
     render();
   }
 
@@ -1314,6 +1347,7 @@
     if (el) el.innerHTML = '<div class="entry-message">' + esc(message) + '</div>';
   }
   async function enterRole(role) {
+    try { localStorage.setItem("neuron-last-role", role); } catch (_) {}
     const u = new URL(location.href);
     u.searchParams.set("role", role);
     history.replaceState({}, "", u.pathname + u.search);
