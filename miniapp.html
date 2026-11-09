@@ -1188,6 +1188,7 @@
     if (code === "ai_fail" && err.data.message) return err.data.message;
     return ({
       auth: "Avtorizatsiya xatosi. Ilovani Telegram botidan qayta oching.",
+      subscription_required: "Davom etish uchun kanalga obuna bo‘ling.",
       bad_code: "Kod noto‘g‘ri. Qayta tekshiring.",
       bad_teacher_code: "6 xonali kod noto‘g‘ri.",
       teacher_pending: "O‘qituvchi hisobi hali Super Admin tomonidan tasdiqlanmagan.",
@@ -1244,6 +1245,10 @@
       else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
     } catch (err) {
+      if (err.data && err.data.error === "subscription_required") {
+        showSubscriptionRequired(err.data.join_url || "");
+        return;
+      }
       hideAllViews();
       $("roleLabel").textContent = "Xato";
       $("who").textContent = "Kirish imkonsiz";
@@ -1253,6 +1258,20 @@
     }
   }
 
+
+  function showSubscriptionRequired(joinUrl) {
+    hideAllViews();
+    $("roleLabel").textContent = "Obuna";
+    $("who").textContent = "Davom etish uchun kanalga obuna bo‘ling";
+    $("entryView").classList.remove("hidden");
+    const host=$("entryForm");
+    host.innerHTML='<div class="card panel"><h3>🔔 Majburiy obuna</h3><p class="hint">NEYRON ilovasidan foydalanish uchun loyiha kanaliga obuna bo‘lish talab qilinadi.</p>' +
+      (joinUrl ? '<button class="chip-btn primary" id="joinRequiredChannel">📢 Kanalga o‘tish</button>' : '<p class="hint">Kanal havolasi sozlanmagan. Administrator bilan bog‘laning.</p>') +
+      '<button class="chip-btn" id="verifyRequiredChannel" style="margin-top:10px">✅ Obunani tekshirish</button></div>';
+    const join=$("joinRequiredChannel");
+    if(join)join.onclick=()=>{if(tg&&typeof tg.openTelegramLink==="function")tg.openTelegramLink(joinUrl);else window.open(joinUrl,"_blank");};
+    $("verifyRequiredChannel").onclick=init;
+  }
 
   function initEntry(me) {
     hideAllViews();
