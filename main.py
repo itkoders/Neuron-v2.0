@@ -4701,8 +4701,16 @@ async def api_me(request):
     if kind == "entry":
         teacher = teacher_by_chat(obj)
         pending = bool(teacher and (not teacher.get("admin_approved") or teacher.get("verify_status") != "approved"))
-        return web.json_response({"role":"entry", "teacher_pending": pending,
-                                  "teacher_name": teacher_name(teacher) if teacher else ""})
+        student_link = run("SELECT student_id FROM student_links WHERE chat_id=?", (obj,), fetch="one")
+        parent_linked = bool(db_parent_miniapp_student_ids(obj))
+        parent_pending = bool(run("SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"))
+        teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved" and has_feature(teacher, "mini_app"))
+        return web.json_response({
+            "role":"entry", "teacher_pending":pending, "teacher_ready":teacher_ready,
+            "teacher_name":teacher_name(teacher) if teacher else "",
+            "student_linked":bool(student_link), "parent_linked":parent_linked,
+            "parent_pending":parent_pending
+        })
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
