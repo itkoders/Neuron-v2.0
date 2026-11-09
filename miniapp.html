@@ -621,6 +621,95 @@
     body[data-role="parent"] #parentView > .panel:first-child{padding:16px}
   }
 
+
+  /* ===== VISIBLE ROLE DASHBOARD REDESIGN ===== */
+  :root{
+    --surface:rgba(12,25,43,.78);
+    --line:rgba(148,190,220,.18);
+    --shadow:0 22px 60px -32px rgba(0,0,0,.78),inset 0 1px 0 rgba(255,255,255,.075);
+  }
+  body{background-attachment:fixed}
+  header{background:rgba(5,13,26,.72)!important;border-bottom:1px solid rgba(125,211,252,.14)!important;backdrop-filter:blur(24px)!important;-webkit-backdrop-filter:blur(24px)!important}
+  .topbar{padding-top:16px!important;padding-bottom:16px!important}
+  .logo{width:48px!important;height:48px!important;border-radius:16px!important;background:linear-gradient(145deg,#22d3ee,#2563eb 60%,#8b5cf6)!important;box-shadow:0 8px 30px rgba(34,211,238,.28),inset 0 1px 0 rgba(255,255,255,.4)!important}
+  .who h1{letter-spacing:-.035em!important}
+  .card,.panel,.admin-item,.admin-kpi,.journal-shell,.journal-toolbar,.profile,.score-card,.fact,.history-item,.report-actions,.settings-card{
+    background:linear-gradient(145deg,rgba(19,37,59,.88),rgba(8,20,36,.84))!important;
+    border:1px solid rgba(133,190,220,.19)!important;
+    border-radius:22px!important;
+    box-shadow:0 18px 48px -32px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.075)!important;
+    backdrop-filter:blur(18px)!important;-webkit-backdrop-filter:blur(18px)!important;
+  }
+  .hero{border:1px solid rgba(125,230,255,.28)!important;border-radius:28px!important;box-shadow:0 24px 70px -30px rgba(6,182,212,.5),inset 0 1px 0 rgba(255,255,255,.25)!important;position:relative}
+  .hero:after{content:"";position:absolute;width:230px;height:230px;right:-65px;top:-115px;border-radius:50%;border:1px solid rgba(255,255,255,.18);box-shadow:0 0 0 24px rgba(255,255,255,.025),0 0 0 52px rgba(255,255,255,.018);pointer-events:none}
+  .hero-stat{background:rgba(3,18,35,.24)!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:17px!important;backdrop-filter:blur(12px)}
+  .chip-btn,.btn{border-radius:14px!important;transition:transform .2s ease,box-shadow .2s ease,filter .2s ease!important}
+  .chip-btn:active,.btn:active{transform:scale(.97)}
+  .field,select{border-radius:14px!important;background:rgba(6,18,33,.74)!important;border:1px solid rgba(125,190,220,.24)!important}
+  .section-title{font-size:13px!important;letter-spacing:.13em!important;text-transform:uppercase!important;color:#9dbbd0!important;margin:22px 2px 11px!important}
+  /* Teacher */
+  body[data-role="teacher"]{--brand:#22d3ee;--brand-2:#3b82f6}
+  body[data-role="teacher"] .hero{background:linear-gradient(120deg,#063b52,#075985 48%,#312e81)!important}
+  body[data-role="teacher"] .journal-toolbar{padding:17px!important;margin:16px 0!important;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  body[data-role="teacher"] .journal-toolbar b{font-size:17px}
+  body[data-role="teacher"] .journal-toolbar small{display:block;margin-top:6px}
+  body[data-role="teacher"] .journal-shell{padding:10px!important;overflow:hidden}
+  body[data-role="teacher"] .grid-wrap{border-radius:16px;overflow:auto}
+  body[data-role="teacher"] .report-actions{padding:18px!important;margin-top:16px!important}
+  body[data-role="teacher"] .hero-stats{gap:10px!important}
+  /* Parent */
+  body[data-role="parent"]{--brand:#34d399;--brand-2:#06b6d4}
+  body[data-role="parent"] #parentView{padding-top:8px}
+  body[data-role="parent"] #parentView > .panel:first-child{padding:22px!important;background:linear-gradient(125deg,rgba(5,63,58,.96),rgba(8,48,67,.94),rgba(12,35,61,.94))!important;border:1px solid rgba(52,211,153,.3)!important}
+  body[data-role="parent"] #parentView > .panel:first-child h3{font-size:21px!important;letter-spacing:-.03em}
+  body[data-role="parent"] #parentChildSelect{min-height:48px!important}
+  body[data-role="parent"] .profile{padding:20px!important;display:flex;align-items:center;gap:16px}
+  body[data-role="parent"] .avatar{width:62px!important;height:62px!important;border-radius:20px!important;background:linear-gradient(145deg,#059669,#0891b2)!important;box-shadow:0 10px 28px rgba(16,185,129,.25)}
+  body[data-role="parent"] .score-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  body[data-role="parent"] .score-card{padding:16px!important}
+  body[data-role="parent"] .fact{padding:16px!important;min-height:94px}
+  body[data-role="parent"] .facts{gap:12px!important}
+  body[data-role="parent"] .parent-pay-box{padding:20px!important;border-color:rgba(52,211,153,.28)!important}
+  body[data-role="parent"] .parent-pay-quick{border-radius:16px!important;min-height:48px!important;background:linear-gradient(110deg,#059669,#0e7490)!important;box-shadow:0 12px 28px -15px rgba(16,185,129,.65)}
+  /* Super Admin */
+  body[data-role="admin"]{--brand:#a78bfa;--brand-2:#22d3ee}
+  body[data-role="admin"] #adminView > .panel:first-child{padding:22px!important;background:linear-gradient(125deg,rgba(48,24,83,.96),rgba(16,37,69,.95),rgba(7,46,65,.94))!important;border:1px solid rgba(167,139,250,.32)!important;position:relative;overflow:hidden}
+  body[data-role="admin"] #adminView > .panel:first-child:after{content:"";position:absolute;width:190px;height:190px;right:-65px;top:-90px;border:1px solid rgba(196,181,253,.24);border-radius:50%;box-shadow:0 0 0 24px rgba(196,181,253,.035),0 0 0 48px rgba(196,181,253,.025);pointer-events:none}
+  body[data-role="admin"] #adminView > .panel:first-child h3{font-size:22px!important;letter-spacing:-.035em}
+  body[data-role="admin"] .admin-nav{position:relative;z-index:1;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px!important;margin-top:16px}
+  body[data-role="admin"] .admin-nav .chip-btn{min-height:42px;padding:9px 8px!important;background:rgba(255,255,255,.055)!important;border:1px solid rgba(196,181,253,.18)!important}
+  body[data-role="admin"] .admin-nav .chip-btn.primary{background:linear-gradient(115deg,#7c3aed,#0369a1)!important;border-color:rgba(196,181,253,.38)!important}
+  body[data-role="admin"] #adminContent{margin-top:16px;display:grid;grid-template-columns:1fr;gap:13px}
+  body[data-role="admin"] .admin-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px!important}
+  body[data-role="admin"] .admin-kpi{padding:20px!important;min-height:112px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+  body[data-role="admin"] .admin-kpi b{font-size:30px!important;line-height:1.1;color:#e9ddff!important}
+  body[data-role="admin"] .admin-kpi span{font-size:12px!important;color:#a9bdd2!important;margin-top:8px}
+  body[data-role="admin"] .admin-item{padding:18px!important}
+  body[data-role="admin"] .admin-item h4{font-size:16px!important;margin:0 0 10px!important}
+  body[data-role="admin"] .admin-actions{display:flex;flex-wrap:wrap;gap:8px!important;margin-top:14px}
+  /* Student consistency */
+  body[data-role="student"] .card,body[data-role="student"] .panel{border-color:rgba(96,165,250,.2)!important}
+  @media(min-width:760px){
+    body[data-role="admin"] .admin-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+    body[data-role="admin"] #adminContent{grid-template-columns:repeat(2,minmax(0,1fr))}
+    body[data-role="admin"] #adminContent > .admin-grid{grid-column:1/-1}
+    body[data-role="parent"] #parentContent{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    body[data-role="parent"] #parentContent > .profile,body[data-role="parent"] #parentContent > .section-title,body[data-role="parent"] #parentContent > .parent-pay-quick{grid-column:1/-1}
+    body[data-role="parent"] #parentContent > .score-cards,body[data-role="parent"] #parentContent > .facts{grid-column:1/-1}
+    body[data-role="teacher"] #teacherView{max-width:1480px}
+  }
+  @media(max-width:480px){
+    body[data-role="admin"] .admin-nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+    body[data-role="parent"] .score-cards{grid-template-columns:1fr}
+    body[data-role="parent"] .profile{align-items:flex-start}
+    .topbar{gap:10px}
+  }
+  @media(prefers-reduced-motion:no-preference){
+    .card,.panel,.admin-item,.admin-kpi,.score-card,.fact{animation:riseIn .48s cubic-bezier(.2,.75,.25,1) both}
+    @keyframes riseIn{from{opacity:0;transform:translateY(12px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .admin-kpi:hover,.score-card:hover,.fact:hover{transform:translateY(-3px);border-color:rgba(125,211,252,.4)!important}
+  }
+
 </style>
 </head>
 <body>
