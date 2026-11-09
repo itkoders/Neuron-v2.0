@@ -540,14 +540,23 @@ def local_now():
 def check_and_reset_daily_data():
     now = local_now()
     today = now.strftime("%d.%m.%Y")
-    if db_get_setting("last_daily_reset") != today:
-        # Avval kechagi jurnalni tarixga yozamiz, keyin bugungi jurnalni bo‘shatamiz.
+    # Eski versiya kunni 00:00 da almashtirgan. Yangi jadval 12:00 ga o'tadi.
+    # Birinchi ishga tushishda shu kungi eski resetni takrorlab, ertalabki ballarni o'chirmaymiz.
+    last_noon_reset = db_get_setting("last_noon_reset")
+    if last_noon_reset is None:
+        old_reset = db_get_setting("last_daily_reset")
+        if old_reset == today:
+            db_set_setting("last_noon_reset", today)
+            last_noon_reset = today
+    if now.hour >= 12 and last_noon_reset != today:
         rows = run(f"SELECT {STU_COLS} FROM students ORDER BY id", fetch="all")
+        previous_day = (now - timedelta(days=1)).strftime("%d.%m.%Y")
         for row in rows:
             student = _student(row)
-            db_save_daily_history(student["id"], student)
+            db_save_daily_history(student["id"], student, previous_day)
         run("UPDATE students SET s1 = 0, s2 = 0, s3 = 0, davomat = ?, last_score_date = ''",
             ("Kutilmoqda",))
+        db_set_setting("last_noon_reset", today)
         db_set_setting("last_daily_reset", today)
     month = now.strftime("%m.%Y")
     last_month = db_get_setting("last_payment_reset")
@@ -660,8 +669,8 @@ def delete_teacher(tid):
     run("DELETE FROM teachers WHERE id = ?", (tid,))
 
 
-def db_save_daily_history(s_id, st):
-    today = local_now().strftime("%d.%m.%Y")
+def db_save_daily_history(s_id, st, date_str=None):
+    today = date_str or local_now().strftime("%d.%m.%Y")
     row = run("SELECT id FROM attendance_history WHERE student_id = ? AND date_str = ?", (s_id, today), fetch="one")
     vals = (st["davomat"], st["s1"], st["s2"], st["s3"])
     if row:
