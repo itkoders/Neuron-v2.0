@@ -4654,7 +4654,8 @@ async def api_teacher_settings(request):
     if err:
         return err
     rows = run(
-        "SELECT s.id, s.fio, s.group_name, s.code, s.subject_id, sub.name "
+        "SELECT s.id, s.fio, s.group_name, s.code, s.subject_id, sub.name, "
+        "s.payment_amount, s.teacher_note, s.phone "
         "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
         "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
         (t["id"],), fetch="all"
@@ -4665,8 +4666,34 @@ async def api_teacher_settings(request):
         "payment": teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""},
         "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
-                      "code": r[3], "subject_id": r[4], "subject_name": r[5]} for r in rows]
+                      "code": r[3], "subject_id": r[4], "subject_name": r[5],
+                      "payment_amount": r[6] or 0, "teacher_note": r[7] or "",
+                      "phone": r[8] or ""} for r in rows]
     })
+
+
+async def api_teacher_student_settings(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("student_id"))
+        amount = int(body.get("payment_amount", 0))
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error":"bad"}, status=400)
+    st = owned_student(t, sid)
+    if not st:
+        return web.json_response({"error":"not_found"}, status=404)
+    if amount < 0 or amount > 1000000000:
+        return web.json_response({"error":"bad_amount"}, status=400)
+    note = str(body.get("teacher_note", "")).strip()[:500]
+    run("UPDATE students SET payment_amount=?, teacher_note=? WHERE id=? AND teacher_id=?",
+        (amount, note or "Izoh mavjud emas", sid, t["id"]))
+    audit(t["chat_id"], "miniapp_student_settings", str(sid), f"payment_amount={amount}")
+    return web.json_response({"ok":True})
+
+
 
 
 async def api_teacher_channel_save(request):
@@ -5256,6 +5283,7 @@ async def start_web_server():
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/public-settings", api_public_settings)
     app.router.add_get("/api/settings", api_teacher_settings)
+    app.router.add_post("/api/settings/student", api_teacher_student_settings)
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
     app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
     app.router.add_post("/api/settings/payment", api_teacher_payment_save)
