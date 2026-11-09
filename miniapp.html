@@ -1282,7 +1282,7 @@
     if (me.teacher_pending) {
       host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
     }
-    let selected = me.teacher_pending ? "teacher" : "parent";
+    let selected = (me.teacher_pending || me.teacher_ready) ? "teacher" : (me.parent_linked || me.parent_pending) ? "parent" : me.student_linked ? "student" : "parent";
     const render = () => {
       document.querySelectorAll("[data-entry-role]").forEach(b => b.classList.toggle("primary", b.dataset.entryRole === selected));
       if (me.teacher_pending && selected === "teacher") host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
