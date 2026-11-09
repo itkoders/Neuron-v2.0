@@ -832,8 +832,14 @@ def btn(text, cb):
     return InlineKeyboardButton(text=text, callback_data=cb)
 
 
-def kb(rows):
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+def kb(rows=None):
+    # Telegram chatida yagona interaktiv tugma — Mini App kirishi.
+    if MINIAPP_URL:
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📱 Ilovani ochish",
+                                 web_app=WebAppInfo(url=miniapp_role_url("entry")))
+        ]])
+    return InlineKeyboardMarkup(inline_keyboard=[])
 
 
 def md(text):
@@ -5307,7 +5313,20 @@ async def api_ai_stop(request):
 
 async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
-    app = web.Application(client_max_size=6 * 1024 * 1024)
+    @web.middleware
+    async def miniapp_subscription_guard(request, handler):
+        if not request.path.startswith("/api/") or request.path == "/api/public-settings":
+            return await handler(request)
+        uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+        if uid and not await is_subscribed(uid):
+            channel = db_get_setting("required_channel") or ""
+            join_url = db_get_setting("required_channel_url") or ""
+            if not join_url and channel.startswith("@"):
+                join_url = f"https://t.me/{channel[1:]}"
+            return web.json_response({"error":"subscription_required","join_url":join_url},status=403)
+        return await handler(request)
+
+    app = web.Application(client_max_size=6 * 1024 * 1024, middlewares=[miniapp_subscription_guard])
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
