@@ -1251,10 +1251,15 @@
       // hozir ham ruxsat etilgan rolni avtomatik tiklaymiz.
       if (me.role === "entry") {
         let savedRole = "";
-        try { savedRole = localStorage.getItem("neuron-last-role") || ""; } catch (_) {}
-        if (!savedRole) savedRole = me.last_role || "";
+        let forceRolePicker = false;
+        try {
+          forceRolePicker = sessionStorage.getItem("neuron-force-role-picker") === "1";
+          if (forceRolePicker) sessionStorage.removeItem("neuron-force-role-picker");
+          savedRole = localStorage.getItem("neuron-last-role") || "";
+        } catch (_) {}
+        if (!forceRolePicker && !savedRole) savedRole = me.last_role || "";
         const roles = Array.isArray(me.available_roles) ? me.available_roles : [];
-        if (roles.length === 1) savedRole = roles[0];
+        if (!forceRolePicker && roles.length === 1) savedRole = roles[0];
         const canOpen = savedRole === "admin" ? !!me.is_admin
           : savedRole === "teacher" ? !!me.teacher_ready
           : savedRole === "student" ? !!me.student_linked
@@ -1275,7 +1280,25 @@
       }
       state.role = me.role;
       const switcher = $("switchCabinetBtn");
-      if (switcher) switcher.classList.toggle("hidden", me.role === "entry");
+      if (switcher) {
+        switcher.classList.toggle("hidden", me.role === "entry");
+        switcher.textContent = "⇄ Kabinetni almashtirish";
+        switcher.onclick = async () => {
+          if (switcher.dataset.busy === "1") return;
+          switcher.dataset.busy = "1";
+          switcher.disabled = true;
+          try {
+            sessionStorage.setItem("neuron-force-role-picker", "1");
+            const u = new URL(location.href);
+            u.searchParams.set("role", "entry");
+            history.replaceState({}, "", u.pathname + u.search);
+            await init();
+          } finally {
+            switcher.dataset.busy = "0";
+            switcher.disabled = false;
+          }
+        };
+      }
       if (me.role === "entry") initEntry(me);
       else if (me.role === "admin") initAdmin(me);
       else if (me.role === "teacher") initTeacher(me);
