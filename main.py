@@ -4735,11 +4735,13 @@ async def api_me(request):
         parent_linked = bool(db_parent_miniapp_student_ids(obj))
         parent_pending = bool(run("SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"))
         teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved" and has_feature(teacher, "mini_app"))
+        available_roles = (["admin"] if is_super(obj) else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
         return web.json_response({
             "role":"entry", "is_admin":is_super(obj), "teacher_pending":pending, "teacher_ready":teacher_ready,
             "teacher_name":teacher_name(teacher) if teacher else "",
             "student_linked":bool(student_link), "parent_linked":parent_linked,
-            "parent_pending":parent_pending
+            "parent_pending":parent_pending, "available_roles":available_roles,
+            "last_role":db_get_setting(f"last_role_{obj}") or ""
         })
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
@@ -4769,6 +4771,20 @@ def miniapp_entry_uid(request):
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
     return uid, None
+
+
+async def api_save_role_preference(request):
+    uid, err = miniapp_entry_uid(request)
+    if err:
+        return err
+    body = await _read_json(request)
+    role = str(body.get("role", "")).strip().lower()
+    if role not in {"parent", "student", "teacher", "admin"}:
+        return web.json_response({"error": "bad_role"}, status=400)
+    if role == "admin" and not is_super(uid):
+        return web.json_response({"error": "forbidden"}, status=403)
+    db_set_setting(f"last_role_{uid}", role)
+    return web.json_response({"ok": True})
 
 
 async def api_onboard_student(request):
@@ -5333,6 +5349,7 @@ async def start_web_server():
     app.router.add_post("/api/admin/password", api_admin_password)
     app.router.add_get("/api/admin/audit", api_admin_audit)
     app.router.add_get("/api/me", api_me)
+    app.router.add_post("/api/role/preference", api_save_role_preference)
     app.router.add_post("/api/onboard/student", api_onboard_student)
     app.router.add_post("/api/onboard/parent", api_onboard_parent)
     app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
