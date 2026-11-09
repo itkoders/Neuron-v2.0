@@ -455,6 +455,67 @@
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
   }
+
+  /* ===== NEYRON FUTURISTIC LIQUID GLASS LAYER ===== */
+  :root{
+    --bg:#070b14;--surface:rgba(17,25,42,.76);--surface-2:rgba(24,37,59,.72);
+    --text:#eaf5ff;--muted:#91a8bd;--line:rgba(111,190,224,.19);
+    --brand:#35d8f2;--brand-2:#668cff;--brand-soft:rgba(53,216,242,.13);--brand-ink:#9af1ff;
+    --grad:linear-gradient(125deg,#22d3ee 0%,#3b82f6 52%,#8b5cf6 100%);
+    --shadow:0 18px 48px -22px rgba(0,0,0,.78),inset 0 1px 0 rgba(255,255,255,.07);
+    --r:22px;--r-sm:16px;
+  }
+  :root[data-theme="light"]{
+    --bg:#eaf3fa;--surface:rgba(255,255,255,.78);--surface-2:rgba(235,246,252,.82);
+    --text:#102235;--muted:#5e768c;--line:rgba(33,126,160,.18);
+    --brand:#0891b2;--brand-2:#4f70d8;--brand-soft:rgba(8,145,178,.12);--brand-ink:#087b99;
+    --shadow:0 18px 42px -24px rgba(30,75,105,.35),inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  html,body{background-color:var(--bg)}
+  body{
+    background-image:radial-gradient(ellipse at 8% 0%,rgba(34,211,238,.12),transparent 34%),
+      radial-gradient(ellipse at 92% 18%,rgba(99,102,241,.13),transparent 32%),
+      radial-gradient(ellipse at 50% 100%,rgba(14,165,233,.08),transparent 42%);
+    background-attachment:fixed;
+  }
+  header{background:rgba(7,11,20,.76);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border-bottom:1px solid var(--line)}
+  :root[data-theme="light"] header{background:rgba(234,243,250,.78)}
+  .logo{border-radius:14px;background:linear-gradient(145deg,#22d3ee,#2563eb 65%,#8b5cf6);box-shadow:0 0 28px rgba(34,211,238,.3)}
+  .who .label{color:#52dff4}
+  .hero{background:linear-gradient(125deg,rgba(8,145,178,.94),rgba(30,64,175,.94) 56%,rgba(91,33,182,.92));border:1px solid rgba(145,230,255,.25);box-shadow:0 22px 54px -24px rgba(14,165,233,.48),inset 0 1px 0 rgba(255,255,255,.18)}
+  .hero::before{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.10) 48%,transparent 72%);transform:translateX(-110%);animation:neuronSheen 8s ease-in-out infinite;pointer-events:none}
+  @keyframes neuronSheen{0%,55%{transform:translateX(-110%)}80%,100%{transform:translateX(110%)}}
+  .hero-stat,.card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.stat,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card{
+    background:var(--surface);border-color:var(--line);box-shadow:var(--shadow);
+  }
+  .card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card{
+    backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);
+  }
+  .card,.panel,.score-card,.fact,.att-item,.admin-item,.admin-kpi,.settings-card{transition:border-color .22s ease,box-shadow .22s ease,background .22s ease,transform .22s ease}
+  .card:active,.score-card:active,.fact:active,.att-item:active,.admin-item:active{border-color:rgba(53,216,242,.48)}
+  .chip-btn,.btn,.parent-pay-quick,.theme-switch,.field,select,input[type="search"]{transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease,filter .2s ease}
+  .chip-btn:active,.btn:active,.parent-pay-quick:active{transform:scale(.97);filter:brightness(1.12)}
+  .chip-btn.primary,.btn,.parent-pay-quick{background:var(--grad);box-shadow:0 10px 28px -13px rgba(34,211,238,.55)}
+  .field:focus,select:focus,input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft),0 0 24px rgba(34,211,238,.10)}
+  .tabs{background:rgba(11,20,36,.82);border:1px solid rgba(116,207,235,.22);border-radius:22px;backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);box-shadow:0 16px 44px -20px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.08)}
+  :root[data-theme="light"] .tabs{background:rgba(255,255,255,.84)}
+  .tabs button.active,.tabs .active{color:#5ce7f8}
+  .bar>i,.score-card .meter>i{background:linear-gradient(90deg,#22d3ee,#3b82f6,#a78bfa)}
+  .status.ok{box-shadow:0 0 18px rgba(52,211,153,.12)}
+  .motion-toggle{
+    position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:45;
+    border:1px solid rgba(96,220,244,.34);border-radius:999px;padding:10px 14px;
+    color:#dffaff;background:rgba(10,25,43,.86);font:700 12px/1.2 inherit;
+    box-shadow:0 8px 28px rgba(0,0,0,.35),0 0 22px rgba(34,211,238,.12);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;
+  }
+  .motion-toggle[aria-pressed="true"]{background:linear-gradient(120deg,#0e7490,#1d4ed8);box-shadow:0 0 26px rgba(34,211,238,.28)}
+  :root[data-theme="light"] .motion-toggle{color:#073047;background:rgba(255,255,255,.9)}
+  .motion-card{will-change:transform;transform:perspective(1000px) rotateX(var(--motion-rx,0deg)) rotateY(var(--motion-ry,0deg));transition:transform .16s ease-out}
+  .motion-card.motion-hover{box-shadow:0 24px 55px -25px rgba(34,211,238,.24),inset 0 1px 0 rgba(255,255,255,.12)}
+  @media(max-width:700px){.card,.panel,.grid-wrap,.report-actions,.att-item,.score-card,.fact,.profile,.admin-item,.admin-kpi{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}}
+  @media(prefers-reduced-motion:reduce){.hero::before{animation:none}.motion-card{transform:none!important;transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -1721,6 +1782,79 @@
     }
   });
   document.addEventListener("focusout", () => requestAnimationFrame(syncKeyboard));
+
+
+  /* ===== NEYRON MOTION ENGINE: touch tilt + optional device orientation ===== */
+  (() => {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const toggle = document.createElement("button");
+    toggle.className = "motion-toggle";
+    toggle.type = "button";
+    toggle.textContent = "✧ 3D harakat: OFF";
+    toggle.setAttribute("aria-pressed","false");
+    toggle.setAttribute("aria-label","Telefon sensori va 3D harakat effektlarini yoqish");
+    document.body.appendChild(toggle);
+
+    let enabled = false, sensorActive = false;
+    const clamp = (n,min,max) => Math.max(min,Math.min(max,n));
+    const addMotionCards = (root=document) => {
+      root.querySelectorAll(".hero,.card,.panel,.score-card,.fact,.stat,.hero-stat,.att-item,.admin-item,.admin-kpi,.profile,.report-actions,.settings-card").forEach(el => el.classList.add("motion-card"));
+    };
+    addMotionCards();
+    const observer = new MutationObserver(() => addMotionCards());
+    observer.observe(document.body,{childList:true,subtree:true});
+
+    const resetCards = () => document.querySelectorAll(".motion-card").forEach(el => {
+      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+    });
+    const onPointerMove = e => {
+      if(!enabled || reduced || e.pointerType==="touch") return;
+      const el=e.target.closest(".motion-card"); if(!el) return;
+      const r=el.getBoundingClientRect(), x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+      el.style.setProperty("--motion-rx",((.5-y)*5).toFixed(2)+"deg");
+      el.style.setProperty("--motion-ry",((x-.5)*6).toFixed(2)+"deg");
+      el.classList.add("motion-hover");
+    };
+    const onPointerOut = e => {
+      const el=e.target.closest(".motion-card"); if(!el || el.contains(e.relatedTarget)) return;
+      el.style.setProperty("--motion-rx","0deg");el.style.setProperty("--motion-ry","0deg");el.classList.remove("motion-hover");
+    };
+    const onOrientation = e => {
+      if(!enabled || reduced) return;
+      const gamma=clamp(Number(e.gamma)||0,-25,25), beta=clamp((Number(e.beta)||0)-35,-25,25);
+      const rx=clamp(beta*.12,-3,3), ry=clamp(gamma*.12,-3,3);
+      document.querySelectorAll(".motion-card").forEach(el=>{
+        el.style.setProperty("--motion-rx",rx.toFixed(2)+"deg");
+        el.style.setProperty("--motion-ry",ry.toFixed(2)+"deg");
+      });
+      sensorActive=true;
+    };
+    const enable = async () => {
+      if(reduced){toggle.textContent="Harakat kamaytirilgan";return;}
+      try{
+        if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
+          const permission=await DeviceOrientationEvent.requestPermission();
+          if(permission!=="granted") throw new Error("sensor permission denied");
+        }
+        enabled=true;
+        window.addEventListener("deviceorientation",onOrientation,{passive:true});
+        toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ 3D harakat: ON";
+        document.addEventListener("pointermove",onPointerMove,{passive:true});
+        document.addEventListener("pointerout",onPointerOut,{passive:true});
+      }catch(err){
+        enabled=true;toggle.setAttribute("aria-pressed","true");toggle.textContent="✦ Touch 3D: ON";
+        document.addEventListener("pointermove",onPointerMove,{passive:true});
+        document.addEventListener("pointerout",onPointerOut,{passive:true});
+      }
+    };
+    const disable = () => {
+      enabled=false;window.removeEventListener("deviceorientation",onOrientation);
+      document.removeEventListener("pointermove",onPointerMove);document.removeEventListener("pointerout",onPointerOut);
+      toggle.setAttribute("aria-pressed","false");toggle.textContent="✧ 3D harakat: OFF";resetCards();
+    };
+    toggle.addEventListener("click",()=>enabled?disable():enable());
+    document.addEventListener("visibilitychange",()=>{if(document.hidden)resetCards();});
+  })();
 
   init();
 })();
