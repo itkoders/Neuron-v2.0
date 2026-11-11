@@ -929,6 +929,39 @@
   .social-compose input{flex:1;min-width:0}.social-muted{color:var(--muted);font-size:12px}
   .social-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   @media(prefers-reduced-motion:reduce){.social-sheet{animation:none}}
+
+  /* NEURON DESIGN 05 — AURORA GLASS / 4K-ready vector interface */
+  :root{--r:22px;--r-sm:16px;--grad:linear-gradient(125deg,#0ea5e9 0%,#2563eb 48%,#7c3aed 100%);--shadow:0 18px 50px -24px rgba(2,132,199,.25),0 2px 8px rgba(15,23,42,.06)}
+  :root[data-theme="dark"]{--bg:#050b18;--surface:#0d1a2d;--surface-2:#132640;--text:#eaf5ff;--muted:#9bb1ca;--line:rgba(125,181,224,.18);--brand:#38bdf8;--brand-2:#6366f1;--brand-soft:rgba(14,165,233,.16);--brand-ink:#bae6fd;--shadow:0 22px 64px -24px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.035)}
+  @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#050b18;--surface:#0d1a2d;--surface-2:#132640;--text:#eaf5ff;--muted:#9bb1ca;--line:rgba(125,181,224,.18);--brand:#38bdf8;--brand-2:#6366f1;--brand-soft:rgba(14,165,233,.16);--brand-ink:#bae6fd;--shadow:0 22px 64px -24px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.035)}}
+  body{background-color:var(--bg);background-image:radial-gradient(ellipse at 8% -8%,rgba(14,165,233,.14),transparent 34%),radial-gradient(ellipse at 95% 16%,rgba(99,102,241,.10),transparent 32%),radial-gradient(ellipse at 55% 110%,rgba(6,182,212,.08),transparent 40%)}
+  :root[data-theme="light"] body{background-image:radial-gradient(ellipse at 8% -8%,rgba(14,165,233,.10),transparent 34%),radial-gradient(ellipse at 95% 16%,rgba(99,102,241,.07),transparent 32%),radial-gradient(ellipse at 55% 110%,rgba(6,182,212,.07),transparent 40%)}
+  header{background:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent)}
+  .topbar,.social-dock,.tabs,.hero,.main,.container{max-width:1440px}
+  .logo{border-radius:16px;background:linear-gradient(145deg,#22d3ee 0%,#2563eb 54%,#7c3aed 100%);box-shadow:0 10px 30px rgba(14,165,233,.32),inset 0 1px 0 rgba(255,255,255,.5)}
+  .hero{border:1px solid rgba(125,211,252,.24);background:linear-gradient(125deg,#073b59 0%,#123c80 54%,#312e81 100%);box-shadow:0 28px 70px -36px rgba(14,165,233,.65),inset 0 1px 0 rgba(255,255,255,.18)}
+  .card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.stat,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card{border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);backdrop-filter:blur(16px) saturate(135%);-webkit-backdrop-filter:blur(16px) saturate(135%)}
+  .btn,.chip-btn{min-height:44px;border-radius:15px;font-weight:750;letter-spacing:.005em}
+  .btn.primary,.chip-btn.primary{background:linear-gradient(120deg,#0891b2,#2563eb 58%,#4f46e5);box-shadow:0 10px 26px -14px rgba(37,99,235,.75);border:1px solid rgba(125,211,252,.28)}
+  .field,input,select,textarea{border-radius:14px}
+  .tabs{border:1px solid var(--line);box-shadow:0 12px 36px -20px rgba(14,165,233,.35);backdrop-filter:blur(20px)}
+  .tab.active{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 35%,transparent),0 8px 20px -14px var(--brand)}
+  .social-dock{padding:0 14px;margin:10px auto;gap:10px}.social-dock .chip-btn{min-height:48px;border-radius:16px}
+  .social-overlay{background:rgba(2,8,23,.76);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);align-items:center}
+  .social-sheet{width:min(100%,820px);max-height:min(92dvh,1100px);padding:clamp(16px,3vw,28px);border-radius:28px;border:1px solid rgba(125,211,252,.24);background:linear-gradient(145deg,color-mix(in srgb,var(--surface) 96%,#0ea5e9 4%),var(--bg));box-shadow:0 35px 100px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.06)}
+  .social-head h3{font-size:clamp(18px,2.5vw,24px);letter-spacing:-.03em}
+  .social-avatar{border:1px solid rgba(125,211,252,.38);box-shadow:0 10px 28px -14px rgba(14,165,233,.65);background:linear-gradient(145deg,#0ea5e9,#2563eb 58%,#7c3aed)}
+  .social-message{border-radius:18px;box-shadow:0 8px 24px -18px rgba(14,165,233,.4)}
+  .social-message.mine{background:linear-gradient(120deg,color-mix(in srgb,var(--brand-soft) 86%,var(--surface)),var(--surface));border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}
+  .social-user{border-radius:14px;padding:10px;transition:background .18s ease,transform .18s ease}.social-user:active{transform:scale(.99);background:var(--surface-2)}
+  .social-badge{display:inline-grid;place-items:center;width:21px;height:21px;vertical-align:-5px;margin-left:5px;color:#38bdf8;filter:drop-shadow(0 2px 5px rgba(14,165,233,.38))}
+  .social-badge svg{width:100%;height:100%;display:block;overflow:visible}
+  .social-badge[data-kind="premium"]{color:#a78bfa}.social-badge[data-kind="official"]{color:#f59e0b}.social-badge[data-kind="expert"]{color:#34d399}.social-badge[data-kind="blue"],.social-badge[data-kind="verified"]{color:#38bdf8}
+  .social-form label{font-size:13px;font-weight:750;color:var(--muted)}.social-form .field{min-height:48px}
+  @media(min-width:1500px){body{font-size:16px}.hero{padding:30px}.card,.panel{border-radius:26px}}
+  @media(max-width:600px){.social-dock{padding:0 10px;gap:7px}.social-dock .chip-btn{font-size:12px;padding:10px 8px}.social-sheet{border-radius:24px 24px 18px 18px}.social-overlay{align-items:flex-end;padding:8px}.social-compose .btn{min-width:92px}}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
 </style>
 </head>
 <body>
@@ -1382,7 +1415,7 @@
 
   let socialPoll=null, socialProfile=null;
   const socialBadges={blue:"NEURON Blue",premium:"NEURON Premium",official:"NEURON Official",expert:"NEURON Expert",verified:"NEURON Verified"};
-  const badgeMark=(b)=>b?'<span class="social-badge" title="'+esc(socialBadges[b]||"Tasdiqlangan")+'">◆</span>':"";
+  const badgeMark=(b)=>b?'<span class="social-badge" data-kind="'+esc(b)+'" title="'+esc(socialBadges[b]||"NEURON Verified")+'" aria-label="NEURON tomonidan tasdiqlangan"><svg viewBox="0 0 32 32" role="img" aria-hidden="true"><path fill="currentColor" d="M16 1.8 20.1 4l4.7-.2 2.1 4.2 3.9 2.7-.9 4.6.9 4.6-3.9 2.7-2.1 4.2-4.7-.2-4.1 2.2-4.1-2.2-4.7.2-2.1-4.2-3.9-2.7.9-4.6-.9-4.6 3.9-2.7 2.1-4.2 4.7.2z"/><path d="m9.5 16.2 4.2 4.1 8.9-9" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><path d="m24.5 4 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="#fff" opacity=".9"/></svg></span>':"";
   const avatarHTML=(p)=>p.avatar?'<img class="social-avatar" src="'+esc(p.avatar)+'" alt="Profil rasmi">':'<div class="social-avatar">'+esc((p.display_name||"N").slice(0,1).toUpperCase())+'</div>';
   function closeSocial(){$("socialOverlay").classList.add("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}}
   async function openSocial(which){$("socialOverlay").classList.remove("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}if(which==="profile")await renderSocialProfile();else await renderSocialChat();}
