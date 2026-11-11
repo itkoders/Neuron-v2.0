@@ -4878,20 +4878,26 @@ def _social_auth(request):
             run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(current_username,datetime.now().isoformat(timespec="seconds"),uid))
             row = list(row); row[1] = current_username
     badge_entitled = False
+    current_plan = None
     if kind == "teacher":
-        current_plan, _ = effective_plan(obj)
-        badge_entitled = bool(current_plan.get("badge"))
-        plan_badge = current_plan.get("badge", "")
-        if plan_badge and not (row[5] or ""):
-            run("UPDATE user_profiles SET badge=?,badge_status='approved',badge_request='' WHERE chat_id=?", (plan_badge,uid))
-            row = list(row); row[5] = plan_badge; row[6] = "approved"; row[7] = ""
-        elif not plan_badge and (row[5] or ""):
-            run("UPDATE user_profiles SET badge='',badge_status='',badge_request='' WHERE chat_id=?", (uid,))
-            row = list(row); row[5] = ""; row[6] = ""; row[7] = ""
+        # Mini App dagi role obyektiga emas, bazadagi faol o‘qituvchi yozuviga tayanamiz.
+        teacher_record = teacher_by_chat(uid) or obj
+        if teacher_record:
+            current_plan, _ = effective_plan(teacher_record)
+            plan_badge = str((current_plan or {}).get("badge") or "").strip()
+            badge_entitled = plan_badge in {"blue","premium","official","expert","verified"}
+            if badge_entitled:
+                if (row[5] or "") not in {"blue","premium","official","expert","verified"}:
+                    run("UPDATE user_profiles SET badge=?,badge_status='approved',badge_request='' WHERE chat_id=?", (plan_badge,uid))
+                    row = list(row); row[5] = plan_badge; row[6] = "approved"; row[7] = ""
+            elif (row[5] or ""):
+                run("UPDATE user_profiles SET badge='',badge_status='',badge_request='' WHERE chat_id=?", (uid,))
+                row = list(row); row[5] = ""; row[6] = ""; row[7] = ""
     profile = {"chat_id":int(row[0]),"username":row[1] or "","display_name":row[2] or _social_default_name(kind,obj,user),
                "bio":row[3] or "","avatar":row[4] or "","badge":row[5] or "",
                "badge_status":row[6] or "","badge_request":row[7] or "",
-               "badge_entitled":badge_entitled,"badge_options":["blue","premium","official","expert","verified"] if badge_entitled else []}
+               "badge_entitled":badge_entitled,"badge_options":["blue","premium","official","expert","verified"] if badge_entitled else [],
+               "plan_name":(current_plan or {}).get("name","")}
     return uid,profile,kind,None
 
 
@@ -4932,6 +4938,39 @@ async def api_social_profile_save(request):
         (username,name,bio,avatar,badge,badge,datetime.now().isoformat(timespec="seconds"),uid))
     audit(uid,"social_profile_update",str(uid))
     return web.json_response({"ok":True})
+
+
+
+async def api_social_avatar_save(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    try:
+        reader = await request.multipart()
+        field = await reader.next()
+        while field and field.name != "avatar":
+            field = await reader.next()
+        if not field:
+            return web.json_response({"error":"avatar_missing"},status=400)
+        raw = await field.read(decode=False)
+        if not raw or len(raw) > 4 * 1024 * 1024:
+            return web.json_response({"error":"avatar_too_large"},status=413)
+        with Image.open(io.BytesIO(raw)) as source:
+            if source.width * source.height > 16000000:
+                return web.json_response({"error":"avatar_dimensions"},status=400)
+            im = source.convert("RGB")
+            im.thumbnail((512,512))
+            output = io.BytesIO()
+            im.save(output,format="JPEG",quality=82,optimize=True)
+        encoded = "data:image/jpeg;base64," + __import__("base64").b64encode(output.getvalue()).decode("ascii")
+        run("UPDATE user_profiles SET avatar_data=?,updated_at=? WHERE chat_id=?",
+            (encoded,datetime.now().isoformat(timespec="seconds"),uid))
+        saved = run("SELECT avatar_data FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
+        if not saved or saved[0] != encoded:
+            return web.json_response({"error":"avatar_not_persisted"},status=500)
+        return web.json_response({"ok":True,"avatar":encoded})
+    except Exception:
+        logging.exception("social avatar save failed")
+        return web.json_response({"error":"avatar_save_failed"},status=500)
 
 
 async def api_social_badge_request(request):
@@ -6022,6 +6061,7 @@ async def start_web_server():
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/social/profile", api_social_profile)
     app.router.add_post("/api/social/profile", api_social_profile_save)
+    app.router.add_post("/api/social/profile/avatar", api_social_avatar_save)
     app.router.add_post("/api/social/badge-request", api_social_badge_request)
     app.router.add_get("/api/social/users", api_social_users)
     app.router.add_get("/api/social/home", api_social_home)
