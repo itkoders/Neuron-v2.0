@@ -1344,8 +1344,7 @@
     if (me.teacher_pending) {
       host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
     }
-    let savedRole = "";
-    try { savedRole = localStorage.getItem("neuron-last-role") || ""; } catch (_) {}
+    const savedRole = String(me.last_role || "").trim();
     const allowedSaved = ["parent","student","teacher","admin"].includes(savedRole)
       && (savedRole !== "admin" || !!me.is_admin);
     let selected = allowedSaved ? savedRole
@@ -1373,11 +1372,11 @@
       host.prepend(roleTitle);
       bindEntryForms();
     };
-    document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = () => {
+    document.querySelectorAll("[data-entry-role]").forEach(b => b.onclick = async () => {
       selected = b.dataset.entryRole;
-      try { localStorage.setItem("neuron-last-role", selected); } catch (_) {}
-      api("/api/role/preference", {method:"POST",body:JSON.stringify({role:selected})}).catch(() => {});
       render();
+      try { await api("/api/role/preference", {method:"POST",body:JSON.stringify({role:selected})}); }
+      catch (_) { setEntryMessage("Tanlov saqlanmadi. Internetni tekshirib qayta urinib ko‘ring."); }
     });
     render();
   }
@@ -1387,7 +1386,6 @@
     if (el) el.innerHTML = '<div class="entry-message">' + esc(message) + '</div>';
   }
   async function enterRole(role) {
-    try { localStorage.setItem("neuron-last-role", role); } catch (_) {}
     const u = new URL(location.href);
     u.searchParams.set("role", role);
     history.replaceState({}, "", u.pathname + u.search);
@@ -1700,11 +1698,11 @@
     const rows = list.map((s, i) => `<tr data-id="${s.id}">
       <td class="name"><div class="fio" title="${esc(s.fio)}">${esc(s.fio)}</div><div class="grp">${esc(s.group_name)}</div></td>
       ${labels.map((label, k) => { const idx = k + 1; return `<td class="${tone(s["s" + idx])}"><input type="number" inputmode="numeric" min="0" max="100" step="1"
-          placeholder="—" value="${s["s" + idx] || ""}" data-row="${i}" data-col="${k}" aria-label="${esc(s.fio)} ${esc(label)}"></td>`; }).join("")}
+          placeholder="—" value="${s["s" + idx + "_scored"] ? s["s" + idx] : ""}" data-row="${i}" data-col="${k}" aria-label="${esc(s.fio)} ${esc(label)}"></td>`; }).join("")}
       <td><button type="button" class="del-btn" data-delete-student="${s.id}" aria-label="O‘chirish">🗑</button></td>
       </tr>`).join("");
     const avg = labels.map((_, k) => {
-      const vals = allList.map(s => s["s" + (k + 1)]).filter(v => v > 0);
+      const vals = allList.filter(s => s["s" + (k + 1) + "_scored"]).map(s => Number(s["s" + (k + 1)] || 0));
       return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) + "%" : "—";
     });
     const pager = pageCount > 1 ? `<div class="pager"><button type="button" class="chip-btn" data-page="-1" ${state.page===0?"disabled":""}>‹ Oldingi</button><span>${state.page+1} / ${pageCount} · ${allList.length} ta</span><button type="button" class="chip-btn" data-page="1" ${state.page>=pageCount-1?"disabled":""}>Keyingi ›</button></div>` : "";
