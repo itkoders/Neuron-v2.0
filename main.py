@@ -5012,20 +5012,86 @@ async def api_teacher_tool_action(request):
 async def api_teacher_export(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
-        return err or web.json_response({"error":"forbidden"}, status=403)
+        return err or web.json_response({"error": "forbidden"}, status=403)
     if not has_feature(teacher, "export"):
-        return web.json_response({"error":"feature_locked"},status=403)
+        return web.json_response({"error": "feature_locked"}, status=403)
+
+    # Joriy kun ma'lumotlarini yangilab, o'qituvchi ro'yxatdan o'tgan sanani aniqlaymiz.
+    students = list(db_students(teacher["id"]).values())
+    today = local_now().date()
+    created_at = str(teacher.get("created_at") or "")
+    try:
+        start_date = datetime.strptime(created_at[:10], "%d.%m.%Y").date()
+    except (TypeError, ValueError):
+        start_date = today
+
+    subjects = {x["id"]: x for x in db_subjects(teacher["id"])}
+    history_rows = run(
+        """SELECT h.student_id, h.date_str, h.davomat, h.s1, h.s2, h.s3
+           FROM attendance_history h
+           JOIN students s ON s.id = h.student_id
+           WHERE s.teacher_id = ?
+           ORDER BY h.id""",
+        (teacher["id"],), fetch="all"
+    )
+    history = {}
+    for row in history_rows:
+        try:
+            history_date = datetime.strptime(str(row[1]), "%d.%m.%Y").date()
+        except (TypeError, ValueError):
+            continue
+        history[(row[0], history_date)] = row[2:6]
+
     output = io.StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(["O‘quvchi","Guruh","Fan","Baholash 1","Baholash 2","Baholash 3","Davomat","To‘lov","To‘lov summasi"])
-    subjects = {x["id"]:x for x in db_subjects(teacher["id"])}
-    for st in db_students(teacher["id"]).values():
-        subj = subjects.get(st["subject_id"])
-        writer.writerow([st["fio"],st["group_name"],subj["name"] if subj else "",
-                         st["s1"],st["s2"],st["s3"],st["davomat"],st["payment_status"],st["payment_amount"]])
-    audit(teacher["chat_id"],"miniapp_export_csv","","student records")
+    writer.writerow([
+        "Sana", "O‘qituvchi ro‘yxatdan o‘tgan sana", "O‘quvchi", "Guruh", "Fan",
+        "Baholash 1", "Baholash 2", "Baholash 3", "Davomat",
+        "Bugungi to‘lov holati", "Bugungi to‘lov summasi", "Ma’lumot holati"
+    ])
+
+    registration_label = start_date.strftime("%d.%m.%Y")
+    if start_date > today:
+        start_date = today
+
+    day = start_date
+    while day <= today:
+        day_label = day.strftime("%d.%m.%Y")
+        for st in students:
+            subj = subjects.get(st["subject_id"])
+            saved = history.get((st["id"], day))
+            if saved is not None:
+                attendance, s1, s2, s3 = saved
+                record_status = "Tarixdan olindi"
+            elif day == today:
+                attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
+                record_status = "Bugungi holat"
+            else:
+                attendance, s1, s2, s3 = "", "", "", ""
+                record_status = "Ma’lumot kiritilmagan"
+
+            # To'lov tarixi eski kunlar bo'yicha saqlanmagan; faqat bugungi holatni ko'rsatamiz.
+            payment_status = st["payment_status"] if day == today else ""
+            payment_amount = st["payment_amount"] if day == today else ""
+            writer.writerow([
+                day_label, registration_label, st["fio"], st["group_name"],
+                subj["name"] if subj else "", s1, s2, s3, attendance,
+                payment_status, payment_amount, record_status
+            ])
+        day += timedelta(days=1)
+
+    audit(teacher["chat_id"], "miniapp_export_csv", "",
+          f"daily history from {registration_label} to {today.strftime('%d.%m.%Y')}")
     data = "\ufeff" + output.getvalue()
-    return web.Response(text=data,content_type="text/csv",headers={"Content-Disposition":"attachment; filename=neyron_jurnal.csv"})
+    return web.Response(
+        text=data,
+        content_type="text/csv",
+        charset="utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="neyron_kunlik_hisobot.csv"',
+            "Cache-Control": "no-store"
+        }
+    )
 
 
 async def api_teacher_requests(request):
