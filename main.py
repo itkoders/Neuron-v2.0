@@ -4932,7 +4932,7 @@ async def api_social_users(request):
     q = " ".join(str(request.query.get("q","")).split())[:40]
     if len(q)<2: return web.json_response({"users":[]})
     like = "%"+q.lower()+"%"
-    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
+    rows = run("SELECT chat_id,username,display_name,bio,'' AS avatar,badge FROM user_profiles "
                "WHERE chat_id<>? AND (LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 25",(uid,like,like),fetch="all")
     return web.json_response({"users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi",
@@ -4977,7 +4977,7 @@ async def api_social_home(request):
                "WHERE chat_id<>? AND (?='' OR LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 200",
                (uid,q,like,like),fetch="all")
-    ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,p.avatar_data,p.badge "
+    ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,'' AS avatar,p.badge "
               "FROM social_ads a LEFT JOIN user_profiles p ON p.chat_id=a.chat_id "
               "WHERE a.active=1 ORDER BY a.id DESC LIMIT 30",fetch="all")
     can_ad = False
