@@ -9,7 +9,7 @@
   :root{
     color-scheme: light;
     --bg:#f4f6fc; --surface:#ffffff; --surface-2:#f0f2f9; --text:#12142a; --muted:#6b7392; --line:#e5e8f2;
-    --brand:#6366f1; --brand-2:#ec4899; --brand-soft:#e0e7ff; --brand-ink:#3730a3;
+    --brand:#0d9488; --brand-2:#06b6d4; --brand-soft:#ccfbf1; --brand-ink:#0f766e;
     --ok:#10b981; --ok-soft:#dcfbef; --ok-ink:#047857;
     --warn:#f59e0b; --warn-soft:#fff3d6; --warn-ink:#9a5b06;
     --bad:#ef4444; --bad-soft:#fde7e7; --bad-ink:#b42318;
@@ -21,8 +21,8 @@
   @media (prefers-color-scheme: dark){ }
   :root[data-theme="dark"]{
     color-scheme: dark;
-    --bg:#0b0d18; --surface:#141829; --surface-2:#1b2034; --text:#eceefe; --muted:#8e97b5; --line:#262c44;
-    --brand:#7c74ff; --brand-2:#a78bfa; --brand-soft:#23254a; --brand-ink:#c7c2ff;
+    --bg:#080e1a; --surface:#111d31; --surface-2:#172842; --text:#e8f2ff; --muted:#91a7c4; --line:#233752;
+    --brand:#38bdf8; --brand-2:#2563eb; --brand-soft:#12304b; --brand-ink:#bae6fd;
     --ok:#34d399; --ok-soft:#0f3328; --ok-ink:#6ee7b7;
     --warn:#fbbf24; --warn-soft:#3a2e12; --warn-ink:#fcd34d;
     --bad:#f87171; --bad-soft:#3b1d22; --bad-ink:#fca5a5;
@@ -31,8 +31,8 @@
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       color-scheme: dark;
-      --bg:#0b0d18; --surface:#141829; --surface-2:#1b2034; --text:#eceefe; --muted:#8e97b5; --line:#262c44;
-      --brand:#7c74ff; --brand-2:#a78bfa; --brand-soft:#23254a; --brand-ink:#c7c2ff;
+      --bg:#080e1a; --surface:#111d31; --surface-2:#172842; --text:#e8f2ff; --muted:#91a7c4; --line:#233752;
+      --brand:#38bdf8; --brand-2:#2563eb; --brand-soft:#12304b; --brand-ink:#bae6fd;
       --ok:#34d399; --ok-soft:#0f3328; --ok-ink:#6ee7b7;
       --warn:#fbbf24; --warn-soft:#3a2e12; --warn-ink:#fcd34d;
       --bad:#f87171; --bad-soft:#3b1d22; --bad-ink:#fca5a5;
@@ -906,6 +906,29 @@
     }
   }
 
+  /* NEURON Social */
+  .social-dock{max-width:1100px;margin:8px auto 0;padding:0 14px;display:flex;gap:8px}
+  .social-dock .chip-btn{flex:1}
+  .social-overlay{position:fixed;inset:0;z-index:90;background:rgba(3,8,20,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px}
+  .social-sheet{width:min(100%,760px);max-height:92dvh;overflow:auto;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 24px 80px rgba(0,0,0,.35);animation:fadeUp .24s ease both}
+  .social-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .social-head h3{margin:0;font-size:18px}
+  .social-close{width:42px;height:42px;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--text);font-size:20px}
+  .social-form{display:grid;gap:10px}.social-form input,.social-form textarea{width:100%}
+  .social-avatar{width:64px;height:64px;border-radius:22px;object-fit:cover;background:var(--brand-soft);display:grid;place-items:center;font-weight:800;color:var(--brand-ink);font-size:22px;overflow:hidden}
+  .social-user{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .social-user .social-avatar{width:42px;height:42px;border-radius:14px;font-size:15px;flex-shrink:0}
+  .social-user-info{min-width:0;flex:1}.social-user-info b{display:block;overflow-wrap:anywhere}.social-user-info small{display:block;color:var(--muted);overflow-wrap:anywhere}
+  .social-badge{display:inline-flex;color:#38bdf8;font-weight:900;margin-left:4px}
+  .social-chat-list{display:flex;flex-direction:column;gap:10px;max-height:48dvh;overflow:auto;padding:8px 2px}
+  .social-message{padding:11px 13px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere}
+  .social-message.mine{border-color:var(--brand);background:var(--brand-soft)}
+  .social-message-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .social-message-head b{color:var(--text)}.social-message p{margin:0;white-space:pre-wrap}
+  .social-compose{display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding-top:10px}
+  .social-compose input{flex:1;min-width:0}.social-muted{color:var(--muted);font-size:12px}
+  .social-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  @media(prefers-reduced-motion:reduce){.social-sheet{animation:none}}
 </style>
 </head>
 <body>
@@ -935,6 +958,10 @@
     <button class="chip-btn danger" id="deleteSubjectBtn" type="button">🗑 Fan</button>
   </div>
 </header>
+<div class="social-dock hidden" id="socialDock">
+  <button type="button" class="chip-btn" id="openProfileBtn">👤 Profilni ko‘rish</button>
+  <button type="button" class="chip-btn primary" id="openCommunityBtn">💬 Hamjamiyat chati</button>
+</div>
 
 <main>
   <!-- O'qituvchi -->
@@ -1042,6 +1069,12 @@
   </section>
 </main>
 
+<div class="social-overlay hidden" id="socialOverlay" role="dialog" aria-modal="true" aria-label="NEURON hamjamiyati">
+  <div class="social-sheet">
+    <div class="social-head"><h3 id="socialTitle">NEURON</h3><button class="social-close" type="button" id="socialClose" aria-label="Yopish">×</button></div>
+    <div id="socialContent"></div>
+  </div>
+</div>
 <nav class="tabs hidden" id="tabsTeacher" role="tablist">
   <button class="tab active" data-tab="grades"><span class="ico">📝</span>Ballar</button>
   <button class="tab" data-tab="attendance"><span class="ico">✅</span>Davomat</button>
