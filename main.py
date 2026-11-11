@@ -324,6 +324,12 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
     run("CREATE TABLE IF NOT EXISTS student_links (chat_id BIGINT PRIMARY KEY, student_id INTEGER)")
+    # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
+    migrate_telegram_id_columns()
+
+    # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
+    migrate_sqlite_to_neon()
+
     # Username lar takrorlanmasin; eski qisqa yoki takroriy nomlar avtomatik almashtiriladi.
     seen_usernames = set()
     for profile_row in run("SELECT chat_id,username FROM user_profiles ORDER BY chat_id", fetch="all"):
@@ -334,12 +340,6 @@ def init_db():
             run("UPDATE user_profiles SET username=? WHERE chat_id=?", (profile_username, profile_uid))
         seen_usernames.add(profile_username.lower())
     run("CREATE UNIQUE INDEX IF NOT EXISTS ux_user_profiles_username_lower ON user_profiles (LOWER(username)) WHERE username <> ''")
-
-    # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
-    migrate_telegram_id_columns()
-
-    # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
-    migrate_sqlite_to_neon()
 
     if not run("SELECT 1 FROM plans LIMIT 1", fetch="one"):
         for p in SEED_PLANS:
