@@ -263,6 +263,12 @@ def init_db():
         group_name TEXT DEFAULT 'Guruhsiz',
         teacher_note TEXT DEFAULT 'Izoh mavjud emas',
         last_score_date TEXT DEFAULT '')""")
+    student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
+    for score_idx in (1, 2, 3):
+        flag_col = f"s{score_idx}_scored"
+        if flag_col not in student_cols:
+            run(f"ALTER TABLE students ADD COLUMN {flag_col} INTEGER DEFAULT 0")
+            run(f"UPDATE students SET {flag_col}=1 WHERE COALESCE(s{score_idx}, 0) > 0")
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_methods (
         teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
         bank_name TEXT DEFAULT '', updated_at TEXT)""")
@@ -687,9 +693,9 @@ def db_get_student_history(s_id):
 
 
 SCORE_SQL = {
-    1: "UPDATE students SET s1 = ?, last_score_date = ? WHERE id = ?",
-    2: "UPDATE students SET s2 = ?, last_score_date = ? WHERE id = ?",
-    3: "UPDATE students SET s3 = ?, last_score_date = ? WHERE id = ?",
+    1: "UPDATE students SET s1 = ?, s1_scored = 1, last_score_date = ? WHERE id = ?",
+    2: "UPDATE students SET s2 = ?, s2_scored = 1, last_score_date = ? WHERE id = ?",
+    3: "UPDATE students SET s3 = ?, s3_scored = 1, last_score_date = ? WHERE id = ?",
 }
 
 
@@ -713,8 +719,11 @@ def db_set_payment_status(s_id, status):
 
 
 def score_average(st, include_zero_idx=None):
-    values = [int(st.get(f"s{i}", 0) or 0) for i in (1, 2, 3)]
-    values = [v for i, v in enumerate(values, 1) if v > 0 or i == include_zero_idx]
+    values = [
+        int(st.get(f"s{i}", 0) or 0)
+        for i in (1, 2, 3)
+        if bool(st.get(f"s{i}_scored", int(st.get(f"s{i}", 0) or 0) > 0))
+    ]
     return round(sum(values) / len(values)) if values else None
 
 
@@ -4034,7 +4043,11 @@ def _subj_payload(subj):
 
 def _stu_payload(s):
     return {"id": s["id"], "fio": s["fio"], "group_name": s["group_name"],
-            "s1": s["s1"], "s2": s["s2"], "s3": s["s3"], "davomat": s["davomat"],
+            "s1": s["s1"], "s2": s["s2"], "s3": s["s3"],
+            "s1_scored": bool(s.get("s1_scored", int(s["s1"] or 0) > 0)),
+            "s2_scored": bool(s.get("s2_scored", int(s["s2"] or 0) > 0)),
+            "s3_scored": bool(s.get("s3_scored", int(s["s3"] or 0) > 0)),
+            "davomat": s["davomat"],
             "last_score_date": s.get("last_score_date", "")}
 
 
@@ -4178,7 +4191,7 @@ async def api_score(request):
     db_set_score(sid, idx, val)
     audit(t["chat_id"], "miniapp_score", str(sid), f"s{idx}={val}")
     notification = {"total": 0, "sent": 0, "failed": []}
-    if previous_value != val:
+    if previous_value != val or not bool(st.get(f"s{idx}_scored", previous_value > 0)):
         label = subj["labels"][idx - 1]
         message_text = (
             "📚 **NEYRON — YANGI NATIJA**\n"
@@ -4187,7 +4200,12 @@ async def api_score(request):
             f"📝 {md(label)}: **{val}/100 ball**\n"
             f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
         )
-        notification = await notify_parents_of(sid, message_text)
+        async def send_score_notification():
+            result = await notify_parents_of(sid, message_text)
+            logging.info("Ball xabari: student_id=%s sent=%s failed=%s",
+                         sid, result.get("sent", 0), len(result.get("failed", [])))
+        asyncio.create_task(send_score_notification())
+        notification = {"queued": True}
     today = local_now().strftime("%d.%m.%Y")
     students = list(db_students(t["id"], st["subject_id"]).values())
     all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
@@ -5125,8 +5143,9 @@ async def api_student_overview(request):
     subj = db_subject(st["subject_id"])
     classmates = list(db_students(st["teacher_id"], st["subject_id"]).values())
     avg = []
-    for i in range(3):
-        vals = [c[f"s{i + 1}"] for c in classmates if c[f"s{i + 1}"] > 0]
+    for i in range(1, 4):
+        vals = [int(c.get(f"s{i}", 0) or 0) for c in classmates
+                if bool(c.get(f"s{i}_scored", int(c.get(f"s{i}", 0) or 0) > 0))]
         avg.append(round(sum(vals) / len(vals)) if vals else None)
     ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
     rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == st["id"]), None)
