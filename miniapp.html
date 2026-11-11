@@ -1379,6 +1379,46 @@
     if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), {status:res.status,data});
     return data;
   }
+
+  let socialPoll=null, socialProfile=null;
+  const socialBadges={blue:"NEURON Blue",premium:"NEURON Premium",official:"NEURON Official",expert:"NEURON Expert",verified:"NEURON Verified"};
+  const badgeMark=(b)=>b?'<span class="social-badge" title="'+esc(socialBadges[b]||"Tasdiqlangan")+'">◆</span>':"";
+  const avatarHTML=(p)=>p.avatar?'<img class="social-avatar" src="'+esc(p.avatar)+'" alt="Profil rasmi">':'<div class="social-avatar">'+esc((p.display_name||"N").slice(0,1).toUpperCase())+'</div>';
+  function closeSocial(){$("socialOverlay").classList.add("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}}
+  async function openSocial(which){$("socialOverlay").classList.remove("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}if(which==="profile")await renderSocialProfile();else await renderSocialChat();}
+  async function renderSocialProfile(){
+    $("socialTitle").textContent="👤 Shaxsiy profil";const host=$("socialContent");host.innerHTML='<div class="loading">Profil yuklanmoqda…</div>';
+    try{
+      const d=await api("/api/social/profile");socialProfile=d.profile;const p=socialProfile;
+      host.innerHTML='<div class="profile card">'+avatarHTML(p)+'<div><div class="nm">'+esc(p.display_name)+badgeMark(p.badge)+'</div><div class="hint">@'+esc(p.username||"username yo‘q")+'</div></div></div>'+
+      '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya (emoji mumkin emas)</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi — galereyadan tanlang</label><input class="field" id="socialPhoto" type="file" accept="image/*"><button class="btn" id="saveSocial">Profilni saqlash</button><p class="social-muted">Username o‘zgarmaydi. Ismda faqat harflar va oddiy tinish belgilari ishlatiladi.</p></div>'+
+      '<div class="card panel" style="margin-top:12px"><h3>◆ Galichka</h3><p class="hint">Belgini faqat Super Admin tasdiqlagandan keyin profilga qo‘yish mumkin.</p>'+
+      (p.badge?'<p>Faol belgi: <b>'+esc(socialBadges[p.badge]||p.badge)+'</b></p>':p.badge_status==="pending"?'<p class="social-muted">⏳ So‘rovingiz ko‘rib chiqilmoqda.</p>':'<select class="field" id="socialBadge"><option value="verified">NEURON Verified</option><option value="blue">NEURON Blue</option><option value="premium">NEURON Premium</option><option value="official">NEURON Official</option><option value="expert">NEURON Expert</option></select><button class="chip-btn primary" id="askBadge" style="margin-top:8px">Galichka so‘rash</button>')+
+      (d.is_admin?'<button class="chip-btn primary" id="badgeQueue" style="margin-top:10px">Galichka so‘rovlarini ko‘rish</button><div id="badgeQueueList"></div>':'')+'</div>';
+      let photo=p.avatar||"";
+      $("socialPhoto").onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file)return;if(!file.type.startsWith("image/")){toast("Rasm tanlang.");return;}try{const url=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file);});const im=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url;});const scale=Math.min(1,320/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));c.getContext("2d").drawImage(im,0,0,c.width,c.height);photo=c.toDataURL("image/jpeg",.75);toast("Rasm tanlandi. Saqlashni bosing.");}catch(_){toast("Rasmni o‘qib bo‘lmadi.");}};
+      $("saveSocial").onclick=async()=>{try{await api("/api/social/profile",{method:"POST",body:JSON.stringify({display_name:$("socialName").value,bio:$("socialBio").value,avatar:photo})});toast("Profil saqlandi.");await renderSocialProfile();}catch(e){toast(e.data?.error==="bad_display_name"?"Ismda emoji bo‘lmasin; 2–40 harf kiriting.":e.data?.error==="bad_avatar"?"Rasm formati yoki hajmi mos emas.":errText(e));}};
+      $("askBadge")?.addEventListener("click",async()=>{try{await api("/api/social/badge-request",{method:"POST",body:JSON.stringify({badge_type:$("socialBadge").value})});toast("So‘rov yuborildi.");await renderSocialProfile();}catch(e){toast(errText(e));}});
+      $("badgeQueue")?.addEventListener("click",loadBadgeQueue);
+    }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
+  }
+  async function loadBadgeQueue(){const host=$("badgeQueueList");if(!host)return;try{const d=await api("/api/admin/badges");host.innerHTML=(d.requests||[]).map(r=>'<div class="social-user"><div class="social-user-info"><b>'+esc(r.display_name)+'</b><small>@'+esc(r.username||"—")+' · '+esc(socialBadges[r.badge_request]||r.badge_request)+'</small></div><button class="chip-btn primary" data-badge-ok="'+r.chat_id+'" data-kind="'+esc(r.badge_request)+'">Ruxsat</button><button class="chip-btn danger" data-badge-no="'+r.chat_id+'">Rad</button></div>').join("")||'<p class="social-muted">So‘rovlar yo‘q.</p>';host.onclick=async e=>{const b=e.target.closest("[data-badge-ok],[data-badge-no]");if(!b)return;const id=b.dataset.badgeOk||b.dataset.badgeNo;try{await api("/api/admin/badge/"+id,{method:"POST",body:JSON.stringify({action:b.dataset.badgeOk?"approve":"reject",badge:b.dataset.kind})});await loadBadgeQueue();toast("So‘rov ko‘rib chiqildi.");}catch(err){toast(errText(err));}};}catch(e){host.textContent=errText(e);}}
+  async function renderSocialChat(){
+    $("socialTitle").textContent="💬 NEURON hamjamiyati";const host=$("socialContent");
+    host.innerHTML='<div class="card panel"><input class="field" id="socialSearch" type="search" placeholder="🔎 Foydalanuvchini qidirish…"><div id="socialSearchResults"></div><div class="social-chat-list" id="socialMessages"></div><form class="social-compose" id="socialSend"><input class="field" id="socialMessage" maxlength="800" placeholder="Xabar yozing…" aria-label="Xabar"><button class="btn" type="submit">Yuborish</button></form><p class="social-muted">Hurmat bilan muloqot qiling. Nojo‘ya xabarlar haqida shikoyat yuboring.</p></div>';
+    try{const p=await api("/api/social/profile");socialProfile=p.profile;}catch(_){}
+    const refresh=async()=>{try{const d=await api("/api/social/chat"),box=$("socialMessages");if(!box)return;box.innerHTML=(d.messages||[]).map(m=>'<div class="social-message '+(m.chat_id===socialProfile?.chat_id?'mine':'')+'"><div class="social-message-head"><b>'+esc(m.display_name)+badgeMark(m.badge)+'</b><span>'+esc((m.created_at||"").slice(11,16))+'</span></div><p>'+esc(m.body)+'</p><div class="social-actions">'+(state.role==="admin"?'<button class="chip-btn danger" data-hide="'+m.id+'">O‘chirish</button>':'<button class="chip-btn" data-report="'+m.id+'">Shikoyat</button>')+'</div></div>').join("")||'<div class="empty">Hozircha xabar yo‘q. Birinchi bo‘lib yozing!</div>';box.scrollTop=box.scrollHeight;}catch(e){const box=$("socialMessages");if(box)box.textContent=errText(e);}};
+    await refresh();
+    $("socialSend").onsubmit=async e=>{e.preventDefault();const input=$("socialMessage"),message=input.value.trim();if(!message)return;try{await api("/api/social/chat",{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();}catch(err){toast(err.data?.error==="chat_slow_down"?"Juda tez yozdingiz. Biroz kuting.":errText(err));}};
+    $("socialMessages").onclick=async e=>{const r=e.target.closest("[data-report]"),h=e.target.closest("[data-hide]");if(r){if(!confirm("Shikoyat yuborilsinmi?"))return;try{await api("/api/social/report",{method:"POST",body:JSON.stringify({message_id:r.dataset.report})});toast("Shikoyat yuborildi.");}catch(err){toast(errText(err));}}if(h){if(!confirm("Xabar yashirilsinmi?"))return;try{await api("/api/admin/chat/"+h.dataset.hide,{method:"POST",body:"{}"});await refresh();}catch(err){toast(errText(err));}}};
+    let t=null;$("socialSearch").oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{const q=$("socialSearch").value.trim(),box=$("socialSearchResults");if(q.length<2){box.innerHTML="";return;}try{const d=await api("/api/social/users?q="+encodeURIComponent(q));box.innerHTML=(d.users||[]).map(u=>'<div class="social-user">'+avatarHTML(u)+'<div class="social-user-info"><b>'+esc(u.display_name)+badgeMark(u.badge)+'</b><small>@'+esc(u.username||"—")+' · '+esc(u.bio||"")+'</small></div></div>').join("")||'<p class="social-muted">Foydalanuvchi topilmadi.</p>';}catch(e){box.textContent=errText(e);}},350);};
+    socialPoll=setInterval(refresh,6000);
+  }
+  $("socialClose")?.addEventListener("click",closeSocial);
+  $("socialOverlay")?.addEventListener("click",e=>{if(e.target.id==="socialOverlay")closeSocial();});
+  $("openProfileBtn")?.addEventListener("click",()=>openSocial("profile"));
+  $("openCommunityBtn")?.addEventListener("click",()=>openSocial("chat"));
+
   const errText = (err) => {
     const code = err.data && err.data.error;
     if (code === "ai_fail" && err.data.message) return err.data.message;
@@ -1391,6 +1431,10 @@
       teacher_blocked: "O‘qituvchi hisobi bloklangan.",
       teacher_exists: "Sizda o‘qituvchi hisobi mavjud. 6 xonali kod bilan kiring.",
       bad_details: "Ism, familiya yoki telefon raqamini tekshiring.",
+      bad_display_name: "Ko‘rinadigan ismda emoji yoki ruxsat etilmagan belgi bor.",
+      bad_bio: "Bio 240 belgidan oshmasin.",
+      bad_avatar: "Profil rasmi formati yoki hajmi noto‘g‘ri.",
+      chat_slow_down: "Juda tez xabar yuborildi. Biroz kuting.",
       bad_date: "Sana yoki vaqt noto‘g‘ri.",
       date_in_past: "O‘tgan vaqtni rejalashtirib bo‘lmaydi.",
       bad_title: "Tadbir nomini kiriting.",
@@ -1474,6 +1518,7 @@
         }
       }
       state.role = me.role;
+      $("socialDock").classList.remove("hidden");
       const switcher = $("switchCabinetBtn");
       if (switcher) {
         switcher.classList.toggle("hidden", me.role === "entry");
