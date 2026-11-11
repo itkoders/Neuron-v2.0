@@ -327,6 +327,8 @@ def init_db():
     # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
     migrate_telegram_id_columns()
 
+    # Legacy bazadan dublikat username larni ko‘chirishga to‘sqinlik qilmasin.
+    run("DROP INDEX IF EXISTS ux_user_profiles_username_lower")
     # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
     migrate_sqlite_to_neon()
 
