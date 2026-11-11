@@ -856,6 +856,56 @@
     .hero,.card,.tab,.btn,.chip-btn,#entryView [data-entry-role]{animation:none!important;transition:none!important}
   }
 
+
+  /* ===== MOBILE PERFORMANCE PATCH: same UI, less GPU work ===== */
+  @media (max-width: 700px), (pointer: coarse) {
+    html { scroll-behavior: auto !important; }
+    body {
+      background-attachment: scroll !important;
+      animation: none !important;
+    }
+    body::before, body::after {
+      animation: none !important;
+      filter: none !important;
+      opacity: .12 !important;
+      will-change: auto !important;
+    }
+    header, .tabs, .sheet-overlay, .hero-stat,
+    .card, .panel, .grid-wrap, .report-actions, .journal-toolbar,
+    .stat, .att-item, .score-card, .fact, .profile, .note,
+    .history-item, .admin-item, .admin-kpi, .settings-card {
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
+    }
+    .hero, .hero::before, .hero::after, .hero-stat,
+    .logo, .logo::after, .bar > i::after, .meter > i::after,
+    .parent-pay-quick, .bubble.q::before, .skeleton,
+    .status.saving, .status.ok, .tab.active .ico,
+    .tab.active::after {
+      animation: none !important;
+    }
+    .hero { background-size: auto !important; }
+    .hero::before { display: none !important; }
+    .hero::after { animation: none !important; }
+    .card, .panel, .score-card, .fact, .att-item, .admin-item,
+    .admin-kpi, .settings-card, .motion-card {
+      will-change: auto !important;
+      transform: none !important;
+    }
+    .card, .panel, .score-card, .fact, .att-item,
+    .admin-item, .admin-kpi, .settings-card {
+      transition: none !important;
+    }
+    .bar > i, .meter > i { animation: none !important; }
+    .sheet-overlay { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+    * { scroll-behavior: auto !important; }
+  }
+  @media (max-width: 700px) and (prefers-reduced-motion: no-preference) {
+    .btn, .chip-btn, .tab, .seg button, .theme-switch button {
+      transition: background-color .12s ease, color .12s ease !important;
+    }
+  }
+
 </style>
 </head>
 <body>
