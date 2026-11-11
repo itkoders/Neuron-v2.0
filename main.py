@@ -63,6 +63,7 @@ FEATURES = {
     "auto_notify": "🔔 Avtomatik ota-ona xabarlari",
     "ai_tutor": "🤖 AI o'qituvchi (savol-javob)",
     "mini_app": "📱 Mini ilova (ball va davomat)",
+    "social_ads": "📣 NEURON ijtimoiy tarmog‘ida reklama joylash",
 }
 SEED_PLANS = [
     # kalit, nomi, narx (so'm/oy), limit (0 = cheksiz), kun (0 = cheksiz), ruxsatlar
@@ -311,10 +312,28 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
         reporter_chat_id BIGINT NOT NULL, reason TEXT DEFAULT '', created_at TEXT,
         status TEXT DEFAULT 'pending')""")
+    run("""CREATE TABLE IF NOT EXISTS social_direct_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sender_chat_id BIGINT NOT NULL,
+        recipient_chat_id BIGINT NOT NULL, body TEXT NOT NULL,
+        created_at TEXT NOT NULL, hidden INTEGER DEFAULT 0)""")
+    run("""CREATE TABLE IF NOT EXISTS social_ads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
+        chat_id BIGINT NOT NULL, body TEXT NOT NULL, link TEXT DEFAULT '',
+        created_at TEXT NOT NULL, active INTEGER DEFAULT 1)""")
     run("""CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
     run("CREATE TABLE IF NOT EXISTS student_links (chat_id BIGINT PRIMARY KEY, student_id INTEGER)")
+    # Username lar takrorlanmasin; eski qisqa yoki takroriy nomlar avtomatik almashtiriladi.
+    seen_usernames = set()
+    for profile_row in run("SELECT chat_id,username FROM user_profiles ORDER BY chat_id", fetch="all"):
+        profile_uid, profile_username = int(profile_row[0]), str(profile_row[1] or "").strip()
+        normalized = profile_username.lower()
+        if len(profile_username) < 5 or not re.fullmatch(r"[A-Za-z0-9_]{5,24}", profile_username) or normalized in seen_usernames:
+            profile_username = _social_make_username(profile_uid, "")
+            run("UPDATE user_profiles SET username=? WHERE chat_id=?", (profile_username, profile_uid))
+        seen_usernames.add(profile_username.lower())
+    run("CREATE UNIQUE INDEX IF NOT EXISTS ux_user_profiles_username_lower ON user_profiles (LOWER(username)) WHERE username <> ''")
 
     # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
     migrate_telegram_id_columns()
@@ -4804,31 +4823,55 @@ def _social_default_name(kind,obj,user):
     return name or "NEURON foydalanuvchisi"
 
 
+def _social_make_username(uid, candidate=""):
+    candidate = re.sub(r"[^A-Za-z0-9_]", "", str(candidate or "").lstrip("@"))[:24]
+    if len(candidate) >= 5:
+        exists = run("SELECT chat_id FROM user_profiles WHERE LOWER(username)=LOWER(?) AND chat_id<>?", (candidate,uid), fetch="one")
+        if not exists: return candidate
+    base = "neuron" + str(abs(int(uid)))[-8:]
+    base = base[:24]
+    value, suffix = base, 1
+    while run("SELECT 1 FROM user_profiles WHERE LOWER(username)=LOWER(?) AND chat_id<>?", (value,uid), fetch="one"):
+        suffix += 1
+        value = (base[:19] + str(suffix))[:24]
+    return value
+
+
 def _social_auth(request):
     kind,obj,err = miniapp_identity(request)
     if err: return None,None,None,err
     uid = verify_init_data(request.headers.get("X-Init-Data",""))
     if not uid: return None,None,None,web.json_response({"error":"auth"},status=401)
     user = _social_tg_user(request)
-    username = str(user.get("username") or "").strip().lstrip("@")[:64]
+    telegram_username = str(user.get("username") or "").strip().lstrip("@")[:64]
     row = run("SELECT chat_id,username,display_name,bio,avatar_data,badge,badge_status,badge_request "
               "FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
     if not row:
+        username = _social_make_username(uid, telegram_username)
         run("INSERT INTO user_profiles (chat_id,username,display_name,updated_at) VALUES (?,?,?,?) ON CONFLICT(chat_id) DO NOTHING",
             (uid,username,_social_default_name(kind,obj,user),datetime.now().isoformat(timespec="seconds")))
         row = run("SELECT chat_id,username,display_name,bio,avatar_data,badge,badge_status,badge_request FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
-    elif username != (row[1] or ""):
-        run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(username,datetime.now().isoformat(timespec="seconds"),uid))
-        row = list(row); row[1] = username
+    else:
+        current_username = str(row[1] or "")
+        if len(current_username) < 5 or not re.fullmatch(r"[A-Za-z0-9_]{5,24}", current_username):
+            current_username = _social_make_username(uid, telegram_username)
+            run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(current_username,datetime.now().isoformat(timespec="seconds"),uid))
+            row = list(row); row[1] = current_username
+    badge_entitled = False
     if kind == "teacher":
         current_plan, _ = effective_plan(obj)
+        badge_entitled = bool(current_plan.get("badge"))
         plan_badge = current_plan.get("badge", "")
-        if (row[5] or "") != plan_badge:
-            run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id=?", (plan_badge, "approved" if plan_badge else "", uid))
-            row = list(row); row[5] = plan_badge; row[6] = "approved" if plan_badge else ""; row[7] = ""
+        if plan_badge and not (row[5] or ""):
+            run("UPDATE user_profiles SET badge=?,badge_status='approved',badge_request='' WHERE chat_id=?", (plan_badge,uid))
+            row = list(row); row[5] = plan_badge; row[6] = "approved"; row[7] = ""
+        elif not plan_badge and (row[5] or ""):
+            run("UPDATE user_profiles SET badge='',badge_status='',badge_request='' WHERE chat_id=?", (uid,))
+            row = list(row); row[5] = ""; row[6] = ""; row[7] = ""
     profile = {"chat_id":int(row[0]),"username":row[1] or "","display_name":row[2] or _social_default_name(kind,obj,user),
                "bio":row[3] or "","avatar":row[4] or "","badge":row[5] or "",
-               "badge_status":row[6] or "","badge_request":row[7] or ""}
+               "badge_status":row[6] or "","badge_request":row[7] or "",
+               "badge_entitled":badge_entitled,"badge_options":["blue","premium","official","expert","verified"] if badge_entitled else []}
     return uid,profile,kind,None
 
 
@@ -4844,9 +4887,19 @@ async def api_social_profile_save(request):
     body = await _read_json(request)
     name = " ".join(str(body.get("display_name") or "").split())
     bio = str(body.get("bio") or "").strip()
+    username = str(body.get("username") or p["username"]).strip().lstrip("@")
     avatar = str(body.get("avatar") or "") or p["avatar"]
+    badge = str(body.get("badge") or p["badge"])
     if not _social_name_valid(name): return web.json_response({"error":"bad_display_name"},status=400)
     if len(bio)>240: return web.json_response({"error":"bad_bio"},status=400)
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,24}", username): return web.json_response({"error":"bad_username"},status=400)
+    if run("SELECT 1 FROM user_profiles WHERE LOWER(username)=LOWER(?) AND chat_id<>?", (username,uid), fetch="one"):
+        return web.json_response({"error":"username_taken"},status=409)
+    if "badge" in body:
+        if kind != "teacher" or not p.get("badge_entitled"):
+            return web.json_response({"error":"badge_not_in_plan"},status=403)
+        if badge not in {"blue","premium","official","expert","verified"}:
+            return web.json_response({"error":"bad_badge"},status=400)
     if avatar and (len(avatar)>1400000 or not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/=]+",avatar)):
         return web.json_response({"error":"bad_avatar"},status=400)
     if avatar:
@@ -4855,8 +4908,8 @@ async def api_social_profile_save(request):
             if not raw or len(raw)>950000: raise ValueError()
             with Image.open(io.BytesIO(raw)) as im: im.verify()
         except Exception: return web.json_response({"error":"bad_avatar"},status=400)
-    run("UPDATE user_profiles SET display_name=?,bio=?,avatar_data=?,updated_at=? WHERE chat_id=?",
-        (name,bio,avatar,datetime.now().isoformat(timespec="seconds"),uid))
+    run("UPDATE user_profiles SET username=?,display_name=?,bio=?,avatar_data=?,badge=?,badge_status=CASE WHEN ?<>'' THEN 'user_choice' ELSE '' END,updated_at=? WHERE chat_id=?",
+        (username,name,bio,avatar,badge,badge,datetime.now().isoformat(timespec="seconds"),uid))
     audit(uid,"social_profile_update",str(uid))
     return web.json_response({"ok":True})
 
@@ -4912,6 +4965,78 @@ async def api_social_chat_send(request):
         except ValueError: pass
     mid = run("INSERT INTO community_messages (chat_id,body,created_at,hidden) VALUES (?,?,?,0)",
               (uid,message,datetime.now().isoformat(timespec="seconds")),fetch="lastid")
+    return web.json_response({"ok":True,"id":mid})
+
+
+async def api_social_home(request):
+    uid,p,kind,obj_err = _social_auth(request)
+    if obj_err: return obj_err
+    q = " ".join(str(request.query.get("q","")).split())[:40].lower()
+    like = "%"+q+"%"
+    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
+               "WHERE chat_id<>? AND (?='' OR LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
+               "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 60",
+               (uid,q,like,like),fetch="all")
+    ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,p.avatar_data,p.badge "
+              "FROM social_ads a LEFT JOIN user_profiles p ON p.chat_id=a.chat_id "
+              "WHERE a.active=1 ORDER BY a.id DESC LIMIT 30",fetch="all")
+    return web.json_response({
+        "users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","avatar":r[4] or "","badge":r[5] or ""} for r in rows],
+        "ads":[{"id":int(r[0]),"body":r[1],"link":r[2] or "","created_at":r[3],"username":r[4] or "","display_name":r[5] or "O‘qituvchi","avatar":r[6] or "","badge":r[7] or ""} for r in ads],
+        "can_ad":bool(kind=="teacher" and has_feature(obj,"social_ads")) if kind=="teacher" else False
+    })
+
+
+async def api_social_ad_create(request):
+    kind,teacher,err = miniapp_identity(request)
+    if err or kind!="teacher": return err or web.json_response({"error":"forbidden"},status=403)
+    if not has_feature(teacher,"social_ads"):
+        return web.json_response({"error":"feature_locked"},status=403)
+    body=await _read_json(request)
+    message=" ".join(str(body.get("body") or "").split()).strip()[:600]
+    link=str(body.get("link") or "").strip()[:400]
+    if len(message)<5: return web.json_response({"error":"bad_ad"},status=400)
+    if link and not re.fullmatch(r"https://[^\s]+",link): return web.json_response({"error":"bad_link"},status=400)
+    run("INSERT INTO social_ads (teacher_id,chat_id,body,link,created_at,active) VALUES (?,?,?,?,?,1)",
+        (teacher["id"],teacher["chat_id"],message,link,datetime.now().isoformat(timespec="seconds")))
+    audit(teacher["chat_id"],"social_ad_create","",message[:100])
+    return web.json_response({"ok":True})
+
+
+async def api_social_direct_get(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    try: peer=int(request.match_info["chat_id"])
+    except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
+    if peer==uid or not run("SELECT 1 FROM user_profiles WHERE chat_id=?",(peer,),fetch="one"):
+        return web.json_response({"error":"not_found"},status=404)
+    try: after=max(0,int(request.query.get("after","0")))
+    except ValueError: after=0
+    rows=run("SELECT id,sender_chat_id,recipient_chat_id,body,created_at FROM social_direct_messages "
+             "WHERE hidden=0 AND id>? AND ((sender_chat_id=? AND recipient_chat_id=?) OR (sender_chat_id=? AND recipient_chat_id=?)) "
+             "ORDER BY id DESC LIMIT 60",(after,uid,peer,peer,uid),fetch="all")
+    rows.reverse()
+    return web.json_response({"messages":[{"id":int(r[0]),"sender":int(r[1]),"recipient":int(r[2]),"body":r[3],"created_at":r[4]} for r in rows]})
+
+
+async def api_social_direct_send(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    try: peer=int(request.match_info["chat_id"])
+    except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
+    if peer==uid or not run("SELECT 1 FROM user_profiles WHERE chat_id=?",(peer,),fetch="one"):
+        return web.json_response({"error":"not_found"},status=404)
+    body=await _read_json(request)
+    message=" ".join(str(body.get("message") or "").split()).strip()
+    if not message or len(message)>1000: return web.json_response({"error":"bad_message"},status=400)
+    recent=run("SELECT created_at FROM social_direct_messages WHERE sender_chat_id=? ORDER BY id DESC LIMIT 1",(uid,),fetch="one")
+    if recent:
+        try:
+            if (datetime.now()-datetime.fromisoformat(recent[0])).total_seconds()<1.5:
+                return web.json_response({"error":"chat_slow_down"},status=429)
+        except ValueError: pass
+    mid=run("INSERT INTO social_direct_messages (sender_chat_id,recipient_chat_id,body,created_at,hidden) VALUES (?,?,?,?,0)",
+            (uid,peer,message,datetime.now().isoformat(timespec="seconds")),fetch="lastid")
     return web.json_response({"ok":True,"id":mid})
 
 
@@ -5871,6 +5996,10 @@ async def start_web_server():
     app.router.add_post("/api/social/profile", api_social_profile_save)
     app.router.add_post("/api/social/badge-request", api_social_badge_request)
     app.router.add_get("/api/social/users", api_social_users)
+    app.router.add_get("/api/social/home", api_social_home)
+    app.router.add_post("/api/social/ads", api_social_ad_create)
+    app.router.add_get("/api/social/direct/{chat_id}", api_social_direct_get)
+    app.router.add_post("/api/social/direct/{chat_id}", api_social_direct_send)
     app.router.add_get("/api/social/chat", api_social_chat_get)
     app.router.add_post("/api/social/chat", api_social_chat_send)
     app.router.add_post("/api/social/report", api_social_report)
