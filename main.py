@@ -4975,7 +4975,7 @@ async def api_social_home(request):
     like = "%"+q+"%"
     rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
                "WHERE chat_id<>? AND (?='' OR LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
-               "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 60",
+               "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 200",
                (uid,q,like,like),fetch="all")
     ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,p.avatar_data,p.badge "
               "FROM social_ads a LEFT JOIN user_profiles p ON p.chat_id=a.chat_id "
