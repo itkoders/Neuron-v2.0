@@ -232,7 +232,7 @@ def init_db():
     if "subject_limit" not in plan_columns:
         run("ALTER TABLE plans ADD COLUMN subject_limit INTEGER DEFAULT 0")
     if "badge" not in plan_columns:
-        run("ALTER TABLE plans ADD COLUMN badge TEXT DEFAULT '')
+        run("ALTER TABLE plans ADD COLUMN badge TEXT DEFAULT '')")
     run("""CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id BIGINT UNIQUE,
