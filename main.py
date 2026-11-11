@@ -429,7 +429,7 @@ def _plan(row):
     if not row:
         return None
     return {"key": row[0], "name": row[1], "price": row[2], "student_limit": row[3],
-            "duration_days": row[4], "features": set(filter(None, (row[5] or "").split(","))), "active": row[6], "subject_limit": row[7]}
+            "duration_days": row[4], "features": set(filter(None, (row[5] or "").split(","))), "active": row[6], "subject_limit": row[7], "badge": row[8] or ""}
 
 
 PLAN_COLS = "key, name, price, student_limit, duration_days, features, active, subject_limit, badge"
