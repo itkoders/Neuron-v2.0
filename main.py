@@ -4973,7 +4973,7 @@ async def api_social_home(request):
     if err: return err
     q = " ".join(str(request.query.get("q","")).split())[:40].lower()
     like = "%"+q+"%"
-    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
+    rows = run("SELECT chat_id,username,display_name,bio,'' AS avatar,badge FROM user_profiles "
                "WHERE chat_id<>? AND (?='' OR LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 200",
                (uid,q,like,like),fetch="all")
