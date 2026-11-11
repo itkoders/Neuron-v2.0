@@ -227,10 +227,12 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS plans (
         key TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0,
         student_limit INTEGER DEFAULT 0, duration_days INTEGER DEFAULT 0,
-        features TEXT DEFAULT '', active INTEGER DEFAULT 1, subject_limit INTEGER DEFAULT 0)""")
+        features TEXT DEFAULT '', active INTEGER DEFAULT 1, subject_limit INTEGER DEFAULT 0, badge TEXT DEFAULT '')""")
     plan_columns = {r[1] for r in run("PRAGMA table_info(plans)", fetch="all")}
     if "subject_limit" not in plan_columns:
         run("ALTER TABLE plans ADD COLUMN subject_limit INTEGER DEFAULT 0")
+    if "badge" not in plan_columns:
+        run("ALTER TABLE plans ADD COLUMN badge TEXT DEFAULT '')
     run("""CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id BIGINT UNIQUE,
@@ -442,7 +444,7 @@ def db_plans():
 
 
 def save_plan_field(key, field, value):
-    if field not in {"name", "price", "student_limit", "subject_limit", "duration_days"}:
+    if field not in {"name", "price", "student_limit", "subject_limit", "duration_days", "badge"}:
         raise ValueError("bad field")
     run(f"UPDATE plans SET {field} = ? WHERE key = ?", (value, key))
 
@@ -4442,7 +4444,7 @@ def _admin_overview_payload():
         plans.append({"key": p["key"], "name": p["name"], "price": p["price"],
             "student_limit": p["student_limit"], "subject_limit": p.get("subject_limit", 0),
             "duration_days": p["duration_days"], "active": bool(p["active"]),
-            "features": sorted(p["features"])})
+            "features": sorted(p["features"]), "badge": p.get("badge", "")})
     queue = [x for x in items if not x["approved"] and x["verify_status"] in ("approved", "admin_pending", "doc_pending")]
     stats = {
         "teachers": len(teachers), "active_teachers": sum(1 for t in teachers if t["active"]),
@@ -4495,6 +4497,8 @@ async def api_admin_teacher_action(request):
         if not p or not p["active"]: return web.json_response({"error":"bad_plan"}, status=400)
         expires = (datetime.now().date() + timedelta(days=p["duration_days"])).strftime("%d.%m.%Y") if p["duration_days"] else None
         run("UPDATE teachers SET plan_key=?, plan_expires=? WHERE id=?", (key, expires, tid))
+        if t.get("chat_id"):
+            run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id=?", (p.get("badge", ""), "approved" if p.get("badge") else "", t["chat_id"]))
         audit(uid, "plan_assign", str(tid), f"{key} until {expires or 'cheksiz'}")
         await notify_teacher(tid, f"💼 Sizga {p['name']} tarifi berildi.")
         return web.json_response({"ok":True,"plan_key":key,"plan_name":p["name"],"plan_expires":expires or ""})
@@ -4554,17 +4558,24 @@ async def api_admin_plan_action(request):
         toggle_feature(key,feature)
         audit(uid,"plan_feature",key,feature)
     elif action == "save":
-        allowed = {"name","price","student_limit","subject_limit","duration_days"}
+        allowed = {"name","price","student_limit","subject_limit","duration_days","badge"}
         for field in allowed:
             if field not in body: continue
             value = str(body[field]).strip()
             if field == "name":
                 if not value or len(value)>30: return web.json_response({"error":"bad_value"},status=400)
+            elif field == "badge":
+                if value not in {"", "blue", "premium", "official", "expert", "verified"}: return web.json_response({"error":"bad_value"},status=400)
             else:
                 try: value = int(value)
                 except ValueError: return web.json_response({"error":"bad_value"},status=400)
                 if value < 0 or value > 100000000: return web.json_response({"error":"bad_value"},status=400)
             save_plan_field(key,field,value)
+        if "badge" in body or "badge_enabled" in body:
+            badge = str(body.get("badge", "verified" if str(body.get("badge_enabled")) == "1" else "")).strip()
+            if badge not in {"", "blue", "premium", "official", "expert", "verified"}: return web.json_response({"error":"bad_value"},status=400)
+            run("UPDATE plans SET badge=? WHERE key=?", (badge,key))
+            run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id IN (SELECT chat_id FROM teachers WHERE plan_key=? AND chat_id IS NOT NULL)", (badge,"approved" if badge else "",key))
         audit(uid,"plan_edit",key,json.dumps({k:body[k] for k in allowed if k in body},ensure_ascii=False))
     else:
         return web.json_response({"error":"bad_action"},status=400)
