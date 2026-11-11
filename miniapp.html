@@ -909,8 +909,8 @@
   /* NEURON Social */
   .social-dock{max-width:1100px;margin:8px auto 0;padding:0 14px;display:flex;gap:8px}
   .social-dock .chip-btn{flex:1}
-  .social-overlay{position:fixed;inset:0;z-index:90;background:rgba(3,8,20,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px}
-  .social-sheet{width:min(100%,760px);max-height:92dvh;overflow:auto;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:0 24px 80px rgba(0,0,0,.35);animation:fadeUp .24s ease both}
+  .social-overlay{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:stretch;justify-content:stretch;padding:0;overflow:hidden}
+  .social-sheet{width:100%;height:100dvh;max-height:100dvh;overflow:auto;overscroll-behavior:contain;background:var(--bg);color:var(--text);border:0;border-radius:0;padding:calc(12px + env(safe-area-inset-top)) 14px calc(16px + env(safe-area-inset-bottom));box-shadow:none;animation:fadeUp .16s ease both}
   .social-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
   .social-head h3{margin:0;font-size:18px}
   .social-close{width:42px;height:42px;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--text);font-size:20px}
@@ -1110,6 +1110,15 @@ img,video,canvas{max-width:100%}
   .topbar .right{grid-column:1/-1}
   @media(min-width:560px){.topbar{display:flex}.topbar .who{grid-column:auto}.topbar .right{grid-column:auto}}
 
+
+  body.social-open{overflow:hidden!important}
+  .social-head{position:sticky;top:0;z-index:4;background:var(--bg);padding:4px 0 12px;border-bottom:1px solid var(--line)}
+  #socialContent{min-height:calc(100dvh - 78px);padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  #socialContent .social-profile-card{margin:12px 0 16px}
+  #socialContent .social-form{margin-bottom:14px}
+  #socialContent .social-crop-box{position:relative;z-index:2;background:var(--surface);padding:12px;border-radius:18px}
+  #socialContent .social-crop-stage{touch-action:none}
+  #socialContent .social-badge-preview{padding-bottom:8px}
 </style>
 </head>
 <body>
@@ -1256,7 +1265,6 @@ img,video,canvas{max-width:100%}
   </div>
 </div>
 <nav class="tabs hidden" id="tabsTeacher" role="tablist">
-  <button class="tab social-tab" data-social-open="home"><span class="ico">🌐</span>Jamiyat</button>
   <button class="tab active" data-tab="grades"><span class="ico">📝</span>Ballar</button>
   <button class="tab" data-tab="attendance"><span class="ico">✅</span>Davomat</button>
   <button class="tab" data-tab="stats"><span class="ico">📊</span>Tahlil</button>
@@ -1267,14 +1275,12 @@ img,video,canvas{max-width:100%}
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Guruh</button>
 </nav>
 <nav class="tabs hidden" id="tabsStudent" role="tablist">
-  <button class="tab social-tab" data-social-open="home"><span class="ico">🌐</span>Jamiyat</button>
   <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
   <button class="tab" data-stab="ai"><span class="ico">🤖</span>AI mashq</button>
   <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Guruh</button>
 </nav>
-<nav class="tabs hidden" id="tabsOther" aria-label="Jamiyat, profil va chat">
-  <button class="tab social-tab" data-social-open="home"><span class="ico">🌐</span>Jamiyat</button>
+<nav class="tabs hidden" id="tabsOther" aria-label="Profil va chat">
   <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Guruh</button>
 </nav>
@@ -1594,9 +1600,8 @@ img,video,canvas{max-width:100%}
     if(socialPoll){clearInterval(socialPoll);socialPoll=null;}
     $("socialOverlay").classList.remove("hidden");
     document.body.classList.add("social-open");
-    $("socialTitle").textContent=which==="profile"?"👤 Shaxsiy profil":which==="home"?"🌐 NEURON Jamiyat":"💬 Umumiy chat";
+    $("socialTitle").textContent=which==="profile"?"👤 Shaxsiy profil":"💬 Umumiy chat";
     if(which==="profile") await renderSocialProfile();
-    else if(which==="home") await renderSocialHome();
     else await renderSocialChat();
   }
   async function renderSocialProfile(){
@@ -1607,7 +1612,7 @@ img,video,canvas{max-width:100%}
       '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Foydalanuvchi nomi (@)</label><input class="field" id="socialUsername" maxlength="24" autocapitalize="none" autocomplete="off" value="'+esc(p.username)+'"><p class="social-muted">Kamida 5 ta belgi. Faqat lotin harflari, raqam va _ ishlatiladi. Takroriy nom qabul qilinmaydi.</p><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi</label><input class="field social-file-input" id="socialPhoto" type="file" accept="image/*"><p class="social-muted">Galereyadan rasm tanlang. Keyin uni siljitib, kattalashtirib-kichraytirib, dumaloq ramkaga mos qismini o‘zingiz belgilang.</p><div id="socialCropBox" class="social-crop-box hidden"><div class="social-crop-stage"><canvas id="socialCropCanvas" width="280" height="280" aria-label="Rasmni kesish oynasi"></canvas><div class="social-crop-ring"></div></div><label for="socialCropZoom">Kattalashtirish</label><input id="socialCropZoom" type="range" min="1" max="3" step="0.01" value="1"><div class="social-crop-actions"><button type="button" class="btn ghost" id="socialCropCancel">Bekor qilish</button><button type="button" class="btn" id="socialCropApply">Tanlangan qismini qo‘llash</button></div></div><button class="btn" id="saveSocial">Profilni saqlash</button></div>'+
       '<div class="card panel" style="margin-top:12px"><h3>☑ NEURON tasdiqlash belgisi</h3><p class="hint">Belgi tarifingizda Super Admin tomonidan yoqilgan bo‘lsa, ko‘rinishini shu yerdan tanlashingiz mumkin.</p>'+
       '<label>Belgi ko‘rinishini tanlang</label><select class="field" id="socialBadge" '+(p.badge_entitled?'':'disabled')+'>'+["blue","premium","official","expert","verified"].map(x=>'<option value="'+esc(x)+'" '+(p.badge===x?'selected':'')+'>'+esc(socialBadges[x]||x)+'</option>').join('')+'</select><div class="social-badge-preview">'+["blue","premium","official","expert","verified"].map(x=>'<div>'+badgeMark(x)+'<small>'+esc(socialBadges[x]||x)+'</small></div>').join('')+'</div>'+(p.badge_entitled?'<p class="social-muted">Tarif ruxsati faol — belgini tanlab saqlang.</p>':'<p class="social-muted">Belgi ko‘rinishlari namuna sifatida ko‘rsatilgan. Tanlash uchun Super Admin tarifingizda galichkani yoqishi kerak.</p>')+'</div>';
-      let photo=p.avatar||"", cropImage=null, cropCenterX=0, cropCenterY=0, cropZoom=1, cropPointer=null;
+      let photo=p.avatar||"", photoBlob=null, cropImage=null, cropCenterX=0, cropCenterY=0, cropZoom=1, cropPointer=null;
       const cropBox=$("socialCropBox"), cropCanvas=$("socialCropCanvas"), cropCtx=cropCanvas.getContext("2d");
       const drawCrop=()=>{if(!cropImage||!cropCtx)return;const side=Math.min(cropImage.naturalWidth,cropImage.naturalHeight)/cropZoom;const sx=Math.max(0,Math.min(cropImage.naturalWidth-side,cropCenterX-side/2));const sy=Math.max(0,Math.min(cropImage.naturalHeight-side,cropCenterY-side/2));cropCenterX=sx+side/2;cropCenterY=sy+side/2;cropCtx.clearRect(0,0,280,280);cropCtx.drawImage(cropImage,sx,sy,side,side,0,0,280,280);};
       $("socialPhoto").onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file)return;if(!file.type.startsWith("image/")){toast("Iltimos, rasm faylini tanlang.");e.target.value="";return;}try{const url=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file);});cropImage=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url;});cropCenterX=cropImage.naturalWidth/2;cropCenterY=cropImage.naturalHeight/2;cropZoom=1;$("socialCropZoom").value="1";cropBox.classList.remove("hidden");drawCrop();toast("Rasmni barmog‘ingiz bilan siljitib, kerakli qismini tanlang.");}catch(err){toast("Rasmni ochib bo‘lmadi. Boshqa rasm tanlang.");e.target.value="";}};
@@ -1616,8 +1621,8 @@ img,video,canvas{max-width:100%}
       cropCanvas.onpointermove=e=>{if(!cropPointer||!cropImage)return;const side=Math.min(cropImage.naturalWidth,cropImage.naturalHeight)/cropZoom;const scale=side/280;cropCenterX=cropPointer.cx-(e.clientX-cropPointer.x)*scale;cropCenterY=cropPointer.cy-(e.clientY-cropPointer.y)*scale;drawCrop();};
       cropCanvas.onpointerup=cropCanvas.onpointercancel=()=>{cropPointer=null;};
       $("socialCropCancel").onclick=()=>{cropImage=null;cropBox.classList.add("hidden");$("socialPhoto").value="";};
-      $("socialCropApply").onclick=()=>{if(!cropImage)return;const side=Math.min(cropImage.naturalWidth,cropImage.naturalHeight)/cropZoom;const sx=Math.max(0,Math.min(cropImage.naturalWidth-side,cropCenterX-side/2));const sy=Math.max(0,Math.min(cropImage.naturalHeight-side,cropCenterY-side/2));const c=document.createElement("canvas");c.width=256;c.height=256;const ctx=c.getContext("2d");if(!ctx){toast("Rasmni qayta ishlash imkoni bo‘lmadi.");return;}ctx.drawImage(cropImage,sx,sy,side,side,0,0,256,256);let quality=.78;photo=c.toDataURL("image/jpeg",quality);while(photo.length>180000&&quality>.34){quality-=.08;photo=c.toDataURL("image/jpeg",quality);}if(photo.length>180000){toast("Rasm hajmi katta. Boshqa rasm tanlang.");return;}cropImage=null;cropBox.classList.add("hidden");const preview=document.querySelector("#socialContent .social-profile-card .social-avatar");if(preview){if(preview.tagName==="IMG")preview.src=photo;else{const img=document.createElement("img");img.className="social-avatar";img.alt="Profil rasmi";img.src=photo;preview.replaceWith(img);}}toast("Tanlangan dumaloq profil rasmi tayyor. Endi saqlang.");};
-      $("saveSocial").onclick=async()=>{const btn=$("saveSocial");btn.disabled=true;btn.textContent="Saqlanmoqda…";try{const result=await api("/api/social/profile",{method:"POST",body:JSON.stringify({display_name:$("socialName").value,username:$("socialUsername").value,bio:$("socialBio").value,avatar:photo,...(p.badge_entitled&&$("socialBadge")?{badge:$("socialBadge").value}:{})})});if(!result||result.ok!==true)throw new Error("server_save_failed");const verify=await api("/api/social/profile");if(verify.profile.avatar!==photo)throw new Error("avatar_not_persisted");socialProfile=verify.profile;const topAvatar=$("topUserAvatar");if(topAvatar)topAvatar.innerHTML=avatarHTML(socialProfile);$("who").textContent=socialProfile.display_name;toast("Profil va rasm serverda saqlandi.");await renderSocialProfile();}catch(e){toast(e.data?.error==="bad_display_name"?"Ismda emoji bo‘lmasin; 2–40 harf kiriting.":e.data?.error==="bad_avatar"?"Rasm formati yoki hajmi mos emas.":e.data?.error==="bad_username"?"Foydalanuvchi nomi kamida 5 ta belgi bo‘lsin.":e.data?.error==="username_taken"?"Bu foydalanuvchi nomi band. Boshqasini tanlang.":e.data?.error==="badge_not_in_plan"?"Bu belgi tarifingizda yoqilmagan.":e.message==="avatar_not_persisted"?"Server rasmni saqlamadi. Qayta urinib ko‘ring.":errText(e));}finally{btn.disabled=false;btn.textContent="Profilni saqlash";}};
+      $("socialCropApply").onclick=async()=>{if(!cropImage)return;const side=Math.min(cropImage.naturalWidth,cropImage.naturalHeight)/cropZoom;const sx=Math.max(0,Math.min(cropImage.naturalWidth-side,cropCenterX-side/2));const sy=Math.max(0,Math.min(cropImage.naturalHeight-side,cropCenterY-side/2));const c=document.createElement("canvas");c.width=256;c.height=256;const ctx=c.getContext("2d");if(!ctx){toast("Rasmni qayta ishlash imkoni bo‘lmadi.");return;}ctx.drawImage(cropImage,sx,sy,side,side,0,0,256,256);photoBlob=await new Promise(resolve=>c.toBlob(resolve,"image/jpeg",.82));if(!photoBlob){toast("Rasmni tayyorlab bo‘lmadi. Qayta urinib ko‘ring.");return;}photo=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(photoBlob);});cropImage=null;cropBox.classList.add("hidden");const preview=document.querySelector("#socialContent .social-profile-card .social-avatar");if(preview){if(preview.tagName==="IMG")preview.src=photo;else{const img=document.createElement("img");img.className="social-avatar";img.alt="Profil rasmi";img.src=photo;preview.replaceWith(img);}}toast("Rasm tayyor. Endi Profilni saqlash tugmasini bosing.");};
+      $("saveSocial").onclick=async()=>{const btn=$("saveSocial");btn.disabled=true;btn.textContent="Saqlanmoqda…";try{if(photoBlob){const upload=new FormData();upload.append("avatar",photoBlob,"neuron-avatar.jpg");const uploaded=await apiUpload("/api/social/profile/avatar",upload);if(!uploaded||uploaded.ok!==true||!uploaded.avatar)throw new Error("avatar_upload_failed");photo=uploaded.avatar;photoBlob=null;}const result=await api("/api/social/profile",{method:"POST",body:JSON.stringify({display_name:$("socialName").value,username:$("socialUsername").value,bio:$("socialBio").value,...(p.badge_entitled&&$("socialBadge")?{badge:$("socialBadge").value}:{})})});if(!result||result.ok!==true)throw new Error("server_save_failed");const verify=await api("/api/social/profile");if(verify.profile.avatar!==photo)throw new Error("avatar_not_persisted");socialProfile=verify.profile;const topAvatar=$("topUserAvatar");if(topAvatar)topAvatar.innerHTML=avatarHTML(socialProfile);$("who").textContent=socialProfile.display_name;toast("Profil va rasm serverda saqlandi.");await renderSocialProfile();}catch(e){toast(e.data?.error==="bad_display_name"?"Ismda emoji bo‘lmasin; 2–40 harf kiriting.":e.data?.error==="bad_avatar"?"Rasm formati yoki hajmi mos emas.":e.data?.error==="avatar_save_failed"?"Server rasmni saqlay olmadi. Boshqa rasm bilan urinib ko‘ring.":e.data?.error==="avatar_too_large"?"Rasm hajmi juda katta.":e.data?.error==="bad_username"?"Foydalanuvchi nomi kamida 5 ta belgi bo‘lsin.":e.data?.error==="username_taken"?"Bu foydalanuvchi nomi band. Boshqasini tanlang.":e.data?.error==="badge_not_in_plan"?"Bu belgi tarifingizda yoqilmagan.":e.message==="avatar_not_persisted"?"Server rasmni saqlamadi. Qayta urinib ko‘ring.":errText(e));}finally{btn.disabled=false;btn.textContent="Profilni saqlash";}};
       // Galichka tarif orqali boshqariladi.
       // Admin galichka navbati olib tashlandi.
     }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
