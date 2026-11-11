@@ -5016,13 +5016,23 @@ async def api_teacher_export(request):
     if not has_feature(teacher, "export"):
         return web.json_response({"error": "feature_locked"}, status=403)
 
-    # Joriy kun ma'lumotlarini yangilab, o'qituvchi ro'yxatdan o'tgan sanani aniqlaymiz.
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.chart import BarChart, LineChart, Reference
+        from openpyxl.utils import get_column_letter
+    except Exception:
+        logging.exception("Excel eksport uchun openpyxl topilmadi")
+        return web.json_response({"error": "excel_library_missing"}, status=503)
+
     students = list(db_students(teacher["id"]).values())
     today = local_now().date()
     created_at = str(teacher.get("created_at") or "")
     try:
         start_date = datetime.strptime(created_at[:10], "%d.%m.%Y").date()
     except (TypeError, ValueError):
+        start_date = today
+    if start_date > today:
         start_date = today
 
     subjects = {x["id"]: x for x in db_subjects(teacher["id"])}
@@ -5042,23 +5052,186 @@ async def api_teacher_export(request):
             continue
         history[(row[0], history_date)] = row[2:6]
 
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow([
-        "Sana", "O‘qituvchi ro‘yxatdan o‘tgan sana", "O‘quvchi", "Guruh", "Fan",
-        "Baholash 1", "Baholash 2", "Baholash 3", "Davomat",
-        "Bugungi to‘lov holati", "Bugungi to‘lov summasi", "Ma’lumot holati"
-    ])
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Umumiy hisobot"
+    navy = "17365D"
+    blue = "D9EAF7"
+    light = "EEF4FA"
+    green = "E2F0D9"
+    red = "FCE4D6"
+    gold = "FFF2CC"
+    white = "FFFFFF"
+    thin = Side(style="thin", color="D7E0EA")
+
+    def title_block(ws, title, subtitle, last_col):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+        c = ws.cell(1, 1, title)
+        c.font = Font(name="Aptos Display", size=18, bold=True, color=white)
+        c.fill = PatternFill("solid", fgColor=navy)
+        c.alignment = Alignment(vertical="center")
+        ws.row_dimensions[1].height = 34
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_col)
+        c = ws.cell(2, 1, subtitle)
+        c.font = Font(name="Aptos", size=10, italic=True, color="526477")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.row_dimensions[2].height = 28
+
+    def header_row(ws, row_num, labels):
+        for col, label in enumerate(labels, 1):
+            c = ws.cell(row_num, col, label)
+            c.font = Font(bold=True, color=white)
+            c.fill = PatternFill("solid", fgColor=navy)
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border = Border(bottom=thin)
+        ws.row_dimensions[row_num].height = 32
+
+    def style_data(ws, min_row, max_row, max_col):
+        for row in ws.iter_rows(min_row=min_row, max_row=max_row, max_col=max_col):
+            for c in row:
+                c.font = Font(name="Aptos", size=10, color="243447")
+                c.alignment = Alignment(vertical="center", wrap_text=True)
+                c.border = Border(bottom=thin)
+                if c.row % 2 == 0:
+                    c.fill = PatternFill("solid", fgColor="F7FAFD")
 
     registration_label = start_date.strftime("%d.%m.%Y")
-    if start_date > today:
-        start_date = today
+    teacher_label = (teacher.get("first_name", "") + " " + teacher.get("last_name", "")).strip()
+    title_block(summary, "NEURON — KUNLIK O‘QUV HISOBOTI",
+                f"O‘qituvchi: {teacher_label}  |  Ro‘yxatdan o‘tgan sana: {registration_label}  |  Hisobot: {registration_label} — {today.strftime('%d.%m.%Y')}",
+                8)
+    summary["A4"] = "Asosiy ko‘rsatkichlar"
+    summary["A4"].font = Font(size=13, bold=True, color=navy)
+    kpis = [
+        ("O‘quvchilar soni", len(students)),
+        ("Fanlar soni", len(subjects)),
+        ("Hisobot kunlari", (today - start_date).days + 1),
+        ("Tarixiy qaydlar", len(history)),
+    ]
+    for idx, (label, value) in enumerate(kpis):
+        col = 1 + idx * 2
+        summary.cell(5, col, label)
+        summary.cell(5, col).font = Font(bold=True, color=navy)
+        summary.cell(6, col, value)
+        summary.cell(6, col).font = Font(size=16, bold=True, color="1F6E43")
+        summary.cell(6, col).fill = PatternFill("solid", fgColor=green)
+        summary.merge_cells(start_row=5, start_column=col, end_row=5, end_column=col+1)
+        summary.merge_cells(start_row=6, start_column=col, end_row=6, end_column=col+1)
 
+    summary["A8"] = "Kunlik kesim"
+    summary["A8"].font = Font(size=13, bold=True, color=navy)
+    daily_headers = ["Sana", "O‘quvchilar", "Davomat qaydi", "Kelgan", "Kelmagan", "Sababli", "O‘rtacha ball", "Tarix to‘liqligi"]
+    header_row(summary, 9, daily_headers)
+    daily_stats = []
     day = start_date
     while day <= today:
-        day_label = day.strftime("%d.%m.%Y")
+        date_label = day.strftime("%d.%m.%Y")
+        present = absent = excused = marked = 0
+        score_values = []
+        complete = 0
         for st in students:
-            subj = subjects.get(st["subject_id"])
+            saved = history.get((st["id"], day))
+            if saved is not None:
+                attendance, s1, s2, s3 = saved
+                complete += 1
+            elif day == today:
+                attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
+                complete += 1
+            else:
+                attendance, s1, s2, s3 = "", None, None, None
+            status = str(attendance or "").strip().lower()
+            if status and status not in ("kutilmoqda", "-", "—"):
+                marked += 1
+                if "sabab" in status:
+                    excused += 1
+                elif "kelmagan" in status or "yo‘q" in status or "yo'q" in status or "absent" in status:
+                    absent += 1
+                elif "kelgan" in status or "bor" in status or "present" in status:
+                    present += 1
+            for value in (s1, s2, s3):
+                try:
+                    if value is not None and str(value).strip() != "":
+                        score_values.append(float(value))
+                except (TypeError, ValueError):
+                    pass
+        avg = round(sum(score_values) / len(score_values), 1) if score_values else None
+        completeness = f"{complete}/{len(students)}" if students else "0/0"
+        daily_stats.append([date_label, len(students), marked, present, absent, excused, avg, completeness])
+        day += timedelta(days=1)
+
+    for ridx, values in enumerate(daily_stats, 10):
+        for cidx, value in enumerate(values, 1):
+            summary.cell(ridx, cidx, value)
+    if daily_stats:
+        style_data(summary, 10, 9 + len(daily_stats), 8)
+        summary.auto_filter.ref = f"A9:H{9 + len(daily_stats)}"
+    summary.freeze_panes = "A10"
+    for col, width in enumerate([15, 14, 16, 12, 13, 12, 16, 18], 1):
+        summary.column_dimensions[get_column_letter(col)].width = width
+
+    if daily_stats:
+        chart = LineChart()
+        chart.title = "Kunlik o‘rtacha ball"
+        chart.y_axis.title = "Ball"
+        chart.x_axis.title = "Sana"
+        chart.height = 7
+        chart.width = 15
+        chart.add_data(Reference(summary, min_col=7, min_row=9, max_row=9 + len(daily_stats)), titles_from_data=True)
+        chart.set_categories(Reference(summary, min_col=1, min_row=10, max_row=9 + len(daily_stats)))
+        summary.add_chart(chart, "J4")
+
+        attendance_chart = BarChart()
+        attendance_chart.type = "col"
+        attendance_chart.style = 10
+        attendance_chart.title = "Kunlik davomat qaydlari"
+        attendance_chart.y_axis.title = "O‘quvchilar"
+        attendance_chart.x_axis.title = "Sana"
+        attendance_chart.height = 7
+        attendance_chart.width = 15
+        attendance_chart.add_data(Reference(summary, min_col=3, min_row=9, max_row=9 + len(daily_stats)), titles_from_data=True)
+        attendance_chart.set_categories(Reference(summary, min_col=1, min_row=10, max_row=9 + len(daily_stats)))
+        summary.add_chart(attendance_chart, "J20")
+
+    # O'quvchilar bo'yicha bugungi umumiy ro'yxat.
+    roster = wb.create_sheet("O‘quvchilar")
+    roster_headers = ["O‘quvchi", "Guruh", "Fan", "Baholash 1", "Baholash 2", "Baholash 3",
+                      "Davomat", "To‘lov holati", "To‘lov summasi", "To‘lov sanasi"]
+    title_block(roster, "O‘QUVCHILAR RO‘YXATI", "Joriy kundagi holat. Eski to‘lov kunlari bazada saqlanmagan.", len(roster_headers))
+    header_row(roster, 4, roster_headers)
+    for ridx, st in enumerate(students, 5):
+        subj = subjects.get(st["subject_id"])
+        vals = [st["fio"], st["group_name"], subj["name"] if subj else "", st["s1"], st["s2"], st["s3"],
+                st["davomat"], st["payment_status"], st["payment_amount"], st.get("payment_date", "")]
+        for cidx, value in enumerate(vals, 1):
+            roster.cell(ridx, cidx, value)
+    if students:
+        style_data(roster, 5, 4 + len(students), len(roster_headers))
+        roster.auto_filter.ref = f"A4:J{4 + len(students)}"
+    roster.freeze_panes = "A5"
+    for col, width in enumerate([26, 18, 20, 14, 14, 14, 18, 18, 16, 16], 1):
+        roster.column_dimensions[get_column_letter(col)].width = width
+
+    # Har bir sana uchun alohida varaq: baholar, davomat, to'lov va izoh.
+    day = start_date
+    while day <= today:
+        date_key = day.strftime("%d-%m-%Y")
+        ws = wb.create_sheet(date_key)
+        date_label = day.strftime("%d.%m.%Y")
+        headers = ["№", "O‘quvchi", "Guruh", "Fan", "Baholash 1", "Baholash 2", "Baholash 3",
+                   "Davomat", "To‘lov holati", "To‘lov summasi", "Ma’lumot holati"]
+        title_block(ws, f"KUNLIK HISOBOT — {date_label}",
+                    "Tarixda qayd bo‘lmagan kunlar bo‘sh qoldiriladi va alohida belgilanadi. To‘lov faqat joriy kun uchun ko‘rsatiladi.",
+                    len(headers))
+        ws["A4"] = "Kunlik ko‘rsatkichlar"
+        ws["A4"].font = Font(size=12, bold=True, color=navy)
+        ws["A5"] = "O‘quvchilar"; ws["B5"] = len(students)
+        ws["C5"] = "Davomat qaydi"; ws["D5"] = 0
+        ws["E5"] = "Kelgan"; ws["F5"] = 0
+        ws["G5"] = "Kelmagan"; ws["H5"] = 0
+        ws["I5"] = "Sababli"; ws["J5"] = 0
+        header_row(ws, 7, headers)
+        marked = present = absent = excused = 0
+        for ridx, st in enumerate(students, 1):
             saved = history.get((st["id"], day))
             if saved is not None:
                 attendance, s1, s2, s3 = saved
@@ -5067,32 +5240,64 @@ async def api_teacher_export(request):
                 attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
                 record_status = "Bugungi holat"
             else:
-                attendance, s1, s2, s3 = "", "", "", ""
+                attendance, s1, s2, s3 = "", None, None, None
                 record_status = "Ma’lumot kiritilmagan"
-
-            # To'lov tarixi eski kunlar bo'yicha saqlanmagan; faqat bugungi holatni ko'rsatamiz.
-            payment_status = st["payment_status"] if day == today else ""
-            payment_amount = st["payment_amount"] if day == today else ""
-            writer.writerow([
-                day_label, registration_label, st["fio"], st["group_name"],
-                subj["name"] if subj else "", s1, s2, s3, attendance,
-                payment_status, payment_amount, record_status
-            ])
+            status = str(attendance or "").strip().lower()
+            if status and status not in ("kutilmoqda", "-", "—"):
+                marked += 1
+                if "sabab" in status:
+                    excused += 1
+                elif "kelmagan" in status or "yo‘q" in status or "yo'q" in status or "absent" in status:
+                    absent += 1
+                elif "kelgan" in status or "bor" in status or "present" in status:
+                    present += 1
+            subj = subjects.get(st["subject_id"])
+            pay_status = st["payment_status"] if day == today else ""
+            pay_amount = st["payment_amount"] if day == today else ""
+            vals = [ridx, st["fio"], st["group_name"], subj["name"] if subj else "",
+                    s1, s2, s3, attendance, pay_status, pay_amount, record_status]
+            for cidx, value in enumerate(vals, 1):
+                ws.cell(8 + ridx, cidx, value)
+            status_cell = ws.cell(8 + ridx, 11)
+            if record_status == "Ma’lumot kiritilmagan":
+                status_cell.fill = PatternFill("solid", fgColor=gold)
+            elif record_status == "Tarixdan olindi":
+                status_cell.fill = PatternFill("solid", fgColor=green)
+        ws["D5"] = marked; ws["F5"] = present; ws["H5"] = absent; ws["J5"] = excused
+        if students:
+            style_data(ws, 9, 8 + len(students), len(headers))
+            # Highlight status after alternating row styling.
+            for rr in range(9, 9 + len(students)):
+                state = ws.cell(rr, 11).value
+                ws.cell(rr, 11).fill = PatternFill("solid", fgColor=(gold if state == "Ma’lumot kiritilmagan" else green))
+            ws.auto_filter.ref = f"A7:K{8 + len(students)}"
+        ws.freeze_panes = "A8"
+        for col, width in enumerate([7, 25, 18, 20, 14, 14, 14, 18, 18, 16, 25], 1):
+            ws.column_dimensions[get_column_letter(col)].width = width
+        ws.sheet_view.showGridLines = False
         day += timedelta(days=1)
 
-    audit(teacher["chat_id"], "miniapp_export_csv", "",
-          f"daily history from {registration_label} to {today.strftime('%d.%m.%Y')}")
-    data = "\ufeff" + output.getvalue()
+    # Yakuniy bezak va telefon/Excelda qulay ko'rinish.
+    for ws in wb.worksheets:
+        ws.sheet_view.showGridLines = False
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.outlinePr.summaryBelow = True
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    audit(teacher["chat_id"], "miniapp_export_xlsx", "",
+          f"daily workbook from {registration_label} to {today.strftime('%d.%m.%Y')}; days={(today-start_date).days+1}")
     return web.Response(
-        text=data,
-        content_type="text/csv",
-        charset="utf-8",
+        body=output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": 'attachment; filename="neyron_kunlik_hisobot.csv"',
+            "Content-Disposition": 'attachment; filename="NEURON_kunlik_hisobot.xlsx"',
             "Cache-Control": "no-store"
         }
     )
-
 
 async def api_teacher_requests(request):
     kind, teacher, err = miniapp_identity(request)
