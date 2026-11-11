@@ -1980,10 +1980,11 @@
     if (!c) return;
     const initials = esc((c.fio || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase());
     const scoreCards = c.labels.map((label, i) => {
-      const v = c.scores[i] || 0, color = barColor(v);
+      const scored = !!(c.score_scored && c.score_scored[i]);
+      const v = Number(c.scores[i] || 0), color = barColor(v);
       return '<div class="card score-card" style="--i:' + i + '"><div class="row"><span class="name">' + esc(label) +
-        '</span><span class="val ' + (v ? '' : 'muted') + '" style="' + (v ? 'color:' + color : '') + '">' + (v ? v + '%' : '—') +
-        '</span></div><div class="meter"><i style="width:' + v + '%;background:' + color + '"></i></div></div>';
+        '</span><span class="val ' + (scored ? '' : 'muted') + '" style="' + (scored ? 'color:' + color : '') + '">' + (scored ? v + '%' : '—') +
+        '</span></div><div class="meter"><i style="width:' + (scored ? v : 0) + '%;background:' + color + '"></i></div></div>';
     }).join("");
     const attendance = {Keldi:"✅ Keldi",Kelmadi:"❌ Kelmadi",Sababli:"📝 Sababli",Kutilmoqda:"⏳ Kutilmoqda"}[c.davomat] || esc(c.davomat);
     const payment = c.payment_status === "To'langan" ? "✅ To‘langan" : "⚠️ To‘lanmagan";
@@ -2086,13 +2087,14 @@
 
   function renderOverview(o) {
     const scores = o.labels.map((l, i) => {
-      const v = o.scores[i] || 0, avg = o.class_avg[i];
+      const scored = !!(o.score_scored && o.score_scored[i]);
+      const v = Number(o.scores[i] || 0), avg = o.class_avg[i];
       const color = barColor(v);
-      const star = v >= 85 ? ' <span title="A’lo natija">⭐</span>' : "";
+      const star = scored && v >= 85 ? ' <span title="A’lo natija">⭐</span>' : "";
       return `<div class="card score-card" style="--i:${i}">
         <div class="row"><span class="name">${esc(l)}</span>
-          <span class="val ${v ? "" : "muted"}" style="${v ? "color:" + color : ""}">${v ? v + "%" : "—"}</span></div>
-        <div class="meter"><i style="width:${v}%;background:${color}"></i></div>
+          <span class="val ${scored ? "" : "muted"}" style="${scored ? "color:" + color : ""}">${scored ? v + "%" : "—"}</span></div>
+        <div class="meter"><i style="width:${scored ? v : 0}%;background:${color}"></i></div>
         <div class="meta"><span>Sinf o‘rtachasi: ${avg == null ? "—" : avg + "%"}</span>
           <span>${v && avg != null ? (v >= avg ? "▲ o‘rtachadan yuqori" : "▼ o‘rtachadan past") : ""}</span></div>
       </div>`;
