@@ -4952,7 +4952,7 @@ async def api_social_users(request):
     q = " ".join(str(request.query.get("q","")).split())[:40]
     if len(q)<2: return web.json_response({"users":[]})
     like = "%"+q.lower()+"%"
-    rows = run("SELECT chat_id,username,display_name,bio,'' AS avatar,badge FROM user_profiles "
+    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
                "WHERE chat_id<>? AND (LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 25",(uid,like,like),fetch="all")
     return web.json_response({"users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi",
@@ -5005,7 +5005,7 @@ async def api_social_home(request):
         role_kind, teacher_obj, role_err = miniapp_identity(request)
         can_ad = bool(not role_err and role_kind == "teacher" and has_feature(teacher_obj,"social_ads"))
     return web.json_response({
-        "users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","avatar":r[4] or "","badge":r[5] or ""} for r in rows],
+        "users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","avatar":_social_avatar_thumb(r[4]),"badge":r[5] or ""} for r in rows],
         "ads":[{"id":int(r[0]),"body":r[1],"link":r[2] or "","created_at":r[3],"username":r[4] or "","display_name":r[5] or "O‘qituvchi","avatar":_social_avatar_thumb(r[6]),"badge":r[7] or ""} for r in ads],
         "can_ad":can_ad
     })
