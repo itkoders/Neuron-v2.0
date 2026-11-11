@@ -5652,7 +5652,7 @@ async def start_web_server():
     app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
     app.router.add_get("/api/teacher/tools", api_teacher_tools)
     app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
-    app.router.add_get("/api/teacher/export.csv", api_teacher_export)
+    app.router.add_get("/api/teacher/export.xlsx", api_teacher_export)
     app.router.add_post("/api/teacher/requests/{kind}/{rid}", api_teacher_request_action)
     app.router.add_post("/api/subject", api_add_subject)
     app.router.add_post("/api/student", api_add_student)
