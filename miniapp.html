@@ -1910,7 +1910,7 @@ img,video,canvas{max-width:100%}
       else if(a==="reject"){const reason=prompt("Rad etish sababini kiriting:")||"Sabab ko‘rsatilmagan";await adminPost("/api/admin/teacher/"+id,{action:"reject",reason});}
       else if(a==="regen"){const z=await adminPost("/api/admin/teacher/"+id,{action:"regenerate_code"});alert("Yangi kod: "+z.code);}
       else if(a==="delete"){if(!confirm("O‘qituvchi va unga tegishli ma’lumotlar o‘chirilsinmi?"))return;await adminPost("/api/admin/teacher/"+id,{action:"delete"});}
-      else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>{obj[i.dataset.field]=i.type==="checkbox"?(i.checked?"1":"0"):i.value;});await adminPost("/api/admin/plan",obj);}
+      else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>{obj[i.dataset.field]=i.type==="checkbox"?(i.checked?"1":"0"):i.value;});const bc=document.querySelector('[data-key="'+id+'"][data-field="badge_enabled"]'),bs=document.querySelector('[data-key="'+id+'"][data-field="badge"]');obj.badge=bc&&bc.checked?(bs.value||"verified"):"";await adminPost("/api/admin/plan",obj);}
       else if(a==="toggle-plan"){await adminPost("/api/admin/plan",{action:"toggle_active",key:id});}
       else if(a==="create-plan"){await adminPost("/api/admin/plan",{action:"create",name:$("newPlanName").value,price:$("newPlanPrice").value||0,student_limit:$("newPlanLimit").value||0,duration_days:$("newPlanDays").value||0});}
       else if(a==="save-channel"){await adminPost("/api/admin/settings",{key:"required_channel",value:$("admChannel").value});}
