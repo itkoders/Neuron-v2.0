@@ -1045,6 +1045,25 @@ img,video,canvas{max-width:100%}
   #tabsOther{justify-content:center;gap:14px}
   #tabsOther .social-tab{flex:1;max-width:150px;min-height:48px;font-size:12px}
   @media(max-width:520px){.tabs{overflow-x:auto;justify-content:flex-start;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs .tab{flex:0 0 48px}.tabs .social-tab{flex-basis:48px;font-size:9px}.tabs .social-tab .ico{font-size:15px}}
+
+  /* Mobile header: identity and action controls never overlap */
+  .topbar{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;gap:8px 10px}
+  .topbar .who{min-width:0;width:100%}
+  .topbar .right{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px;min-width:0;width:100%}
+  .topbar .right>*{max-width:100%;min-width:0}
+  @media(min-width:560px){.topbar{display:flex;flex-wrap:wrap}.topbar .right{margin-left:auto;width:auto;grid-column:auto}}
+  /* Isolated social profile card: no collision with the app's own header/profile */
+  #socialContent .social-profile-card{display:flex;align-items:center;gap:12px;width:100%;min-width:0;padding:14px;overflow:hidden}
+  #socialContent .social-profile-card .social-avatar{width:88px;height:88px;flex:0 0 88px;border-radius:50%!important;object-fit:cover}
+  #socialContent .social-profile-card .social-profile-meta{min-width:0;flex:1;overflow-wrap:anywhere}
+  #socialContent .social-profile-card .nm{font-weight:800;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+  #socialContent .social-profile-card .hint{overflow-wrap:anywhere}
+  /* Many teacher tabs remain usable on narrow phones without shrinking into each other */
+  .tabs{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .tab{flex:0 0 58px;min-width:58px;white-space:nowrap}
+  #tabsOther .tab{flex:1 1 0}
+
 </style>
 </head>
 <body>
@@ -1532,7 +1551,7 @@ img,video,canvas{max-width:100%}
     $("socialTitle").textContent="👤 Shaxsiy profil";const host=$("socialContent");host.innerHTML='<div class="loading">Profil yuklanmoqda…</div>';
     try{
       const d=await api("/api/social/profile");socialProfile=d.profile;const p=socialProfile;
-      host.innerHTML='<div class="profile card">'+avatarHTML(p)+'<div><div class="nm">'+esc(p.display_name)+badgeMark(p.badge)+'</div><div class="hint">@'+esc(p.username||"username yo‘q")+'</div></div></div>'+
+      host.innerHTML='<div class="social-profile-card card">'+avatarHTML(p)+'<div class="social-profile-meta"><div class="nm">'+esc(p.display_name)+badgeMark(p.badge)+'</div><div class="hint">@'+esc(p.username||"username yo‘q")+'</div></div></div>'+
       '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi</label><input class="field social-file-input" id="socialPhoto" type="file" accept="image/*"><p class="social-muted">Galereyadan rasm tanlang. Keyin uni siljitib, kattalashtirib-kichraytirib, dumaloq ramkaga mos qismini o‘zingiz belgilang.</p><div id="socialCropBox" class="social-crop-box hidden"><div class="social-crop-stage"><canvas id="socialCropCanvas" width="280" height="280" aria-label="Rasmni kesish oynasi"></canvas><div class="social-crop-ring"></div></div><label for="socialCropZoom">Kattalashtirish</label><input id="socialCropZoom" type="range" min="1" max="3" step="0.01" value="1"><div class="social-crop-actions"><button type="button" class="btn ghost" id="socialCropCancel">Bekor qilish</button><button type="button" class="btn" id="socialCropApply">Tanlangan qismini qo‘llash</button></div></div><button class="btn" id="saveSocial">Profilni saqlash</button></div>'+
       '<div class="card panel" style="margin-top:12px"><h3>☑ Tarif belgisi</h3><p class="hint">Galichka Super Admin belgilagan tarif orqali avtomatik beriladi. Alohida tasdiqlash so‘rovi yuborilmaydi.</p>'+
       (p.badge?'<p>Faol belgi: <b>'+esc(socialBadges[p.badge]||p.badge)+'</b></p>':'<p class="social-muted">Joriy tarifingizda belgi yo‘q.</p>')+'</div>';
