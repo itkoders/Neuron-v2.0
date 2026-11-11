@@ -1547,8 +1547,10 @@ img,video,canvas{max-width:100%}
     if(socialPoll){clearInterval(socialPoll);socialPoll=null;}
     $("socialOverlay").classList.remove("hidden");
     document.body.classList.add("social-open");
-    $("socialTitle").textContent=which==="profile"?"👤 Shaxsiy profil":"💬 NEURON hamjamiyati";
-    if(which==="profile") await renderSocialProfile(); else await renderSocialChat();
+    $("socialTitle").textContent=which==="profile"?"👤 Shaxsiy profil":which==="home"?"🌐 NEURON Jamiyat":"💬 Umumiy chat";
+    if(which==="profile") await renderSocialProfile();
+    else if(which==="home") await renderSocialHome();
+    else await renderSocialChat();
   }
   async function renderSocialProfile(){
     $("socialTitle").textContent="👤 Shaxsiy profil";const host=$("socialContent");host.innerHTML='<div class="loading">Profil yuklanmoqda…</div>';
