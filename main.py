@@ -4839,6 +4839,22 @@ def _social_make_username(uid, candidate=""):
     return value
 
 
+def _social_avatar_thumb(data_uri):
+    if not data_uri or "," not in str(data_uri):
+        return ""
+    try:
+        raw = __import__("base64").b64decode(str(data_uri).split(",",1)[1], validate=True)
+        with Image.open(io.BytesIO(raw)) as im:
+            im.thumbnail((64,64))
+            if im.mode not in ("RGB","L"):
+                im = im.convert("RGB")
+            out = io.BytesIO()
+            im.save(out, format="JPEG", quality=58, optimize=True)
+        return "data:image/jpeg;base64," + __import__("base64").b64encode(out.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _social_auth(request):
     kind,obj,err = miniapp_identity(request)
     if err: return None,None,None,err
@@ -4940,7 +4956,7 @@ async def api_social_users(request):
                "WHERE chat_id<>? AND (LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 25",(uid,like,like),fetch="all")
     return web.json_response({"users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi",
-        "bio":r[3] or "","avatar":r[4] or "","badge":r[5] or ""} for r in rows]})
+        "bio":r[3] or "","avatar":_social_avatar_thumb(r[4]),"badge":r[5] or ""} for r in rows]})
 
 
 async def api_social_chat_get(request):
@@ -4977,11 +4993,11 @@ async def api_social_home(request):
     if err: return err
     q = " ".join(str(request.query.get("q","")).split())[:40].lower()
     like = "%"+q+"%"
-    rows = run("SELECT chat_id,username,display_name,bio,'' AS avatar,badge FROM user_profiles "
+    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
                "WHERE chat_id<>? AND (?='' OR LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
                "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 200",
                (uid,q,like,like),fetch="all")
-    ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,'' AS avatar,p.badge "
+    ads = run("SELECT a.id,a.body,a.link,a.created_at,p.username,p.display_name,p.avatar_data,p.badge "
               "FROM social_ads a LEFT JOIN user_profiles p ON p.chat_id=a.chat_id "
               "WHERE a.active=1 ORDER BY a.id DESC LIMIT 30",fetch="all")
     can_ad = False
@@ -4990,7 +5006,7 @@ async def api_social_home(request):
         can_ad = bool(not role_err and role_kind == "teacher" and has_feature(teacher_obj,"social_ads"))
     return web.json_response({
         "users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","avatar":r[4] or "","badge":r[5] or ""} for r in rows],
-        "ads":[{"id":int(r[0]),"body":r[1],"link":r[2] or "","created_at":r[3],"username":r[4] or "","display_name":r[5] or "O‘qituvchi","avatar":r[6] or "","badge":r[7] or ""} for r in ads],
+        "ads":[{"id":int(r[0]),"body":r[1],"link":r[2] or "","created_at":r[3],"username":r[4] or "","display_name":r[5] or "O‘qituvchi","avatar":_social_avatar_thumb(r[6]),"badge":r[7] or ""} for r in ads],
         "can_ad":can_ad
     })
 
