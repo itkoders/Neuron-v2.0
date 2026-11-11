@@ -1010,6 +1010,33 @@ body.social-open{overflow:hidden;touch-action:pan-y}
  .tg-chat-compose{padding-left:max(20px,calc((100vw - 900px)/2));padding-right:max(20px,calc((100vw - 900px)/2))}
 }
 
+
+/* NEURON V2 mobile fit */
+html{width:100%;min-width:0;overflow-x:hidden;min-height:100%}
+body{width:100%;min-width:0;min-height:100dvh;overflow-x:hidden;padding-bottom:calc(82px + env(safe-area-inset-bottom))}
+header,main,.social-dock,.help-wrap{width:100%;max-width:100%;min-width:0}
+header{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+main{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+.topbar,.controls,.card,.panel,.hero,.admin-item,.settings-card{min-width:0;max-width:100%}
+img,video,canvas{max-width:100%}
+#socialDock.hidden{display:none!important}
+#socialDock:not(.hidden){display:flex}
+.social-avatar{width:92px;height:92px;border-radius:50%!important;object-fit:cover;flex:0 0 auto}
+.social-user .social-avatar{width:44px;height:44px;border-radius:50%!important}
+.social-photo-pick{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:999px;background:var(--brand-soft);color:var(--brand-ink);font-weight:800}
+@media(max-width:520px){
+ body{font-size:14px;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+ header{padding-top:calc(8px + env(safe-area-inset-top))}
+ .topbar{gap:7px}.logo{width:36px!important;height:36px!important}
+ .theme-switch button{padding:4px 5px;font-size:10px}.status{font-size:10px;padding:4px 6px}
+ main{padding-top:10px;padding-bottom:18px}.panel{padding:14px}
+ .tabs{width:calc(100% - 16px);bottom:calc(6px + env(safe-area-inset-bottom))}
+ .tab{font-size:10px;padding:7px 2px}
+ .social-dock{padding:0 10px;margin:8px auto}
+ .social-dock .chip-btn{min-height:42px;font-size:11px}
+ .social-overlay{padding:0!important}.social-sheet{height:100dvh!important;max-height:100dvh!important}
+}
+
 </style>
 </head>
 <body>
@@ -1184,6 +1211,12 @@ body.social-open{overflow:hidden;touch-action:pan-y}
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
   const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, settingsPayment: {}, settingsLoaded: false, adminData: null, adminTab: "overview", celebratedToday: false };
+
+  function updateSocialDock(){
+    const visible = state.role === "parent" || (state.role === "teacher" && state.tab === "grades") || (state.role === "student" && state.stab === "mine");
+    $("socialDock")?.classList.toggle("hidden", !visible);
+  }
+  document.addEventListener("click", e=>{if(e.target.closest("[data-tab]") || e.target.closest("[data-stab]")) setTimeout(updateSocialDock,0);});
 
   /* ---------- Theme ---------- */
   function applyTheme() {
@@ -1483,15 +1516,14 @@ body.social-open{overflow:hidden;touch-action:pan-y}
     try{
       const d=await api("/api/social/profile");socialProfile=d.profile;const p=socialProfile;
       host.innerHTML='<div class="profile card">'+avatarHTML(p)+'<div><div class="nm">'+esc(p.display_name)+badgeMark(p.badge)+'</div><div class="hint">@'+esc(p.username||"username yo‘q")+'</div></div></div>'+
-      '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya (emoji mumkin emas)</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi — galereyadan tanlang</label><input class="field" id="socialPhoto" type="file" accept="image/*"><button class="btn" id="saveSocial">Profilni saqlash</button><p class="social-muted">Username o‘zgarmaydi. Ismda faqat harflar va oddiy tinish belgilari ishlatiladi.</p></div>'+
-      '<div class="card panel" style="margin-top:12px"><h3>☑ Tasdiqlash belgisi</h3><p class="hint">Belgini foydalanuvchi o‘zi yoqa olmaydi. Har bir belgi Super Admin tomonidan alohida tekshirilib, ruxsat berilgandan keyingina profilga qo‘yiladi.</p>'+
-      (p.badge?'<p>Faol belgi: <b>'+esc(socialBadges[p.badge]||p.badge)+'</b></p>':p.badge_status==="pending"?'<p class="social-muted">⏳ So‘rovingiz ko‘rib chiqilmoqda.</p>':'<select class="field" id="socialBadge"><option value="verified">NEURON Verified</option><option value="blue">NEURON Blue</option><option value="premium">NEURON Premium</option><option value="official">NEURON Official</option><option value="expert">NEURON Expert</option></select><button class="chip-btn primary" id="askBadge" style="margin-top:8px">Galichka so‘rash</button>')+
-      (d.is_admin?'<button class="chip-btn primary" id="badgeQueue" style="margin-top:10px">Ruxsat so‘rovlarini boshqarish</button><div id="badgeQueueList"></div>':'')+'</div>';
+      '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi</label><label class="social-photo-pick" for="socialPhoto">📷 Galereyadan rasm tanlash</label><input class="hidden" id="socialPhoto" type="file" accept="image/jpeg,image/png,image/webp"><p class="social-muted">Profil rasmingiz dumaloq ko‘rinadi. Rasmni galereyadan tanlang.</p><button class="btn" id="saveSocial">Profilni saqlash</button></div>'+
+      '<div class="card panel" style="margin-top:12px"><h3>☑ Tarif belgisi</h3><p class="hint">Galichka Super Admin belgilagan tarif orqali avtomatik beriladi. Alohida tasdiqlash so‘rovi yuborilmaydi.</p>'+
+      (p.badge?'<p>Faol belgi: <b>'+esc(socialBadges[p.badge]||p.badge)+'</b></p>':'<p class="social-muted">Joriy tarifingizda belgi yo‘q.</p>')+'</div>';
       let photo=p.avatar||"";
       $("socialPhoto").onchange=async e=>{const file=e.target.files&&e.target.files[0];if(!file)return;if(!file.type.startsWith("image/")){toast("Rasm tanlang.");return;}try{const url=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(file);});const im=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url;});const scale=Math.min(1,320/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));c.getContext("2d").drawImage(im,0,0,c.width,c.height);photo=c.toDataURL("image/jpeg",.75);toast("Rasm tanlandi. Saqlashni bosing.");}catch(_){toast("Rasmni o‘qib bo‘lmadi.");}};
       $("saveSocial").onclick=async()=>{try{await api("/api/social/profile",{method:"POST",body:JSON.stringify({display_name:$("socialName").value,bio:$("socialBio").value,avatar:photo})});toast("Profil saqlandi.");await renderSocialProfile();}catch(e){toast(e.data?.error==="bad_display_name"?"Ismda emoji bo‘lmasin; 2–40 harf kiriting.":e.data?.error==="bad_avatar"?"Rasm formati yoki hajmi mos emas.":errText(e));}};
-      $("askBadge")?.addEventListener("click",async()=>{try{await api("/api/social/badge-request",{method:"POST",body:JSON.stringify({badge_type:$("socialBadge").value})});toast("So‘rov yuborildi.");await renderSocialProfile();}catch(e){toast(errText(e));}});
-      $("badgeQueue")?.addEventListener("click",loadBadgeQueue);
+      // Galichka tarif orqali boshqariladi.
+      // Admin galichka navbati olib tashlandi.
     }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
   }
   async function loadBadgeQueue(){const host=$("badgeQueueList");if(!host)return;try{const d=await api("/api/admin/badges");host.innerHTML=(d.requests||[]).map(r=>'<div class="social-user"><div class="social-user-info"><b>'+esc(r.display_name)+'</b><small>@'+esc(r.username||"—")+' · '+esc(socialBadges[r.badge_request]||r.badge_request)+'</small></div><button class="chip-btn primary" data-badge-ok="'+r.chat_id+'" data-kind="'+esc(r.badge_request)+'">Ruxsat</button><button class="chip-btn danger" data-badge-no="'+r.chat_id+'">Rad</button></div>').join("")||'<p class="social-muted">So‘rovlar yo‘q.</p>';host.onclick=async e=>{const b=e.target.closest("[data-badge-ok],[data-badge-no]");if(!b)return;const id=b.dataset.badgeOk||b.dataset.badgeNo;try{await api("/api/admin/badge/"+id,{method:"POST",body:JSON.stringify({action:b.dataset.badgeOk?"approve":"reject",badge:b.dataset.kind})});await loadBadgeQueue();toast("So‘rov ko‘rib chiqildi.");}catch(err){toast(errText(err));}};}catch(e){host.textContent=errText(e);}}
@@ -1645,7 +1677,7 @@ body.social-open{overflow:hidden;touch-action:pan-y}
         }
       }
       state.role = me.role;
-      $("socialDock").classList.remove("hidden");
+      updateSocialDock();
       const switcher = $("switchCabinetBtn");
       if (switcher) {
         switcher.classList.toggle("hidden", me.role === "entry");
@@ -1847,7 +1879,7 @@ body.social-open{overflow:hidden;touch-action:pan-y}
     } else if(state.adminTab==="plans") {
       const newForm='<div class="card panel"><h3>➕ Yangi tarif</h3><div class="admin-form"><input class="field" id="newPlanName" placeholder="Tarif nomi"><input class="field" id="newPlanPrice" type="number" placeholder="Narxi (so‘m)"><input class="field" id="newPlanLimit" type="number" placeholder="O‘quvchi limiti"><input class="field" id="newPlanDays" type="number" placeholder="Muddat (kun)">'+adminBtn('Tarif yaratish','create-plan')+'</div></div>';
       host.innerHTML=newForm+d.plans.map(p=>{
-        const fields='<div class="admin-form"><input class="field" data-field="name" data-key="'+p.key+'" value="'+esc(p.name)+'" placeholder="Nomi"><input class="field" type="number" data-field="price" data-key="'+p.key+'" value="'+p.price+'" placeholder="Narxi"><input class="field" type="number" data-field="student_limit" data-key="'+p.key+'" value="'+p.student_limit+'" placeholder="O‘quvchi limiti"><input class="field" type="number" data-field="subject_limit" data-key="'+p.key+'" value="'+p.subject_limit+'" placeholder="Fan limiti"><input class="field" type="number" data-field="duration_days" data-key="'+p.key+'" value="'+p.duration_days+'" placeholder="Kun"></div>';
+        const fields='<div class="admin-form"><input class="field" data-field="name" data-key="'+p.key+'" value="'+esc(p.name)+'" placeholder="Nomi"><input class="field" type="number" data-field="price" data-key="'+p.key+'" value="'+p.price+'" placeholder="Narxi"><input class="field" type="number" data-field="student_limit" data-key="'+p.key+'" value="'+p.student_limit+'" placeholder="O‘quvchi limiti"><input class="field" type="number" data-field="subject_limit" data-key="'+p.key+'" value="'+p.subject_limit+'" placeholder="Fan limiti"><input class="field" type="number" data-field="duration_days" data-key="'+p.key+'" value="'+p.duration_days+'" placeholder="Kun"><label class="admin-feature"><input type="checkbox" data-field="badge_enabled" data-key="'+p.key+'" '+(p.badge?'checked':'')+'> ☑ Shu tarifga galichka berilsin</label><select class="field" data-field="badge" data-key="'+p.key+'"><option value="">Galichkasiz</option><option value="verified" '+(p.badge==='verified'?'selected':'')+'>NEURON Verified</option><option value="blue" '+(p.badge==='blue'?'selected':'')+'>NEURON Blue</option><option value="premium" '+(p.badge==='premium'?'selected':'')+'>NEURON Premium</option><option value="official" '+(p.badge==='official'?'selected':'')+'>NEURON Official</option><option value="expert" '+(p.badge==='expert'?'selected':'')+'>NEURON Expert</option></select></div>';
         const features=Object.entries(d.features).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-feature="'+k+'" data-key="'+p.key+'" '+(p.features.includes(k)?'checked':'')+'> '+esc(v)+'</label>').join("");
         return adminCard(esc(p.name)+' · '+Number(p.price).toLocaleString('uz-UZ')+' so‘m','<p class="admin-muted">'+p.key+' · '+(p.active?'Faol':'Faol emas')+'</p>'+fields+features,adminBtn('Saqlash','save-plan',p.key)+adminBtn(p.active?'O‘chirish':'Yoqish','toggle-plan',p.key));
       }).join("");
@@ -1877,7 +1909,7 @@ body.social-open{overflow:hidden;touch-action:pan-y}
       else if(a==="reject"){const reason=prompt("Rad etish sababini kiriting:")||"Sabab ko‘rsatilmagan";await adminPost("/api/admin/teacher/"+id,{action:"reject",reason});}
       else if(a==="regen"){const z=await adminPost("/api/admin/teacher/"+id,{action:"regenerate_code"});alert("Yangi kod: "+z.code);}
       else if(a==="delete"){if(!confirm("O‘qituvchi va unga tegishli ma’lumotlar o‘chirilsinmi?"))return;await adminPost("/api/admin/teacher/"+id,{action:"delete"});}
-      else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>obj[i.dataset.field]=i.value);await adminPost("/api/admin/plan",obj);}
+      else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>{obj[i.dataset.field]=i.type==="checkbox"?(i.checked?"1":"0"):i.value;});await adminPost("/api/admin/plan",obj);}
       else if(a==="toggle-plan"){await adminPost("/api/admin/plan",{action:"toggle_active",key:id});}
       else if(a==="create-plan"){await adminPost("/api/admin/plan",{action:"create",name:$("newPlanName").value,price:$("newPlanPrice").value||0,student_limit:$("newPlanLimit").value||0,duration_days:$("newPlanDays").value||0});}
       else if(a==="save-channel"){await adminPost("/api/admin/settings",{key:"required_channel",value:$("admChannel").value});}
