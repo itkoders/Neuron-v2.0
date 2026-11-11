@@ -1089,7 +1089,8 @@ img,video,canvas{max-width:100%}
   .social-badge-preview{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
   .social-badge-preview>div{display:flex;align-items:center;gap:5px;padding:7px 9px;border:1px solid var(--line);border-radius:12px;font-size:11px}
   .social-badge-preview .social-badge{width:22px;height:22px;margin:0}
-  #socialContent .social-profile-card .social-avatar{display:block;object-fit:cover}
+  #socialContent .social-profile-card img.social-avatar{display:block;object-fit:cover}
+  #socialContent .social-profile-card div.social-avatar{display:grid;place-items:center}
   .social-crop-stage canvas{touch-action:none}
 
 
@@ -1102,7 +1103,8 @@ img,video,canvas{max-width:100%}
 
 
   .top-user-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%;overflow:hidden;border:2px solid var(--brand);background:var(--surface-2);display:grid;place-items:center;font-weight:900;color:var(--brand-ink)}
-  .top-user-avatar .social-avatar{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
+  .top-user-avatar .social-avatar{width:100%;height:100%;border-radius:50%;object-fit:cover}
+  .top-user-avatar img.social-avatar{display:block}.top-user-avatar div.social-avatar{display:grid;place-items:center}
   .topbar{grid-template-columns:38px 38px minmax(0,1fr)}
   .topbar .who{grid-column:3}
   .topbar .right{grid-column:1/-1}
@@ -1826,7 +1828,7 @@ img,video,canvas{max-width:100%}
       else if (me.role === "teacher") initTeacher(me);
       else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
-      try { const topProfile = await api("/api/social/profile"); const topAvatar = $("topUserAvatar"); if (topAvatar) topAvatar.innerHTML = avatarHTML(topProfile.profile); } catch (_) {}
+      try { const topProfile = await api("/api/social/profile"); const topAvatar = $("topUserAvatar"); if (topAvatar) topAvatar.innerHTML = avatarHTML(topProfile.profile); $("who").textContent = topProfile.profile.display_name; } catch (_) {}
     } catch (err) {
       if (err.data && err.data.error === "subscription_required") {
         showSubscriptionRequired(err.data.join_url || "");
