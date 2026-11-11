@@ -335,7 +335,7 @@ def init_db():
     for profile_row in run("SELECT chat_id,username FROM user_profiles ORDER BY chat_id", fetch="all"):
         profile_uid, profile_username = int(profile_row[0]), str(profile_row[1] or "").strip()
         normalized = profile_username.lower()
-        if len(profile_username) < 5 or not re.fullmatch(r"[A-Za-z0-9_]{5,24}", profile_username) or normalized in seen_usernames:
+        if len(profile_username) < 5 or not re.fullmatch(r"(?=.*[A-Za-z])[A-Za-z0-9_]{5,24}", profile_username) or normalized in seen_usernames:
             profile_username = _social_make_username(profile_uid, "")
             run("UPDATE user_profiles SET username=? WHERE chat_id=?", (profile_username, profile_uid))
         seen_usernames.add(profile_username.lower())
@@ -4825,7 +4825,7 @@ def _social_default_name(kind,obj,user):
 
 def _social_make_username(uid, candidate=""):
     candidate = re.sub(r"[^A-Za-z0-9_]", "", str(candidate or "").lstrip("@"))[:24]
-    if len(candidate) >= 5:
+    if re.fullmatch(r"(?=.*[A-Za-z])[A-Za-z0-9_]{5,24}", candidate):
         exists = run("SELECT chat_id FROM user_profiles WHERE LOWER(username)=LOWER(?) AND chat_id<>?", (candidate,uid), fetch="one")
         if not exists: return candidate
     base = "neuron" + str(abs(int(uid)))[-8:]
@@ -4853,7 +4853,7 @@ def _social_auth(request):
         row = run("SELECT chat_id,username,display_name,bio,avatar_data,badge,badge_status,badge_request FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
     else:
         current_username = str(row[1] or "")
-        if len(current_username) < 5 or not re.fullmatch(r"[A-Za-z0-9_]{5,24}", current_username):
+        if len(current_username) < 5 or not re.fullmatch(r"(?=.*[A-Za-z])[A-Za-z0-9_]{5,24}", current_username):
             current_username = _social_make_username(uid, telegram_username)
             run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(current_username,datetime.now().isoformat(timespec="seconds"),uid))
             row = list(row); row[1] = current_username
@@ -4892,7 +4892,7 @@ async def api_social_profile_save(request):
     badge = str(body.get("badge") or p["badge"])
     if not _social_name_valid(name): return web.json_response({"error":"bad_display_name"},status=400)
     if len(bio)>240: return web.json_response({"error":"bad_bio"},status=400)
-    if not re.fullmatch(r"[A-Za-z0-9_]{5,24}", username): return web.json_response({"error":"bad_username"},status=400)
+    if not re.fullmatch(r"(?=.*[A-Za-z])[A-Za-z0-9_]{5,24}", username): return web.json_response({"error":"bad_username"},status=400)
     if run("SELECT 1 FROM user_profiles WHERE LOWER(username)=LOWER(?) AND chat_id<>?", (username,uid), fetch="one"):
         return web.json_response({"error":"username_taken"},status=409)
     if "badge" in body:
