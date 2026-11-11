@@ -963,6 +963,53 @@
   @media(max-width:700px){.card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.stat,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card,.social-sheet{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.social-overlay{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
+
+/* NEURON Social 2.0 — isolated views and Telegram-like full-screen chat */
+#socialDock.hidden{display:none!important}
+#socialDock{display:flex;flex-wrap:wrap}
+#socialDock:not(.hidden){margin:10px auto 0}
+.social-overlay{position:fixed!important;inset:0!important;z-index:999!important;padding:0!important;display:flex!important;align-items:stretch!important;justify-content:stretch!important;background:var(--bg)!important}
+.social-overlay.hidden{display:none!important}
+.social-sheet{width:100%!important;max-width:none!important;height:100dvh!important;max-height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;border:0!important;border-radius:0!important;padding:0!important;margin:0!important;display:flex!important;flex-direction:column!important;gap:0!important;animation:none!important;background:var(--bg)!important}
+.social-head{flex:0 0 auto;min-height:62px;margin:0!important;padding:calc(8px + env(safe-area-inset-top)) 14px 8px!important;border-bottom:1px solid var(--line);background:var(--surface);z-index:2}
+.social-head h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.social-close{flex:0 0 42px}
+#socialContent{min-height:0;flex:1;overflow:auto;padding:14px}
+.social-sheet:has(.tg-chat-layout) #socialContent{display:flex;overflow:hidden;padding:0}
+.tg-chat-layout{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;background:var(--bg)}
+.tg-chat-toolbar{flex:0 0 auto;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--line);display:grid;gap:8px}
+.tg-chat-toolbar .field{width:100%;min-height:44px}
+.tg-search-results{max-height:25dvh;overflow:auto}
+.tg-chat-messages{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 12px 18px;display:flex;flex-direction:column;gap:9px;background:radial-gradient(ellipse at top,rgba(14,165,233,.08),transparent 55%)}
+.tg-message{max-width:min(84%,620px);align-self:flex-start;padding:10px 13px;border-radius:18px 18px 18px 5px;background:var(--surface);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.06);overflow-wrap:anywhere;word-break:break-word}
+.tg-message.mine{align-self:flex-end;border-radius:18px 18px 5px 18px;background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 40%,var(--line))}
+.tg-message-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;font-size:12px;color:var(--muted)}
+.tg-message-head strong{color:var(--text);font-size:12.5px}
+.tg-message p{margin:0;white-space:pre-wrap;line-height:1.45;font-size:14px}
+.tg-message-foot{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.tg-message-foot button{min-height:30px;padding:3px 9px;font-size:11px}
+.tg-chat-compose{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line)}
+.tg-chat-compose input{flex:1;min-width:0;min-height:46px;border-radius:24px;padding:11px 16px}
+.tg-chat-compose button{min-width:48px;min-height:46px;border-radius:50%;padding:0;font-size:18px}
+.tg-chat-note{flex:0 0 auto;padding:5px 12px 7px;background:var(--surface);font-size:10px;color:var(--muted);text-align:center}
+.social-form label{display:block;line-height:1.4;margin-top:4px}
+.social-user-info{overflow:hidden}.social-user-info b,.social-user-info small{overflow-wrap:anywhere;word-break:break-word}
+.social-user{min-width:0;flex-wrap:wrap}
+.social-user .chip-btn{white-space:normal;min-width:70px}
+body.social-open{overflow:hidden;touch-action:pan-y}
+@media(max-width:520px){
+ .social-dock{padding:0 10px}
+ .social-dock .chip-btn{min-width:0;white-space:normal;line-height:1.25;padding:10px 8px}
+ .tg-chat-messages{padding:10px 9px 14px}
+ .tg-message{max-width:90%}
+ #socialContent:not(:has(.tg-chat-layout)){padding:12px}
+}
+@media(min-width:700px){
+ .tg-chat-toolbar{padding:12px 20px}
+ .tg-chat-messages{padding:18px max(20px,calc((100vw - 900px)/2))}
+ .tg-chat-compose{padding-left:max(20px,calc((100vw - 900px)/2));padding-right:max(20px,calc((100vw - 900px)/2))}
+}
+
 </style>
 </head>
 <body>
@@ -1418,8 +1465,19 @@
   const socialBadges={blue:"NEURON Blue",premium:"NEURON Premium",official:"NEURON Official",expert:"NEURON Expert",verified:"NEURON Verified"};
   const badgeMark=(b)=>b?'<span class="social-badge" data-kind="'+esc(b)+'" title="'+esc(socialBadges[b]||"NEURON Verified")+'" aria-label="NEURON tomonidan tasdiqlangan"><svg viewBox="0 0 32 32" role="img" aria-hidden="true"><path fill="currentColor" d="M16 1.8 20.1 4l4.7-.2 2.1 4.2 3.9 2.7-.9 4.6.9 4.6-3.9 2.7-2.1 4.2-4.7-.2-4.1 2.2-4.1-2.2-4.7.2-2.1-4.2-3.9-2.7.9-4.6-.9-4.6 3.9-2.7 2.1-4.2 4.7.2z"/><path d="m9.5 16.2 4.2 4.1 8.9-9" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><path d="m24.5 4 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="#fff" opacity=".9"/></svg></span>':"";
   const avatarHTML=(p)=>p.avatar?'<img class="social-avatar" src="'+esc(p.avatar)+'" alt="Profil rasmi">':'<div class="social-avatar">'+esc((p.display_name||"N").slice(0,1).toUpperCase())+'</div>';
-  function closeSocial(){$("socialOverlay").classList.add("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}}
-  async function openSocial(which){$("socialOverlay").classList.remove("hidden");if(socialPoll){clearInterval(socialPoll);socialPoll=null;}if(which==="profile")await renderSocialProfile();else await renderSocialChat();}
+  function closeSocial(){
+    $("socialOverlay").classList.add("hidden");
+    document.body.classList.remove("social-open");
+    if(socialPoll){clearInterval(socialPoll);socialPoll=null;}
+  }
+  async function openSocial(which){
+    if(!state.role || state.role==="entry") return;
+    if(socialPoll){clearInterval(socialPoll);socialPoll=null;}
+    $("socialOverlay").classList.remove("hidden");
+    document.body.classList.add("social-open");
+    $("socialTitle").textContent=which==="profile"?"👤 Shaxsiy profil":"💬 NEURON hamjamiyati";
+    if(which==="profile") await renderSocialProfile(); else await renderSocialChat();
+  }
   async function renderSocialProfile(){
     $("socialTitle").textContent="👤 Shaxsiy profil";const host=$("socialContent");host.innerHTML='<div class="loading">Profil yuklanmoqda…</div>';
     try{
@@ -1438,15 +1496,50 @@
   }
   async function loadBadgeQueue(){const host=$("badgeQueueList");if(!host)return;try{const d=await api("/api/admin/badges");host.innerHTML=(d.requests||[]).map(r=>'<div class="social-user"><div class="social-user-info"><b>'+esc(r.display_name)+'</b><small>@'+esc(r.username||"—")+' · '+esc(socialBadges[r.badge_request]||r.badge_request)+'</small></div><button class="chip-btn primary" data-badge-ok="'+r.chat_id+'" data-kind="'+esc(r.badge_request)+'">Ruxsat</button><button class="chip-btn danger" data-badge-no="'+r.chat_id+'">Rad</button></div>').join("")||'<p class="social-muted">So‘rovlar yo‘q.</p>';host.onclick=async e=>{const b=e.target.closest("[data-badge-ok],[data-badge-no]");if(!b)return;const id=b.dataset.badgeOk||b.dataset.badgeNo;try{await api("/api/admin/badge/"+id,{method:"POST",body:JSON.stringify({action:b.dataset.badgeOk?"approve":"reject",badge:b.dataset.kind})});await loadBadgeQueue();toast("So‘rov ko‘rib chiqildi.");}catch(err){toast(errText(err));}};}catch(e){host.textContent=errText(e);}}
   async function renderSocialChat(){
-    $("socialTitle").textContent="💬 NEURON hamjamiyati";const host=$("socialContent");
-    host.innerHTML='<div class="card panel"><input class="field" id="socialSearch" type="search" placeholder="🔎 Foydalanuvchini qidirish…"><div id="socialSearchResults"></div><div class="social-chat-list" id="socialMessages"></div><form class="social-compose" id="socialSend"><input class="field" id="socialMessage" maxlength="800" placeholder="Xabar yozing…" aria-label="Xabar"><button class="btn" type="submit">Yuborish</button></form><p class="social-muted">Hurmat bilan muloqot qiling. Nojo‘ya xabarlar haqida shikoyat yuboring.</p></div>';
+    const host=$("socialContent");
+    host.innerHTML='<div class="tg-chat-layout"><div class="tg-chat-toolbar"><input class="field" id="socialSearch" type="search" placeholder="🔎 Foydalanuvchilarni qidirish…" aria-label="Foydalanuvchilarni qidirish"><div class="tg-search-results" id="socialSearchResults"></div></div><div class="tg-chat-messages" id="socialMessages" aria-live="polite"><div class="loading">Xabarlar yuklanmoqda…</div></div><div class="tg-chat-note">NEURON hamjamiyati · Hurmat bilan muloqot qiling</div><form class="tg-chat-compose" id="socialSend"><input class="field" id="socialMessage" maxlength="800" placeholder="Xabar yozing…" aria-label="Xabar"><button class="btn" type="submit" aria-label="Yuborish">➤</button></form></div>';
     try{const p=await api("/api/social/profile");socialProfile=p.profile;}catch(_){}
-    const refresh=async()=>{try{const d=await api("/api/social/chat"),box=$("socialMessages");if(!box)return;box.innerHTML=(d.messages||[]).map(m=>'<div class="social-message '+(m.chat_id===socialProfile?.chat_id?'mine':'')+'"><div class="social-message-head"><b>'+esc(m.display_name)+badgeMark(m.badge)+'</b><span>'+esc((m.created_at||"").slice(11,16))+'</span></div><p>'+esc(m.body)+'</p><div class="social-actions">'+(state.role==="admin"?'<button class="chip-btn danger" data-hide="'+m.id+'">O‘chirish</button>':'<button class="chip-btn" data-report="'+m.id+'">Shikoyat</button>')+'</div></div>').join("")||'<div class="empty">Hozircha xabar yo‘q. Birinchi bo‘lib yozing!</div>';box.scrollTop=box.scrollHeight;}catch(e){const box=$("socialMessages");if(box)box.textContent=errText(e);}};
+    const box=$("socialMessages");
+    let lastId=0, firstLoad=true;
+    const messageHTML=m=>{
+      const mine=Number(m.chat_id)===Number(socialProfile?.chat_id);
+      const controls=state.role==="admin"
+        ? '<button class="chip-btn danger" data-hide="'+m.id+'">O‘chirish</button>'
+        : (mine?'':'<button class="chip-btn" data-report="'+m.id+'">Shikoyat</button>');
+      return '<article class="tg-message '+(mine?'mine':'')+'" data-message-id="'+m.id+'"><div class="tg-message-head"><strong>'+esc(m.display_name)+badgeMark(m.badge)+'</strong><span>@'+esc(m.username||"neuron")+'</span><span>· '+esc((m.created_at||"").slice(11,16))+'</span></div><p>'+esc(m.body)+'</p><div class="tg-message-foot">'+controls+'</div></article>';
+    };
+    const refresh=async()=>{
+      try{
+        const d=await api("/api/social/chat?after="+(firstLoad?0:lastId));
+        const rows=d.messages||[];
+        if(firstLoad){box.innerHTML="";rows.forEach(m=>{box.insertAdjacentHTML("beforeend",messageHTML(m));lastId=Math.max(lastId,Number(m.id)||0);});firstLoad=false;box.scrollTop=box.scrollHeight;}
+        else if(rows.length){const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<100;rows.forEach(m=>{if(Number(m.id)>lastId){box.insertAdjacentHTML("beforeend",messageHTML(m));lastId=Math.max(lastId,Number(m.id)||0);}});if(nearBottom)box.scrollTop=box.scrollHeight;}
+        if(firstLoad===false&&!box.children.length)box.innerHTML='<div class="empty">Hozircha xabar yo‘q. Birinchi bo‘lib yozing!</div>';
+      }catch(e){if(!box.children.length)box.innerHTML='<div class="empty">'+esc(errText(e))+'</div>';}
+    };
     await refresh();
-    $("socialSend").onsubmit=async e=>{e.preventDefault();const input=$("socialMessage"),message=input.value.trim();if(!message)return;try{await api("/api/social/chat",{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();}catch(err){toast(err.data?.error==="chat_slow_down"?"Juda tez yozdingiz. Biroz kuting.":errText(err));}};
-    $("socialMessages").onclick=async e=>{const r=e.target.closest("[data-report]"),h=e.target.closest("[data-hide]");if(r){if(!confirm("Shikoyat yuborilsinmi?"))return;try{await api("/api/social/report",{method:"POST",body:JSON.stringify({message_id:r.dataset.report})});toast("Shikoyat yuborildi.");}catch(err){toast(errText(err));}}if(h){if(!confirm("Xabar yashirilsinmi?"))return;try{await api("/api/admin/chat/"+h.dataset.hide,{method:"POST",body:"{}"});await refresh();}catch(err){toast(errText(err));}}};
-    let t=null;$("socialSearch").oninput=()=>{clearTimeout(t);t=setTimeout(async()=>{const q=$("socialSearch").value.trim(),box=$("socialSearchResults");if(q.length<2){box.innerHTML="";return;}try{const d=await api("/api/social/users?q="+encodeURIComponent(q));box.innerHTML=(d.users||[]).map(u=>'<div class="social-user">'+avatarHTML(u)+'<div class="social-user-info"><b>'+esc(u.display_name)+badgeMark(u.badge)+'</b><small>@'+esc(u.username||"—")+' · '+esc(u.bio||"")+'</small></div></div>').join("")||'<p class="social-muted">Foydalanuvchi topilmadi.</p>';}catch(e){box.textContent=errText(e);}},350);};
-    socialPoll=setInterval(refresh,6000);
+    $("socialSend").onsubmit=async e=>{
+      e.preventDefault();const input=$("socialMessage"),message=input.value.trim();if(!message)return;
+      const button=e.submitter||$("socialSend").querySelector("button");button.disabled=true;
+      try{await api("/api/social/chat",{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();box.scrollTop=box.scrollHeight;}
+      catch(err){toast(err.data?.error==="chat_slow_down"?"Juda tez yozdingiz. Biroz kuting.":errText(err));}
+      finally{button.disabled=false;input.focus();}
+    };
+    box.onclick=async e=>{
+      const r=e.target.closest("[data-report]"),h=e.target.closest("[data-hide]");
+      if(r){if(!confirm("Shikoyat yuborilsinmi?"))return;try{await api("/api/social/report",{method:"POST",body:JSON.stringify({message_id:r.dataset.report})});toast("Shikoyat yuborildi.");r.remove();}catch(err){toast(errText(err));}}
+      if(h){if(!confirm("Xabar yashirilsinmi?"))return;try{await api("/api/admin/chat/"+h.dataset.hide,{method:"POST",body:"{}"});h.closest(".tg-message")?.remove();}catch(err){toast(errText(err));}}
+    };
+    let t=null;
+    $("socialSearch").oninput=()=>{
+      clearTimeout(t);t=setTimeout(async()=>{
+        const q=$("socialSearch").value.trim(),results=$("socialSearchResults");
+        if(q.length<2){results.innerHTML="";return;}
+        try{const d=await api("/api/social/users?q="+encodeURIComponent(q));results.innerHTML=(d.users||[]).map(u=>'<div class="social-user">'+avatarHTML(u)+'<div class="social-user-info"><b>'+esc(u.display_name)+badgeMark(u.badge)+'</b><small>@'+esc(u.username||"—")+' · '+esc(u.bio||"")+'</small></div></div>').join("")||'<p class="social-muted">Foydalanuvchi topilmadi.</p>';}
+        catch(e){results.textContent=errText(e);}
+      },300);
+    };
+    socialPoll=setInterval(refresh,3500);
   }
   $("socialClose")?.addEventListener("click",closeSocial);
   $("socialOverlay")?.addEventListener("click",e=>{if(e.target.id==="socialOverlay")closeSocial();});
