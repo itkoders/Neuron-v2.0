@@ -5114,6 +5114,10 @@ async def api_me(request):
             "parent_pending":parent_pending, "available_roles":available_roles,
             "last_role":db_get_setting(f"last_role_{obj}") or ""
         })
+    # Tizimga kirgan barcha haqiqiy rollar Jamiyat foydalanuvchilari ro‘yxatida avtomatik paydo bo‘ladi.
+    social_uid, social_profile, social_kind, social_err = _social_auth(request)
+    if social_err:
+        return social_err
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
