@@ -1208,11 +1208,6 @@ img,video,canvas{max-width:100%}
   <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Chat</button>
 </nav>
-  <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
-  <button class="tab" data-stab="ai"><span class="ico">🤖</span>AI mashq</button>
-  <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
-  <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Chat</button>
-</nav>
 
 <div class="help-wrap"><div id="helpButtonWrap"><button class="help-btn" id="helpButton" type="button">🆘 Yordam</button></div></div>
 <div id="toast" class="toast" role="status"></div>
@@ -1537,7 +1532,7 @@ img,video,canvas{max-width:100%}
     try{
       const d=await api("/api/social/profile");socialProfile=d.profile;const p=socialProfile;
       host.innerHTML='<div class="profile card">'+avatarHTML(p)+'<div><div class="nm">'+esc(p.display_name)+badgeMark(p.badge)+'</div><div class="hint">@'+esc(p.username||"username yo‘q")+'</div></div></div>'+
-      '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi</label><input class="field social-file-input" id="socialPhoto" type="file" accept="image/*" capture="user"><p class="social-muted">Profil rasmingiz dumaloq ko‘rinadi. Rasmni galereyadan tanlang.</p><button class="btn" id="saveSocial">Profilni saqlash</button></div>'+
+      '<div class="card panel social-form" style="margin-top:12px"><label>Ism-familiya</label><input class="field" id="socialName" maxlength="40" value="'+esc(p.display_name)+'"><label>Bio</label><textarea class="field" id="socialBio" rows="3" maxlength="240">'+esc(p.bio)+'</textarea><label>Profil rasmi</label><input class="field social-file-input" id="socialPhoto" type="file" accept="image/*"><p class="social-muted">Profil rasmingiz dumaloq ko‘rinadi. Rasmni galereyadan tanlang.</p><button class="btn" id="saveSocial">Profilni saqlash</button></div>'+
       '<div class="card panel" style="margin-top:12px"><h3>☑ Tarif belgisi</h3><p class="hint">Galichka Super Admin belgilagan tarif orqali avtomatik beriladi. Alohida tasdiqlash so‘rovi yuborilmaydi.</p>'+
       (p.badge?'<p>Faol belgi: <b>'+esc(socialBadges[p.badge]||p.badge)+'</b></p>':'<p class="social-muted">Joriy tarifingizda belgi yo‘q.</p>')+'</div>';
       let photo=p.avatar||"";
