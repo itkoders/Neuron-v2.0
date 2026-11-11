@@ -4542,8 +4542,11 @@ async def api_admin_plan_action(request):
         price = max(0, min(100000000, int(body.get("price", 0))))
         limit = max(0, min(1000000, int(body.get("student_limit", 0))))
         days = max(0, min(3650, int(body.get("duration_days", 0))))
-        run("INSERT INTO plans (key,name,price,student_limit,duration_days,features,active,subject_limit) VALUES (?,?,?,?,?,?,1,?)",
-            (key,name,price,limit,days,"scores,attendance",max(0,int(body.get("subject_limit",0)))))
+        badge = str(body.get("badge") or ("verified" if str(body.get("badge_enabled")) == "1" else "")).strip()
+        if badge not in {"", "blue", "premium", "official", "expert", "verified"}:
+            return web.json_response({"error":"bad_badge"}, status=400)
+        run("INSERT INTO plans (key,name,price,student_limit,duration_days,features,active,subject_limit,badge) VALUES (?,?,?,?,?,?,1,?,?)",
+            (key,name,price,limit,days,"scores,attendance",max(0,int(body.get("subject_limit",0))),badge))
         audit(uid, "plan_create", key, name)
         return web.json_response({"ok":True,"key":key})
     p = db_plan(key)
