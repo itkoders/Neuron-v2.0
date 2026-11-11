@@ -4969,7 +4969,7 @@ async def api_social_chat_get(request):
                "WHERE m.hidden=0 AND m.id>? ORDER BY m.id DESC LIMIT 50",(after,),fetch="all")
     rows.reverse()
     return web.json_response({"messages":[{"id":int(r[0]),"chat_id":int(r[1]),"body":r[2],"created_at":r[3],
-        "username":r[4] or "","display_name":r[5] or "Foydalanuvchi","avatar":r[6] or "","badge":r[7] or ""} for r in rows]})
+        "username":r[4] or "","display_name":r[5] or "Foydalanuvchi","avatar":_social_avatar_thumb(r[6]),"badge":r[7] or ""} for r in rows]})
 
 
 async def api_social_chat_send(request):
