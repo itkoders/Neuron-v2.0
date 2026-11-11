@@ -1199,6 +1199,11 @@ img,video,canvas{max-width:100%}
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Chat</button>
 </nav>
 <nav class="tabs hidden" id="tabsStudent" role="tablist">
+  <button class="tab active" data-stab="mine"><span class="ico">🎓</span>Natijalarim</button>
+  <button class="tab" data-stab="ai"><span class="ico">🤖</span>AI mashq</button>
+  <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
+  <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Chat</button>
+</nav>
 <nav class="tabs hidden" id="tabsOther" aria-label="Profil va chat">
   <button class="tab social-tab" data-social-open="profile"><span class="ico">👤</span>Profil</button>
   <button class="tab social-tab" data-social-open="chat"><span class="ico">💬</span>Chat</button>
@@ -1226,7 +1231,6 @@ img,video,canvas{max-width:100%}
   const state = { role: null, parentChildren: [], parentSelected: Number(new URLSearchParams(window.location.search).get("child_id")) || null, subjects: [], subject: null, students: [], today: "", plan: null, features: new Set(), pendingScores: new Set(), sort: "fio", query: "", page: 0, tab: "grades", stab: "mine", aiLive: false, aiBusy: false, aiStats: { ok: 0, all: 0 }, settingsStudents: [], settingsSubjects: [], settingsChannel: "", settingsChannelEnabled: false, settingsPayment: {}, settingsLoaded: false, adminData: null, adminTab: "overview", celebratedToday: false };
 
   function updateSocialDock(){
-    $("socialDock")?.classList.add("hidden");
     $("tabsOther")?.classList.toggle("hidden", !["parent","admin"].includes(state.role));
   }
   document.addEventListener("click", e=>{
@@ -1234,10 +1238,6 @@ img,video,canvas{max-width:100%}
     if(social){e.preventDefault();openSocial(social.dataset.socialOpen);return;}
     if(e.target.closest("[data-tab]") || e.target.closest("[data-stab]")) setTimeout(updateSocialDock,0);
   });
-    const visible = state.role === "parent" || (state.role === "teacher" && state.tab === "grades") || (state.role === "student" && state.stab === "mine");
-    $("socialDock")?.classList.toggle("hidden", !visible);
-  }
-  document.addEventListener("click", e=>{if(e.target.closest("[data-tab]") || e.target.closest("[data-stab]")) setTimeout(updateSocialDock,0);});
 
   /* ---------- Theme ---------- */
   function applyTheme() {
