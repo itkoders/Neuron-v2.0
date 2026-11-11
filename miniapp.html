@@ -1802,7 +1802,7 @@
         const rows=(data.scheduled||[]).map(x=>'<div class="history-item card"><b>'+esc(x.send_at)+'</b><div>'+esc(x.text)+'</div><div class="hint">'+(x.sent===0?'Kutilmoqda':x.sent===1?'Yuborilgan':'Bekor qilingan')+'</div>'+(x.sent===0?'<button class="chip-btn danger" data-tool-action="schedule_cancel" data-id="'+x.id+'">Bekor qilish</button>':'')+'</div>').join("")||'<p class="hint">Rejalashtirilgan e’lon yo‘q.</p>';
         parts.push('<div class="card panel"><h3>⏰ Rejalashtirilgan e’lon</h3><p class="hint">Vaqt O‘zbekiston vaqti bo‘yicha olinadi.</p><form id="toolScheduleForm" class="entry-form"><textarea class="field" name="text" rows="2" maxlength="1500" placeholder="E’lon matni..." required></textarea><input class="field" name="send_at" type="datetime-local" required><button class="chip-btn primary">Rejalashtirish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
       }
-      if(f.has("export")) parts.push('<div class="card panel"><h3>📥 Jurnalni yuklab olish</h3><p class="hint">O‘quvchilar va natijalar CSV formatida.</p><button class="chip-btn primary" id="toolExport">CSV yuklab olish</button></div>');
+      if(f.has("export")) parts.push('<div class="card panel"><h3>📥 Kunlik jurnal tarixini yuklab olish</h3><p class="hint">O‘qituvchi ro‘yxatdan o‘tgan kundan bugungacha baholar va davomat. Tarixda qayd bo‘lmagan kunlar alohida belgilanadi.</p><button class="chip-btn primary" id="toolExport">📥 Kunlik tarixni CSV yuklab olish</button></div>');
       if(!parts.length) parts.push('<div class="card panel"><h3>🧰 Qo‘shimcha vositalar</h3><p class="hint">Bu bo‘limlar joriy tarifingizda yoqilmagan. Tarifni Super Admin orqali yangilashingiz mumkin.</p></div>');
       host.innerHTML=parts.join("");
       const cf=$("toolCalendarForm");
@@ -1825,14 +1825,49 @@
     } catch(err) {toast(errText(err));return null;}
   }
   async function downloadTeacherCsv() {
-    const b=$("toolExport");if(b){b.disabled=true;b.textContent="Tayyorlanmoqda…";}
+    const b = $("toolExport");
+    if (b) { b.disabled = true; b.textContent = "Tayyorlanmoqda…"; }
     try {
-      const res=await fetch("/api/teacher/export.csv",{headers:{"X-Init-Data":INIT,"X-App-Role":new URLSearchParams(location.search).get("role")||""}});
-      if(!res.ok){let data={};try{data=await res.json();}catch(_){}throw Object.assign(new Error(data.error||"export_failed"),{data});}
-      const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
-      a.href=url;a.download="neyron_jurnal.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast("CSV tayyor.");
-    } catch(err){toast(errText(err));}
-    finally{if(b){b.disabled=false;b.textContent="CSV yuklab olish";}}
+      const res = await fetch("/api/teacher/export.csv", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: {
+          "X-Init-Data": INIT,
+          "X-App-Role": new URLSearchParams(location.search).get("role") || ""
+        }
+      });
+      if (!res.ok) {
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        const messages = {
+          feature_locked: "CSV eksport funksiyasi tarifingizda yoqilmagan.",
+          auth: "Telegram orqali qayta kiring.",
+          forbidden: "Bu bo‘lim faqat o‘qituvchi kabineti uchun.",
+          role_required: "Avval O‘qituvchi rolini tanlang."
+        };
+        throw new Error(messages[data.error] || data.error || "CSV yuklab bo‘lmadi. Qayta urinib ko‘ring.");
+      }
+
+      const blob = await res.blob();
+      if (!blob.size) throw new Error("CSV fayli bo‘sh qaytdi.");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "neyron_kunlik_hisobot.csv";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // Telegram Android WebView faylni ochishga ulgurishi uchun URL darhol bekor qilinmaydi.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast("CSV tayyorlandi. Telefoningizdagi Yuklamalar bo‘limini tekshiring.");
+    } catch (err) {
+      toast(err.message || errText(err));
+    } finally {
+      if (b) { b.disabled = false; b.textContent = "📥 Kunlik tarixni CSV yuklab olish"; }
+    }
   }
 
   function renderTeacherTab() {
