@@ -4596,7 +4596,10 @@ async def api_admin_plan_action(request):
                 if value < 0 or value > 100000000: return web.json_response({"error":"bad_value"},status=400)
             save_plan_field(key,field,value)
         if "badge" in body or "badge_enabled" in body:
-            badge = str(body.get("badge") or ("verified" if str(body.get("badge_enabled")) == "1" else "")).strip()
+            enabled_raw = body.get("badge_enabled", None)
+            enabled = (str(enabled_raw).strip().lower() in {"1","true","yes","on"}) if enabled_raw is not None else bool(str(body.get("badge") or "").strip())
+            requested_badge = str(body.get("badge") or "").strip().lower()
+            badge = (requested_badge or "verified") if enabled else ""
             if badge not in {"", "blue", "premium", "official", "expert", "verified"}: return web.json_response({"error":"bad_value"},status=400)
             run("UPDATE plans SET badge=? WHERE key=?", (badge,key))
             run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id IN (SELECT chat_id FROM teachers WHERE plan_key=? AND chat_id IS NOT NULL)", (badge,"approved" if badge else "",key))
