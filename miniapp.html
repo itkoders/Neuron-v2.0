@@ -1814,7 +1814,7 @@
       const sf=$("toolScheduleForm");
       if(sf)sf.onsubmit=async e=>{e.preventDefault();const d=new FormData(sf);await submitTool({action:"schedule_add",text:d.get("text"),send_at:d.get("send_at")});};
       const ex=$("toolExport");
-      if(ex)ex.onclick=downloadTeacherCsv;
+      if(ex)ex.onclick=downloadTeacherExcel;
     } catch(err) { host.innerHTML='<div class="card empty">'+esc(errText(err))+'</div>'; }
   }
   async function submitTool(payload, refresh=true) {
@@ -1824,11 +1824,11 @@
       return out;
     } catch(err) {toast(errText(err));return null;}
   }
-  async function downloadTeacherCsv() {
+  async function downloadTeacherExcel() {
     const b = $("toolExport");
     if (b) { b.disabled = true; b.textContent = "Excel tayyorlanmoqda…"; }
     try {
-      const res = await fetch("/api/teacher/export.csv", {
+      const res = await fetch("/api/teacher/export.xlsx", {
         method: "GET", cache: "no-store", credentials: "same-origin",
         headers: {
           "X-Init-Data": INIT,
