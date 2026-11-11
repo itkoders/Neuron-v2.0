@@ -66,8 +66,8 @@ FEATURES = {
 }
 SEED_PLANS = [
     # kalit, nomi, narx (so'm/oy), limit (0 = cheksiz), kun (0 = cheksiz), ruxsatlar
-    ("free", "Bepul", 0, 50, 0, "scores,attendance"),
-    ("pro", "Pro", 150000, 200, 30, "scores,attendance,payments,reports,broadcast,calendar,notes"),
+    ("free", "Bepul", 0, 50, 0, "scores,attendance,mini_app"),
+    ("pro", "Pro", 150000, 200, 30, "scores,attendance,payments,reports,broadcast,calendar,notes,mini_app"),
     ("premium", "Premium", 300000, 1000, 30, ",".join(FEATURES.keys())),
 ]
 
@@ -298,6 +298,17 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, actor BIGINT, action TEXT,
         target TEXT, details TEXT, created_at TEXT)""")
     run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+    run("""CREATE TABLE IF NOT EXISTS user_profiles (
+        chat_id BIGINT PRIMARY KEY, username TEXT DEFAULT '', display_name TEXT DEFAULT '',
+        bio TEXT DEFAULT '', avatar_data TEXT DEFAULT '', badge TEXT DEFAULT '',
+        badge_status TEXT DEFAULT '', badge_request TEXT DEFAULT '', updated_at TEXT)""")
+    run("""CREATE TABLE IF NOT EXISTS community_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id BIGINT NOT NULL,
+        body TEXT NOT NULL, created_at TEXT NOT NULL, hidden INTEGER DEFAULT 0)""")
+    run("""CREATE TABLE IF NOT EXISTS community_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
+        reporter_chat_id BIGINT NOT NULL, reason TEXT DEFAULT '', created_at TEXT,
+        status TEXT DEFAULT 'pending')""")
     run("""CREATE TABLE IF NOT EXISTS scheduled_broadcasts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
@@ -312,6 +323,8 @@ def init_db():
     if not run("SELECT 1 FROM plans LIMIT 1", fetch="one"):
         for p in SEED_PLANS:
             run("INSERT INTO plans (key, name, price, student_limit, duration_days, features) VALUES (?, ?, ?, ?, ?, ?)", p)
+    run("INSERT INTO plans (key,name,price,student_limit,duration_days,features,active,subject_limit) "
+        "VALUES (?,?,?,?,?,?,1,0) ON CONFLICT(key) DO NOTHING", SEED_PLANS[0])
     if SUPER_ADMIN_PASSWORD and db_get_setting("super_admin_password") is None:
         db_set_setting("super_admin_password", hash_pw(SUPER_ADMIN_PASSWORD))
     if db_get_setting("verify_mode") is None:
@@ -335,6 +348,12 @@ def init_db():
             run("UPDATE plans SET features = ? WHERE key = 'premium'",
                 (",".join(sorted(set(prem["features"]) | {"mini_app"})),))
         db_set_setting("features_v5", "1")
+    if db_get_setting("mini_app_all_plans_v1") is None:
+        for row in run("SELECT key,features FROM plans", fetch="all"):
+            features = set(filter(None,(row[1] or "").split(",")))
+            features.add("mini_app")
+            run("UPDATE plans SET features=? WHERE key=?",(",".join(sorted(features)),row[0]))
+        db_set_setting("mini_app_all_plans_v1","1")
 
 
 def db_get_setting(key):
@@ -4471,13 +4490,14 @@ async def api_admin_teacher_action(request):
         run("UPDATE teachers SET active=?, chat_id=CASE WHEN ?=0 THEN NULL ELSE chat_id END WHERE id=?", (active, active, tid))
         audit(uid, "teacher_active", str(tid), str(active))
     elif action == "assign_plan":
-        key = str(body.get("plan_key", ""))
+        key = str(body.get("plan_key", "")).strip().lower()
         p = db_plan(key)
         if not p or not p["active"]: return web.json_response({"error":"bad_plan"}, status=400)
         expires = (datetime.now().date() + timedelta(days=p["duration_days"])).strftime("%d.%m.%Y") if p["duration_days"] else None
         run("UPDATE teachers SET plan_key=?, plan_expires=? WHERE id=?", (key, expires, tid))
         audit(uid, "plan_assign", str(tid), f"{key} until {expires or 'cheksiz'}")
         await notify_teacher(tid, f"💼 Sizga {p['name']} tarifi berildi.")
+        return web.json_response({"ok":True,"plan_key":key,"plan_name":p["name"],"plan_expires":expires or ""})
     elif action == "extend":
         base = datetime.now().date()
         if t["plan_expires"]:
@@ -4742,7 +4762,191 @@ async def api_teacher_channel_save(request):
         return web.json_response({"error": "channel_check_failed"}, status=400)
 
 
+# --- NEURON Social: profil va umumiy hamjamiyat chati ---
+def _social_tg_user(request):
+    try:
+        pairs = dict(parse_qsl(request.headers.get("X-Init-Data",""),keep_blank_values=True))
+        return json.loads(pairs.get("user","{}") or "{}")
+    except Exception:
+        return {}
+
+
+def _social_name_valid(name):
+    name = " ".join(str(name or "").split())
+    if not 2 <= len(name) <= 40: return False
+    import unicodedata
+    for ch in name:
+        cat = unicodedata.category(ch)
+        if ch in " '-’.": continue
+        if not (cat.startswith("L") or cat.startswith("M")): return False
+    return True
+
+
+def _social_default_name(kind,obj,user):
+    if kind == "teacher": return teacher_name(obj)
+    if kind == "student": return str(obj.get("fio") or "O‘quvchi")
+    if kind == "admin": return "Super Admin"
+    name = " ".join(x for x in [str(user.get("first_name") or "").strip(),str(user.get("last_name") or "").strip()] if x)
+    return name or "NEURON foydalanuvchisi"
+
+
+def _social_auth(request):
+    kind,obj,err = miniapp_identity(request)
+    if err: return None,None,None,err
+    uid = verify_init_data(request.headers.get("X-Init-Data",""))
+    if not uid: return None,None,None,web.json_response({"error":"auth"},status=401)
+    user = _social_tg_user(request)
+    username = str(user.get("username") or "").strip().lstrip("@")[:64]
+    row = run("SELECT chat_id,username,display_name,bio,avatar_data,badge,badge_status,badge_request "
+              "FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
+    if not row:
+        run("INSERT INTO user_profiles (chat_id,username,display_name,updated_at) VALUES (?,?,?,?) ON CONFLICT(chat_id) DO NOTHING",
+            (uid,username,_social_default_name(kind,obj,user),datetime.now().isoformat(timespec="seconds")))
+        row = run("SELECT chat_id,username,display_name,bio,avatar_data,badge,badge_status,badge_request FROM user_profiles WHERE chat_id=?",(uid,),fetch="one")
+    elif username != (row[1] or ""):
+        run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(username,datetime.now().isoformat(timespec="seconds"),uid))
+        row = list(row); row[1] = username
+    profile = {"chat_id":int(row[0]),"username":row[1] or "","display_name":row[2] or _social_default_name(kind,obj,user),
+               "bio":row[3] or "","avatar":row[4] or "","badge":row[5] or "",
+               "badge_status":row[6] or "","badge_request":row[7] or ""}
+    return uid,profile,kind,None
+
+
+async def api_social_profile(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    return web.json_response({"profile":p,"is_admin":kind=="admin"})
+
+
+async def api_social_profile_save(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    body = await _read_json(request)
+    name = " ".join(str(body.get("display_name") or "").split())
+    bio = str(body.get("bio") or "").strip()
+    avatar = str(body.get("avatar") or "") or p["avatar"]
+    if not _social_name_valid(name): return web.json_response({"error":"bad_display_name"},status=400)
+    if len(bio)>240: return web.json_response({"error":"bad_bio"},status=400)
+    if avatar and (len(avatar)>1400000 or not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/=]+",avatar)):
+        return web.json_response({"error":"bad_avatar"},status=400)
+    if avatar:
+        try:
+            raw = __import__("base64").b64decode(avatar.split(",",1)[1],validate=True)
+            if not raw or len(raw)>950000: raise ValueError()
+            with Image.open(io.BytesIO(raw)) as im: im.verify()
+        except Exception: return web.json_response({"error":"bad_avatar"},status=400)
+    run("UPDATE user_profiles SET display_name=?,bio=?,avatar_data=?,updated_at=? WHERE chat_id=?",
+        (name,bio,avatar,datetime.now().isoformat(timespec="seconds"),uid))
+    audit(uid,"social_profile_update",str(uid))
+    return web.json_response({"ok":True})
+
+
+async def api_social_badge_request(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    body = await _read_json(request)
+    badge = str(body.get("badge_type") or "verified")
+    if badge not in {"blue","premium","official","expert","verified"}: return web.json_response({"error":"bad_badge"},status=400)
+    if p["badge"]: return web.json_response({"error":"badge_exists"},status=409)
+    run("UPDATE user_profiles SET badge_status='pending',badge_request=?,updated_at=? WHERE chat_id=?",
+        (badge,datetime.now().isoformat(timespec="seconds"),uid))
+    return web.json_response({"ok":True,"status":"pending"})
+
+
+async def api_social_users(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    q = " ".join(str(request.query.get("q","")).split())[:40]
+    if len(q)<2: return web.json_response({"users":[]})
+    like = "%"+q.lower()+"%"
+    rows = run("SELECT chat_id,username,display_name,bio,avatar_data,badge FROM user_profiles "
+               "WHERE chat_id<>? AND (LOWER(display_name) LIKE ? OR LOWER(username) LIKE ?) "
+               "ORDER BY CASE WHEN badge<>'' THEN 0 ELSE 1 END,display_name LIMIT 25",(uid,like,like),fetch="all")
+    return web.json_response({"users":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi",
+        "bio":r[3] or "","avatar":r[4] or "","badge":r[5] or ""} for r in rows]})
+
+
+async def api_social_chat_get(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    try: after=max(0,int(request.query.get("after","0")))
+    except ValueError: after=0
+    rows = run("SELECT m.id,m.chat_id,m.body,m.created_at,p.username,p.display_name,p.avatar_data,p.badge "
+               "FROM community_messages m LEFT JOIN user_profiles p ON p.chat_id=m.chat_id "
+               "WHERE m.hidden=0 AND m.id>? ORDER BY m.id DESC LIMIT 50",(after,),fetch="all")
+    rows.reverse()
+    return web.json_response({"messages":[{"id":int(r[0]),"chat_id":int(r[1]),"body":r[2],"created_at":r[3],
+        "username":r[4] or "","display_name":r[5] or "Foydalanuvchi","avatar":r[6] or "","badge":r[7] or ""} for r in rows]})
+
+
+async def api_social_chat_send(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    message = str((await _read_json(request)).get("message") or "").strip()
+    if not message or len(message)>800: return web.json_response({"error":"bad_message"},status=400)
+    recent = run("SELECT created_at FROM community_messages WHERE chat_id=? ORDER BY id DESC LIMIT 1",(uid,),fetch="one")
+    if recent:
+        try:
+            if (datetime.now()-datetime.fromisoformat(recent[0])).total_seconds()<2:
+                return web.json_response({"error":"chat_slow_down"},status=429)
+        except ValueError: pass
+    mid = run("INSERT INTO community_messages (chat_id,body,created_at,hidden) VALUES (?,?,?,0)",
+              (uid,message,datetime.now().isoformat(timespec="seconds")),fetch="lastid")
+    return web.json_response({"ok":True,"id":mid})
+
+
+async def api_social_report(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    body = await _read_json(request)
+    try: mid=int(body.get("message_id"))
+    except (TypeError,ValueError): return web.json_response({"error":"bad_id"},status=400)
+    row = run("SELECT chat_id FROM community_messages WHERE id=? AND hidden=0",(mid,),fetch="one")
+    if not row or int(row[0])==uid: return web.json_response({"error":"not_found"},status=404)
+    run("INSERT INTO community_reports (message_id,reporter_chat_id,reason,created_at,status) VALUES (?,?,?,?, 'pending')",
+        (mid,uid,str(body.get("reason") or "Nojo‘ya xabar")[:120],datetime.now().isoformat(timespec="seconds")))
+    return web.json_response({"ok":True})
+
+
+async def api_admin_badges(request):
+    uid,err=miniapp_admin(request)
+    if err: return err
+    rows=run("SELECT chat_id,username,display_name,bio,badge_request FROM user_profiles WHERE badge_status='pending' ORDER BY updated_at DESC LIMIT 100",fetch="all")
+    return web.json_response({"requests":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","badge_request":r[4] or "verified"} for r in rows]})
+
+
+async def api_admin_badge_action(request):
+    uid,err=miniapp_admin(request)
+    if err: return err
+    try: target=int(request.match_info["chat_id"])
+    except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
+    body=await _read_json(request); action=str(body.get("action") or "")
+    row=run("SELECT badge_request FROM user_profiles WHERE chat_id=?",(target,),fetch="one")
+    if not row: return web.json_response({"error":"not_found"},status=404)
+    if action=="approve":
+        badge=str(body.get("badge") or row[0] or "verified")
+        if badge not in {"blue","premium","official","expert","verified"}: return web.json_response({"error":"bad_badge"},status=400)
+        run("UPDATE user_profiles SET badge=?,badge_status='approved',badge_request='',updated_at=? WHERE chat_id=?",(badge,datetime.now().isoformat(timespec="seconds"),target))
+    elif action=="reject":
+        run("UPDATE user_profiles SET badge_status='rejected',badge_request='',updated_at=? WHERE chat_id=?",(datetime.now().isoformat(timespec="seconds"),target))
+    else: return web.json_response({"error":"bad_action"},status=400)
+    audit(uid,"social_badge_"+action,str(target))
+    return web.json_response({"ok":True})
+
+
+async def api_admin_chat_moderate(request):
+    uid,err=miniapp_admin(request)
+    if err: return err
+    try: mid=int(request.match_info["mid"])
+    except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
+    run("UPDATE community_messages SET hidden=1 WHERE id=?",(mid,))
+    run("UPDATE community_reports SET status='reviewed' WHERE message_id=?",(mid,))
+    audit(uid,"social_chat_hide",str(mid))
+    return web.json_response({"ok":True})
+
+
 async def api_me(request):
+
     kind, obj, err = miniapp_identity(request)
     if err:
         return err
@@ -5643,6 +5847,16 @@ async def start_web_server():
     app.router.add_post("/api/admin/password", api_admin_password)
     app.router.add_get("/api/admin/audit", api_admin_audit)
     app.router.add_get("/api/me", api_me)
+    app.router.add_get("/api/social/profile", api_social_profile)
+    app.router.add_post("/api/social/profile", api_social_profile_save)
+    app.router.add_post("/api/social/badge-request", api_social_badge_request)
+    app.router.add_get("/api/social/users", api_social_users)
+    app.router.add_get("/api/social/chat", api_social_chat_get)
+    app.router.add_post("/api/social/chat", api_social_chat_send)
+    app.router.add_post("/api/social/report", api_social_report)
+    app.router.add_get("/api/admin/badges", api_admin_badges)
+    app.router.add_post("/api/admin/badge/{chat_id}", api_admin_badge_action)
+    app.router.add_post("/api/admin/chat/{mid}", api_admin_chat_moderate)
     app.router.add_post("/api/role/preference", api_save_role_preference)
     app.router.add_post("/api/onboard/student", api_onboard_student)
     app.router.add_post("/api/onboard/parent", api_onboard_parent)
