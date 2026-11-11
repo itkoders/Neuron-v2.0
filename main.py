@@ -4840,6 +4840,8 @@ def _social_make_username(uid, candidate=""):
 def _social_auth(request):
     kind,obj,err = miniapp_identity(request)
     if err: return None,None,None,err
+    if kind == "entry":
+        return None,None,None,web.json_response({"error":"role_required"},status=403)
     uid = verify_init_data(request.headers.get("X-Init-Data",""))
     if not uid: return None,None,None,web.json_response({"error":"auth"},status=401)
     user = _social_tg_user(request)
