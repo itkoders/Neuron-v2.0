@@ -4817,6 +4817,12 @@ def _social_auth(request):
     elif username != (row[1] or ""):
         run("UPDATE user_profiles SET username=?,updated_at=? WHERE chat_id=?",(username,datetime.now().isoformat(timespec="seconds"),uid))
         row = list(row); row[1] = username
+    if kind == "teacher":
+        current_plan, _ = effective_plan(obj)
+        plan_badge = current_plan.get("badge", "")
+        if (row[5] or "") != plan_badge:
+            run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id=?", (plan_badge, "approved" if plan_badge else "", uid))
+            row = list(row); row[5] = plan_badge; row[6] = "approved" if plan_badge else ""; row[7] = ""
     profile = {"chat_id":int(row[0]),"username":row[1] or "","display_name":row[2] or _social_default_name(kind,obj,user),
                "bio":row[3] or "","avatar":row[4] or "","badge":row[5] or "",
                "badge_status":row[6] or "","badge_request":row[7] or ""}
