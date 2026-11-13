@@ -1233,6 +1233,143 @@ header{background:var(--bg)!important}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
+
+/* ===== PAXMOQ 3D refresh — lightweight mobile-first layer ===== */
+:root{
+  --pax-bg:#edf2f8;
+  --pax-surface:#edf2f8;
+  --pax-edge:rgba(255,255,255,.78);
+  --pax-light:#fff;
+  --pax-shadow:#cbd5e1;
+  --pax-text:#26354a;
+  --pax-muted:#718198;
+  --pax-accent:#5876e8;
+  --pax-accent2:#32b9aa;
+  --neo-raised:7px 7px 16px var(--pax-shadow),-7px -7px 16px var(--pax-light);
+  --neo-raised-sm:4px 4px 9px var(--pax-shadow),-4px -4px 9px var(--pax-light);
+  --neo-inset:inset 4px 4px 9px var(--pax-shadow),inset -4px -4px 9px var(--pax-light);
+  --shadow:var(--neo-raised);
+}
+:root[data-theme="dark"]{
+  --pax-bg:#202b3b;--pax-surface:#202b3b;--pax-edge:rgba(255,255,255,.045);
+  --pax-light:#2c3b50;--pax-shadow:#172130;--pax-text:#e7eef8;--pax-muted:#9aabc0;
+  --neo-raised:7px 7px 16px var(--pax-shadow),-7px -7px 16px var(--pax-light);
+  --neo-raised-sm:4px 4px 9px var(--pax-shadow),-4px -4px 9px var(--pax-light);
+  --neo-inset:inset 4px 4px 9px var(--pax-shadow),inset -4px -4px 9px var(--pax-light);
+  --shadow:var(--neo-raised);
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --pax-bg:#202b3b;--pax-surface:#202b3b;--pax-edge:rgba(255,255,255,.045);
+    --pax-light:#2c3b50;--pax-shadow:#172130;--pax-text:#e7eef8;--pax-muted:#9aabc0;
+    --neo-raised:7px 7px 16px var(--pax-shadow),-7px -7px 16px var(--pax-light);
+    --neo-raised-sm:4px 4px 9px var(--pax-shadow),-4px -4px 9px var(--pax-light);
+    --neo-inset:inset 4px 4px 9px var(--pax-shadow),inset -4px -4px 9px var(--pax-light);
+    --shadow:var(--neo-raised);
+  }
+}
+html,body{background:var(--pax-bg);color:var(--pax-text)}
+body{overscroll-behavior-y:contain}
+header{padding-top:calc(12px + env(safe-area-inset-top));}
+.topbar{gap:11px}
+.top-user-avatar{width:44px;height:44px;flex-basis:44px;border:2px solid var(--pax-edge);box-shadow:var(--neo-raised-sm);font-size:16px}
+.who .label{letter-spacing:.12em;font-size:10px}
+.who h1{font-size:18px;letter-spacing:-.035em}
+.card,.panel,.stat,.att-item,.score-card,.fact,.profile,.history-item,.note,
+.report-actions,.grid-wrap,.parent-card-info,.help-btn,.theme-switch,.tabs,
+.bubble.ai,.chip-btn:not(.primary):not(.danger),.btn.ghost{
+  background:var(--pax-surface)!important;
+  border:1px solid var(--pax-edge)!important;
+  box-shadow:var(--neo-raised)!important;
+}
+.card,.panel,.stat,.att-item,.score-card,.fact,.profile,.history-item,
+.report-actions,.grid-wrap,.parent-card-info,.note{border-radius:24px}
+.card,.panel,.report-actions{position:relative;overflow:hidden}
+.card::before,.panel::before,.report-actions::before{
+  content:"";position:absolute;inset:0 0 auto;height:1px;
+  background:linear-gradient(90deg,transparent,var(--pax-light),transparent);
+  pointer-events:none
+}
+.field,select,input[type="search"],.parent-pay-box input[type="file"],
+.topic-row .field,.composer .field{
+  background:var(--pax-surface)!important;color:var(--pax-text)!important;
+  border:1px solid transparent!important;box-shadow:var(--neo-inset)!important;
+  border-radius:16px!important;min-height:46px
+}
+.field:focus,select:focus,input:focus{
+  border-color:var(--pax-accent)!important;
+  box-shadow:var(--neo-inset),0 0 0 2px rgba(88,118,232,.15)!important
+}
+.btn,.chip-btn.primary{
+  background:linear-gradient(135deg,#647fe9,#6870d9)!important;
+  color:#fff!important;border:1px solid rgba(255,255,255,.24)!important;
+  border-radius:16px!important;box-shadow:5px 6px 12px rgba(82,103,190,.22),inset 1px 1px 2px rgba(255,255,255,.35)!important;
+  min-height:48px
+}
+.chip-btn.danger{border-radius:15px!important;box-shadow:var(--neo-raised-sm)}
+.chip-btn:not(.primary):not(.danger),.btn.ghost,.help-btn,
+.theme-switch button,.seg button:not(.on-keldi):not(.on-kelmadi):not(.on-sababli),
+.tab:not(.active){
+  background:var(--pax-surface)!important;box-shadow:var(--neo-raised-sm)!important;
+  border:1px solid var(--pax-edge)!important;color:var(--pax-text)
+}
+.btn:active,.chip-btn:active,.tab:active,.seg button:active{transform:scale(.975);box-shadow:var(--neo-inset)!important}
+.hero{
+  border-radius:28px;padding:22px;
+  background:linear-gradient(135deg,#667fe8 0%,#6974d8 52%,#55b9b0 100%);
+  box-shadow:8px 10px 22px rgba(72,91,157,.22),inset 1px 1px 2px rgba(255,255,255,.35)
+}
+.hero .title{letter-spacing:-.04em}
+.hero-stat{border-radius:17px;background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.2)}
+.tabs{
+  border-radius:23px!important;padding:7px!important;
+  margin:0 10px calc(9px + env(safe-area-inset-bottom))!important;
+  box-shadow:0 8px 24px rgba(35,48,76,.15),var(--neo-raised)!important;
+  background:var(--pax-surface)!important
+}
+.tab{border-radius:16px!important;min-height:48px;transition:transform .16s ease,box-shadow .16s ease}
+.tab.active,.theme-switch button.active,.seg button.on-kut{
+  background:var(--pax-surface)!important;color:var(--pax-accent)!important;
+  box-shadow:var(--neo-inset)!important
+}
+.logo{border-radius:15px}
+.status{border:1px solid var(--pax-edge);box-shadow:var(--neo-inset-sm);border-radius:13px}
+.social-badge{border-radius:999px;box-shadow:var(--neo-raised-sm);border:1px solid var(--pax-edge)}
+.social-badge[data-kind="admin"],.social-badge[data-kind="super_admin"]{
+  color:#8a63dc;background:linear-gradient(145deg,#f4eaff,#e7dcff);
+  box-shadow:3px 4px 9px rgba(117,84,173,.18),inset 1px 1px 2px #fff
+}
+:root[data-theme="dark"] .social-badge[data-kind="admin"],
+:root[data-theme="dark"] .social-badge[data-kind="super_admin"]{background:linear-gradient(145deg,#3a3150,#29243b)}
+#paxBuddy{
+  position:fixed;left:-58px;bottom:calc(88px + env(safe-area-inset-bottom));
+  z-index:18;width:44px;height:44px;border-radius:50%;
+  display:grid;place-items:center;font-size:23px;line-height:1;
+  background:var(--pax-surface);border:1px solid var(--pax-edge);
+  box-shadow:var(--neo-raised);pointer-events:none;
+  animation:paxRollAcross 25s linear infinite;
+  will-change:transform
+}
+@keyframes paxRollAcross{
+  0%{transform:translate3d(0,0,0) rotate(0deg)}
+  12%{transform:translate3d(12vw,-5px,0) rotate(100deg)}
+  28%{transform:translate3d(30vw,2px,0) rotate(250deg)}
+  45%{transform:translate3d(49vw,-4px,0) rotate(410deg)}
+  63%{transform:translate3d(69vw,1px,0) rotate(570deg)}
+  82%{transform:translate3d(91vw,-4px,0) rotate(740deg)}
+  100%{transform:translate3d(calc(100vw + 80px),0,0) rotate(900deg)}
+}
+body.social-open #paxBuddy{display:none}
+@media(max-width:560px){
+  .card,.panel,.report-actions,.grid-wrap{border-radius:21px}
+  .tabs{border-radius:21px}
+  .hero{padding:19px;border-radius:24px}
+}
+@media(prefers-reduced-motion:reduce){
+  #paxBuddy{display:none!important}
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important}
+}
+
 </style>
 
 </head>
@@ -1400,6 +1537,7 @@ header{background:var(--bg)!important}
 </nav>
 
 <div class="help-wrap"><div id="helpButtonWrap"><button class="help-btn" id="helpButton" type="button">🆘 Yordam</button></div></div>
+<div id="paxBuddy" aria-hidden="true">🌟</div>
 <div id="toast" class="toast" role="status"></div>
 
 <script>
@@ -3337,6 +3475,20 @@ header{background:var(--bg)!important}
     switchCabinet.disabled = false;
   });
 
+  // Role-aware PAXMOQ mascot; CSS animation uses transforms only for low-cost rendering.
+  (() => {
+    const buddy = $("paxBuddy"), label = $("roleLabel");
+    if (!buddy || !label) return;
+    const setBuddy = () => {
+      const role = (label.textContent || "").toLowerCase();
+      buddy.textContent = role.includes("admin") ? "👑" :
+        role.includes("o‘qit") || role.includes("oqit") || role.includes("teacher") ? "🧑‍🏫" :
+        role.includes("ota-ona") || role.includes("parent") ? "👨‍👩‍👧" :
+        role.includes("o‘quv") || role.includes("oquv") || role.includes("student") ? "🎓" : "🌟";
+    };
+    setBuddy();
+    new MutationObserver(setBuddy).observe(label,{childList:true,subtree:true,characterData:true});
+  })();
   init();
 })();
 </script>
