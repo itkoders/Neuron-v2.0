@@ -662,7 +662,7 @@ def db_add_subject(tid, name, labels):
 
 # --- O'quvchilar ---
 STU_COLS = ("id, teacher_id, subject_id, fio, code, s1, s2, s3, davomat, payment_amount, payment_status, "
-            "payment_date, phone, group_name, teacher_note, last_score_date")
+            "payment_date, phone, group_name, teacher_note, last_score_date, enrolled_month")
 
 
 def _student(r):
@@ -672,7 +672,7 @@ def _student(r):
         "davomat": r[8] or "Kutilmoqda", "payment_amount": r[9] or 0,
         "payment_status": r[10] or UNPAID, "payment_date": r[11] or "-",
         "phone": r[12] or "Kiritilmagan", "group_name": r[13] or "Guruhsiz",
-        "teacher_note": r[14] or "Izoh mavjud emas", "last_score_date": r[15] or "",
+        "teacher_note": r[14] or "Izoh mavjud emas", "last_score_date": r[15] or "", "enrolled_month": r[16] or "",
     }
 
 
