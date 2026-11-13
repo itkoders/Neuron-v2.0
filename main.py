@@ -5886,9 +5886,48 @@ async def api_teacher_export(request):
         ws.page_setup.fitToHeight = 0
         ws.sheet_properties.outlinePr.summaryBelow = True
 
+    # Excel hisobotni Mini App yuklab olishidan tashqari o'qituvchining Telegram chatiga ham yuboramiz.
+    if "payments" in effective_plan(teacher)[0]["features"]:
+        try:
+            pay_ws = wb.create_sheet("Oylik to'lovlar")
+            pay_headers = ["O'quvchi", "Oy", "Oylik to'lovi", "To'langan", "Qarz", "To'lov sanasi", "Izoh"]
+            pay_ws.append(pay_headers)
+            pay_charges = run("""SELECT c.student_id,s.fio,c.month,c.due_amount,
+                COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
+                  WHERE p.student_id=c.student_id AND p.month=c.month),0)
+                FROM student_monthly_charges c JOIN students s ON s.id=c.student_id
+                WHERE c.teacher_id=? ORDER BY c.month,s.fio""",(teacher["id"],),fetch="all")
+            for row in pay_charges:
+                pay_rows = run("""SELECT paid_date,note FROM student_payment_entries
+                    WHERE teacher_id=? AND student_id=? AND month=? ORDER BY paid_date DESC,id DESC LIMIT 1""",
+                    (teacher["id"],row[0],row[2]),fetch="one")
+                paid_date = pay_rows[0] if pay_rows else "-"
+                note = pay_rows[1] if pay_rows else ""
+                pay_ws.append([row[1],row[2],int(row[3] or 0),int(row[4] or 0),
+                               max(0,int(row[3] or 0)-int(row[4] or 0)),paid_date,note])
+            pay_ws.freeze_panes = "A2"
+            pay_ws.auto_filter.ref = pay_ws.dimensions
+            for cell in pay_ws[1]:
+                cell.font = Font(bold=True,color="FFFFFF")
+                cell.fill = PatternFill("solid",fgColor="243B53")
+            for col,width in enumerate([28,12,18,18,18,16,30],1):
+                pay_ws.column_dimensions[get_column_letter(col)].width=width
+            pay_ws.sheet_view.showGridLines = False
+        except Exception:
+            logging.exception("Excelga oylik to'lovlar jurnalini qo'shishda xato")
+
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+    if bot and teacher.get("chat_id"):
+        try:
+            await bot.send_document(
+                teacher["chat_id"],
+                BufferedInputFile(output.getvalue(), filename="NEURON_hisobot.xlsx"),
+                caption="📊 NEURON Excel hisobotingiz tayyor. Fayl yuklab olish oynasiga ham berildi."
+            )
+        except Exception:
+            logging.exception("Excel hisobotini o'qituvchining Telegram chatiga yuborib bo'lmadi")
     audit(teacher["chat_id"], "miniapp_export_xlsx", "",
           f"daily workbook from {registration_label} to {today.strftime('%d.%m.%Y')}; days={(today-start_date).days+1}")
     return web.Response(
