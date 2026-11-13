@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import base64
 import time
 import hmac
 import hashlib
@@ -25,6 +26,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
                            KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from PIL import Image, ImageDraw, ImageFont
+from cryptography.fernet import Fernet, InvalidToken
 
 logging.basicConfig(level=logging.INFO)
 
@@ -44,6 +46,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 MAX_LOGIN_FAILS = 5
 BLOCK_SECONDS = 600
 MAX_CHILDREN = 3
+MAX_ADMIN_USERS = 3
+MAX_TEACHER_DEVICES = 3
 PAID = "To'langan"
 UNPAID = "To'lanmagan"
 DEFAULT_LABELS = ["Test", "Qo'shimcha", "Uy vazifasi"]
@@ -240,6 +244,7 @@ def init_db():
         chat_id BIGINT UNIQUE,
         first_name TEXT, last_name TEXT, phone TEXT,
         code_lookup TEXT UNIQUE,
+        code_encrypted TEXT,
         plan_key TEXT DEFAULT 'free',
         plan_expires TEXT,
         active INTEGER DEFAULT 1,
@@ -251,6 +256,14 @@ def init_db():
     teacher_columns = {r[1] for r in run("PRAGMA table_info(teachers)", fetch="all")}
     if "admin_approved" not in teacher_columns:
         run("ALTER TABLE teachers ADD COLUMN admin_approved INTEGER DEFAULT 0")
+    if "code_encrypted" not in teacher_columns:
+        run("ALTER TABLE teachers ADD COLUMN code_encrypted TEXT")
+    run("""CREATE TABLE IF NOT EXISTS teacher_access (
+        teacher_id INTEGER NOT NULL, chat_id BIGINT UNIQUE NOT NULL,
+        created_at TEXT, PRIMARY KEY(teacher_id, chat_id))""")
+    for access_tid, access_uid in run("SELECT id, chat_id FROM teachers WHERE chat_id IS NOT NULL", fetch="all"):
+        run("INSERT INTO teacher_access (teacher_id, chat_id, created_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO NOTHING",
+            (access_tid, access_uid, datetime.now().strftime("%d.%m.%Y %H:%M")))
     run("""CREATE TABLE IF NOT EXISTS subjects (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
         name TEXT NOT NULL, label1 TEXT, label2 TEXT, label3 TEXT)""")
@@ -309,6 +322,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
     run("CREATE TABLE IF NOT EXISTS super_admins (chat_id BIGINT PRIMARY KEY)")
+    if OWNER_TELEGRAM_ID > 0:
+        run("INSERT INTO super_admins (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING", (OWNER_TELEGRAM_ID,))
     run("""CREATE TABLE IF NOT EXISTS pending_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
         parent_chat_id BIGINT, parent_name TEXT)""")
@@ -426,6 +441,26 @@ def verify_pw(stored, password):
     return hmac.compare_digest(check, digest)
 
 
+def _teacher_code_cipher():
+    # Reversible copy is encrypted at rest; lookup still uses a one-way hash.
+    secret = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "").strip() or PEPPER
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+    return Fernet(key)
+
+
+def encrypt_teacher_code(code):
+    return _teacher_code_cipher().encrypt(str(code).encode()).decode()
+
+
+def decrypt_teacher_code(value):
+    if not value:
+        return None
+    try:
+        return _teacher_code_cipher().decrypt(str(value).encode()).decode()
+    except (InvalidToken, ValueError, TypeError):
+        return None
+
+
 def teacher_lookup(code):
     return hashlib.sha256(f"{PEPPER}:{code}".encode()).hexdigest()
 
@@ -461,6 +496,17 @@ def reset_fails(chat_id):
 
 def is_super(chat_id):
     return int(chat_id or 0) == OWNER_TELEGRAM_ID
+
+
+def is_admin_member(chat_id):
+    if is_super(chat_id):
+        return True
+    return bool(run("SELECT 1 FROM super_admins WHERE chat_id=?", (int(chat_id or 0),), fetch="one"))
+
+
+def admin_member_count():
+    row = run("SELECT COUNT(DISTINCT chat_id) FROM super_admins", fetch="one")
+    return int(row[0] or 0) if row else 0
 
 
 # --- Tariflar ---
@@ -532,7 +578,12 @@ def db_teacher(tid):
 
 
 def teacher_by_chat(chat_id):
-    return _teacher(run(f"SELECT {TEACHER_COLS} FROM teachers WHERE chat_id = ? AND active = 1", (chat_id,), fetch="one"))
+    row = run(f"SELECT {TEACHER_COLS} FROM teachers WHERE chat_id = ? AND active = 1", (chat_id,), fetch="one")
+    if row:
+        return _teacher(row)
+    row = run(f"SELECT {TEACHER_COLS} FROM teachers WHERE id = (SELECT teacher_id FROM teacher_access WHERE chat_id = ? LIMIT 1) AND active = 1",
+              (chat_id,), fetch="one")
+    return _teacher(row)
 
 
 def db_all_teachers():
@@ -567,10 +618,15 @@ def _digits(s):
 def create_teacher(chat_id, data, status, doc_file_id=None):
     code = new_teacher_code()
     run("UPDATE teachers SET chat_id = NULL WHERE chat_id = ?", (chat_id,))
-    run("INSERT INTO teachers (chat_id, first_name, last_name, phone, code_lookup, plan_key, plan_expires, active, "
-        "created_at, verify_status, doc_file_id, admin_approved) VALUES (?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?, 0)",
-        (chat_id, data["first_name"], data["last_name"], data["phone"], teacher_lookup(code),
-         datetime.now().strftime("%d.%m.%Y %H:%M"), status, doc_file_id))
+    created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
+    run("INSERT INTO teachers (chat_id, first_name, last_name, phone, code_lookup, code_encrypted, plan_key, plan_expires, active, "
+        "created_at, verify_status, doc_file_id, admin_approved) VALUES (?, ?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?, 0)",
+        (chat_id, data["first_name"], data["last_name"], data["phone"], teacher_lookup(code), encrypt_teacher_code(code),
+         created_at, status, doc_file_id))
+    teacher_id_row = run("SELECT id FROM teachers WHERE chat_id=?", (chat_id,), fetch="one")
+    if teacher_id_row:
+        run("INSERT INTO teacher_access (teacher_id, chat_id, created_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO NOTHING",
+            (teacher_id_row[0], chat_id, created_at))
     t = teacher_by_chat(chat_id)
     audit(chat_id, "teacher_register", str(t["id"]), f"{teacher_name(t)} / {status}")
     return t, code
@@ -728,6 +784,7 @@ def delete_subject(sid):
 
 
 def delete_teacher(tid):
+    run("DELETE FROM teacher_access WHERE teacher_id=?", (tid,))
     for subj in db_subjects(tid):
         delete_subject(subj["id"])
     run("DELETE FROM calendar_events WHERE teacher_id = ?", (tid,))
@@ -2996,8 +3053,12 @@ async def tp_bcast_send(message: types.Message, state: FSMContext):
 # ============================================================
 @dp.message(Command("superadmin"), F.chat.type == "private")
 async def superadmin_cmd(message: types.Message, state: FSMContext):
-    if not is_super(message.from_user.id):
-        await message.answer("⛔ Bu buyruq faqat loyiha egasi uchun.")
+    uid = message.from_user.id
+    if is_admin_member(uid):
+        await message.answer(sa_menu_text(), reply_markup=sa_menu_kb(), parse_mode="Markdown")
+        return
+    if admin_member_count() >= MAX_ADMIN_USERS:
+        await message.answer("⛔ Admin kabineti 3 ta akkaunt bilan cheklangan.")
         return
     await state.set_state(SuperStates.login)
     await send_and_clean_both(message, "⚙️ **Super Admin parolini kiriting:**", delay=60)
@@ -3005,8 +3066,8 @@ async def superadmin_cmd(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "super_admin_login_prompt")
 async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext):
-    if not is_super(call.from_user.id):
-        await call.answer("⛔ Faqat loyiha egasi uchun.", show_alert=True)
+    if not is_admin_member(call.from_user.id) and admin_member_count() >= MAX_ADMIN_USERS:
+        await call.answer("Admin kabineti 3 ta akkaunt bilan cheklangan.", show_alert=True)
         return
     await call.answer()
     await state.set_state(SuperStates.login)
@@ -3017,9 +3078,9 @@ async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext)
 @dp.message(SuperStates.login, F.chat.type == "private")
 async def check_super_password(message: types.Message, state: FSMContext):
     cid = message.chat.id
-    if not is_super(message.from_user.id):
+    if not is_admin_member(cid) and admin_member_count() >= MAX_ADMIN_USERS:
         await state.clear()
-        await message.answer("⛔ Super Admin huquqi faqat loyiha egasiga berilgan.")
+        await message.answer("⛔ Admin kabineti 3 ta akkaunt bilan cheklangan.")
         return
     if is_blocked(cid):
         await send_and_clean_both(message, "⛔ Juda ko'p noto'g'ri urinish. Keyinroq urinib ko'ring.", delay=30)
@@ -4406,7 +4467,7 @@ def miniapp_identity(request):
         # Har bir rolni ilova ichidan tanlashga ruxsat beramiz; bir akkaunt bir nechta rolga ega bo‘lishi mumkin.
         return "entry", uid, None
     if requested_role == "admin":
-        if is_super(uid):
+        if is_admin_member(uid):
             return "admin", uid, None
         return None, None, web.json_response({"error": "forbidden"}, status=403)
     if requested_role not in {"", "teacher", "student", "parent"}:
@@ -4459,7 +4520,7 @@ def miniapp_admin(request):
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
-    if not is_super(uid) or request.headers.get("X-App-Role", "").strip().lower() != "admin":
+    if not is_admin_member(uid) or request.headers.get("X-App-Role", "").strip().lower() != "admin":
         return None, web.json_response({"error": "forbidden"}, status=403)
     return uid, None
 
@@ -4475,6 +4536,7 @@ def _admin_overview_payload():
             "verify_status": t.get("verify_status") or "", "plan_key": p["key"],
             "plan_name": p["name"], "plan_expires": t.get("plan_expires") or "",
             "students": teacher_student_count(t["id"]), "student_limit": p["student_limit"],
+            "device_count": run("SELECT COUNT(*) FROM teacher_access WHERE teacher_id=?", (t["id"],), fetch="one")[0],
             "ai_enabled": db_get_setting(f"ai_allowed_{t['id']}") == "1",
             "created_at": t.get("created_at") or ""
         })
@@ -4488,7 +4550,8 @@ def _admin_overview_payload():
     stats = {
         "teachers": len(teachers), "active_teachers": sum(1 for t in teachers if t["active"]),
         "students": run("SELECT COUNT(*) FROM students", fetch="one")[0],
-        "paid_teachers": sum(1 for t in teachers if effective_plan(t)[0]["price"] > 0)
+        "paid_teachers": sum(1 for t in teachers if effective_plan(t)[0]["price"] > 0),
+        "admin_users": min(admin_member_count(), MAX_ADMIN_USERS)
     }
     settings = {
         "mandatory_sub": db_get_setting("mandatory_sub") == "1",
@@ -4529,6 +4592,8 @@ async def api_admin_teacher_action(request):
     elif action == "toggle_active":
         active = 0 if t["active"] else 1
         run("UPDATE teachers SET active=?, chat_id=CASE WHEN ?=0 THEN NULL ELSE chat_id END WHERE id=?", (active, active, tid))
+        if not active:
+            run("DELETE FROM teacher_access WHERE teacher_id=?", (tid,))
         audit(uid, "teacher_active", str(tid), str(active))
     elif action == "assign_plan":
         key = str(body.get("plan_key", "")).strip().lower()
@@ -4555,9 +4620,23 @@ async def api_admin_teacher_action(request):
         enabled = db_get_setting(key) != "1"
         db_set_setting(key, "1" if enabled else "0")
         audit(uid, "ai_allowed", str(tid), "on" if enabled else "off")
+    elif action == "reveal_code":
+        saved = run("SELECT code_encrypted FROM teachers WHERE id=?", (tid,), fetch="one")
+        code = decrypt_teacher_code(saved[0] if saved else None)
+        rotated = not bool(code)
+        if rotated:
+            # Eski versiyada faqat hash saqlangan: uni tiklab bo'lmaydi, bir marta yangi kod beriladi.
+            code = new_teacher_code()
+            run("UPDATE teachers SET code_lookup=?, code_encrypted=? WHERE id=?",
+                (teacher_lookup(code), encrypt_teacher_code(code), tid))
+            audit(uid, "teacher_code_reveal_legacy_reset", str(tid))
+        else:
+            audit(uid, "teacher_code_reveal", str(tid))
+        return web.json_response({"ok":True, "code":code, "rotated":rotated})
     elif action == "regenerate_code":
         code = new_teacher_code()
-        run("UPDATE teachers SET code_lookup=?, chat_id=NULL WHERE id=?", (teacher_lookup(code), tid))
+        run("UPDATE teachers SET code_lookup=?, code_encrypted=? WHERE id=?",
+            (teacher_lookup(code), encrypt_teacher_code(code), tid))
         audit(uid, "code_regen", str(tid))
         return web.json_response({"ok":True, "code":code})
     elif action == "delete":
@@ -5188,9 +5267,9 @@ async def api_me(request):
         parent_linked = bool(db_parent_miniapp_student_ids(obj))
         parent_pending = bool(run("SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"))
         teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved" and has_feature(teacher, "mini_app"))
-        available_roles = (["admin"] if is_super(obj) else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
+        available_roles = (["admin"] if is_admin_member(obj) else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
         return web.json_response({
-            "role":"entry", "is_admin":is_super(obj), "teacher_pending":pending, "teacher_ready":teacher_ready,
+            "role":"entry", "is_admin":is_admin_member(obj), "teacher_pending":pending, "teacher_ready":teacher_ready,
             "teacher_name":teacher_name(teacher) if teacher else "",
             "student_linked":bool(student_link), "parent_linked":parent_linked,
             "parent_pending":parent_pending, "available_roles":available_roles,
@@ -5238,7 +5317,7 @@ async def api_save_role_preference(request):
     role = str(body.get("role", "")).strip().lower()
     if role not in {"entry", "parent", "student", "teacher", "admin"}:
         return web.json_response({"error": "bad_role"}, status=400)
-    if role == "admin" and not is_super(uid):
+    if role == "admin" and not is_admin_member(uid):
         return web.json_response({"error": "forbidden"}, status=403)
     db_set_setting(f"last_role_{uid}", role)
     return web.json_response({"ok": True})
@@ -5340,10 +5419,21 @@ async def api_onboard_teacher_login(request):
         return web.json_response({"error": "bad_teacher_code"}, status=404)
     if not row[1]:
         return web.json_response({"error": "teacher_blocked"}, status=403)
+    teacher_id = int(row[0])
+    primary = run("SELECT id FROM teachers WHERE chat_id=?", (uid,), fetch="one")
+    if primary and int(primary[0]) != teacher_id:
+        return web.json_response({"error":"telegram_account_already_linked"},status=409)
+    current = run("SELECT teacher_id FROM teacher_access WHERE chat_id=?", (uid,), fetch="one")
+    if current and int(current[0]) != teacher_id:
+        return web.json_response({"error":"telegram_account_already_linked"},status=409)
+    if not current:
+        count_row = run("SELECT COUNT(*) FROM teacher_access WHERE teacher_id=?", (teacher_id,), fetch="one")
+        if int(count_row[0] or 0) >= MAX_TEACHER_DEVICES:
+            return web.json_response({"error":"teacher_device_limit","limit":MAX_TEACHER_DEVICES},status=409)
+        run("INSERT INTO teacher_access (teacher_id, chat_id, created_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO NOTHING",
+            (teacher_id, uid, datetime.now().strftime("%d.%m.%Y %H:%M")))
     reset_fails(uid)
-    run("UPDATE teachers SET chat_id=NULL WHERE chat_id=?", (uid,))
-    run("UPDATE teachers SET chat_id=? WHERE id=?", (uid, row[0]))
-    teacher = db_teacher(row[0])
+    teacher = db_teacher(teacher_id)
     audit(uid, "miniapp_teacher_login", str(row[0]))
     if not teacher.get("admin_approved") or teacher.get("verify_status") != "approved":
         return web.json_response({"ok": True, "pending": True})
