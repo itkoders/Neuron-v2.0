@@ -6220,13 +6220,15 @@ async def api_teacher_export(request):
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+    telegram_sent = False
     if bot and teacher.get("chat_id"):
         try:
             await bot.send_document(
                 teacher["chat_id"],
                 BufferedInputFile(output.getvalue(), filename="NEURON_hisobot.xlsx"),
-                caption="📊 NEURON Excel hisobotingiz tayyor. Fayl yuklab olish oynasiga ham berildi."
+                caption="📊 NEURON Excel hisobotingiz tayyor. Hisobot Excel formatida biriktirildi."
             )
+            telegram_sent = True
         except Exception:
             logging.exception("Excel hisobotini o'qituvchining Telegram chatiga yuborib bo'lmadi")
     audit(teacher["chat_id"], "miniapp_export_xlsx", "",
@@ -6283,7 +6285,9 @@ async def api_teacher_export_to_chat(request):
     response = await api_teacher_export(request)
     if response.status != 200:
         return response
-    # api_teacher_export faylni Telegram chatiga jo‘natadi; bu endpoint faqat natijani qaytaradi.
+    if response.headers.get("X-Telegram-Sent") != "1":
+        return web.json_response({"error":"telegram_send_failed","message":"Fayl yaratildi, ammo Telegram chatiga yuborilmadi. Botni /start qiling va qayta urinib ko‘ring."}, status=502)
+    # api_teacher_export faylni Telegram chatiga jo‘natdi; bu endpoint faqat natijani qaytaradi.
     return web.json_response({"ok":True,"sent":True,"message":"Telegram chatiga yuborildi."})
 
 async def api_teacher_requests(request):
