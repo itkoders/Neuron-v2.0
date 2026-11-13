@@ -1142,6 +1142,98 @@ img,video,canvas{max-width:100%}
   #socialContent .social-crop-box{position:relative;z-index:2;background:var(--surface);padding:12px;border-radius:18px}
   #socialContent .social-crop-stage{touch-action:none}
   #socialContent .social-badge-preview{padding-bottom:8px}
+
+<style id="neuron-neumorphism-v1">
+/* NEURON — PAXMOQ / TRUE NEUMORPHISM */
+:root{
+  --bg:#e9eef5; --surface:#e9eef5; --surface-2:#e3e9f1;
+  --line:rgba(255,255,255,.62); --text:#253247; --muted:#718096;
+  --neo-light:#ffffff; --neo-dark:#c7d0dc;
+  --neo-raised:8px 8px 18px var(--neo-dark),-8px -8px 18px var(--neo-light);
+  --neo-raised-sm:5px 5px 11px var(--neo-dark),-5px -5px 11px var(--neo-light);
+  --neo-inset:inset 5px 5px 10px var(--neo-dark),inset -5px -5px 10px var(--neo-light);
+  --neo-inset-sm:inset 3px 3px 7px var(--neo-dark),inset -3px -3px 7px var(--neo-light);
+  --shadow:var(--neo-raised);
+}
+:root[data-theme="dark"]{
+  --bg:#202b3a; --surface:#202b3a; --surface-2:#1c2634;
+  --line:rgba(255,255,255,.035); --text:#e4edf8; --muted:#9aacc1;
+  --neo-light:#2a394d; --neo-dark:#18212d;
+  --neo-raised:8px 8px 18px var(--neo-dark),-8px -8px 18px var(--neo-light);
+  --neo-raised-sm:5px 5px 11px var(--neo-dark),-5px -5px 11px var(--neo-light);
+  --neo-inset:inset 5px 5px 10px var(--neo-dark),inset -5px -5px 10px var(--neo-light);
+  --neo-inset-sm:inset 3px 3px 7px var(--neo-dark),inset -3px -3px 7px var(--neo-light);
+  --shadow:var(--neo-raised);
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#202b3a; --surface:#202b3a; --surface-2:#1c2634;
+    --line:rgba(255,255,255,.035); --text:#e4edf8; --muted:#9aacc1;
+    --neo-light:#2a394d; --neo-dark:#18212d;
+    --neo-raised:8px 8px 18px var(--neo-dark),-8px -8px 18px var(--neo-light);
+    --neo-raised-sm:5px 5px 11px var(--neo-dark),-5px -5px 11px var(--neo-light);
+    --neo-inset:inset 5px 5px 10px var(--neo-dark),inset -5px -5px 10px var(--neo-light);
+    --neo-inset-sm:inset 3px 3px 7px var(--neo-dark),inset -3px -3px 7px var(--neo-light);
+    --shadow:var(--neo-raised);
+  }
+}
+html,body{background:var(--bg)!important;color:var(--text)}
+body::before,body::after{opacity:.10;filter:blur(85px)}
+header{background:var(--bg)!important}
+.card,.panel,.stat,.att-item,.score-card,.fact,.profile,.history-item,.note,
+.report-actions,.grid-wrap,.parent-card-info,.help-btn,.theme-switch,.tabs,
+.bubble.ai,.chip-btn:not(.primary):not(.danger),.btn.ghost{
+  background:var(--surface)!important;
+  border:1px solid var(--line)!important;
+  box-shadow:var(--neo-raised)!important;
+}
+.card,.panel,.stat,.att-item,.score-card,.fact,.profile,.history-item,
+.report-actions,.grid-wrap,.parent-card-info,.note{border-radius:22px}
+.field,select,input[type="search"],.parent-pay-box input[type="file"],
+.topic-row .field,.composer .field{
+  background:var(--surface)!important;color:var(--text)!important;
+  border:1px solid transparent!important;box-shadow:var(--neo-inset)!important;
+  border-radius:15px!important;
+}
+.field:focus,select:focus,input:focus{
+  border-color:var(--brand)!important;box-shadow:var(--neo-inset),0 0 0 2px var(--brand-soft)!important;
+}
+.chip-btn:not(.primary):not(.danger),.btn.ghost,.help-btn,
+.theme-switch button,.seg button:not(.on-keldi):not(.on-kelmadi):not(.on-sababli),
+.tab:not(.active){
+  background:var(--surface)!important;box-shadow:var(--neo-raised-sm)!important;
+  border:1px solid var(--line)!important;color:var(--text);
+}
+.chip-btn:active,.btn:active,.parent-pay-quick:active,
+.theme-switch button:active,.tab:active,.seg button:active{
+  transform:translateY(1px) scale(.985);
+  box-shadow:var(--neo-inset-sm)!important;
+}
+.tab.active,.theme-switch button.active,.seg button.on-kut{
+  background:var(--surface-2)!important;color:var(--brand-ink)!important;
+  box-shadow:var(--neo-inset-sm)!important;
+}
+.tabs{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.logo,.avatar{box-shadow:var(--neo-raised-sm)!important}
+.status{box-shadow:var(--neo-inset-sm)}
+.hero{border:1px solid rgba(255,255,255,.2);box-shadow:var(--neo-raised);border-radius:26px}
+.hero-stat{box-shadow:inset 2px 2px 7px rgba(0,0,0,.08),inset -2px -2px 7px rgba(255,255,255,.10)}
+.journal-table,.journal-table th,.journal-table td{border-color:var(--line)}
+.journal-table thead th,.journal-table tfoot td{background:var(--surface-2)}
+.journal-table th.name,.journal-table td.name{background:var(--surface)}
+.journal-table td input:focus{box-shadow:var(--neo-inset-sm)!important;border-radius:8px}
+.bar,.score-card .meter{background:var(--surface-2);box-shadow:var(--neo-inset-sm)}
+.chip{box-shadow:var(--neo-raised-sm)}
+.bubble.me{box-shadow:var(--neo-raised-sm)}
+.del-btn{box-shadow:var(--neo-raised-sm)}
+@media(max-width:560px){
+  .card,.panel,.report-actions,.grid-wrap{border-radius:19px}
+  .tabs{border-radius:20px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
+}
+</style>
 </style>
 </head>
 <body>
