@@ -242,6 +242,13 @@
     .score-cards{grid-template-columns:1fr 1fr}
     .hero .title{font-size:26px}
   }
+  /* Mobil qurilmalarda ko‘p element chizilishini yengillashtirish — vizual uslub saqlanadi. */
+  @media(max-width:760px){
+    .tabs{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+    .hero-stat{backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+    .card{animation-duration:.28s;animation-delay:0s!important}
+    .card:nth-child(n+7){animation:none!important}
+  }
   @media(max-width:480px){
     .who h1{font-size:15px}
     .hero{padding:16px}
@@ -2303,7 +2310,7 @@ body.social-open #paxBuddy{display:none}
     const refresh=async()=>{try{const d=await api("/api/social/direct/"+encodeURIComponent(peerId)+"?after="+(first?0:last));const rows=d.messages||[];if(first){box.innerHTML="";first=false;}if(rows.length){box.querySelector(".social-empty")?.remove();}rows.forEach(m=>{if(Number(m.id)<=last)return;const mine=Number(m.sender)===Number(socialProfile?.chat_id);box.insertAdjacentHTML("beforeend",'<article class="tg-message '+(mine?'mine':'')+'"><div class="tg-message-head">'+avatarHTML(m)+'<div class="tg-message-author"><strong>'+esc(mine?'Siz':(m.display_name||peerName||"Foydalanuvchi"))+'</strong><span>· '+esc((m.created_at||"").slice(11,16))+'</span></div></div><p>'+esc(m.body)+'</p></article>');last=Math.max(last,Number(m.id)||0);});if(!box.children.length)box.innerHTML='<div class="social-empty">Suhbatni birinchi bo‘lib boshlang.</div>';box.scrollTop=box.scrollHeight;}catch(e){if(!box.children.length)box.innerHTML='<div class="social-empty">'+esc(errText(e))+'</div>';}};
     $("directBack").onclick=()=>renderSocialHome();
     $("directSend").onsubmit=async e=>{e.preventDefault();const input=$("directMessage"),message=input.value.trim();if(!message)return;const btn=e.submitter||$("directSend").querySelector("button");btn.disabled=true;try{await api("/api/social/direct/"+encodeURIComponent(peerId),{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();}catch(err){toast(err.data?.error==="chat_slow_down"?"Biroz kuting.":errText(err));}finally{btn.disabled=false;input.focus();}};
-    await refresh();socialPoll=setInterval(refresh,3000);
+    await refresh();socialPoll=setInterval(()=>{if(!document.hidden)refresh();},10000);
   }
   async function renderSocialChat(){
     const host=$("socialContent");
@@ -2349,7 +2356,7 @@ body.social-open #paxBuddy{display:none}
         catch(e){results.textContent=errText(e);}
       },300);
     };
-    socialPoll=setInterval(refresh,3500);
+    socialPoll=setInterval(()=>{if(!document.hidden)refresh();},10000);
   }
   $("socialClose")?.addEventListener("click",closeSocial);
   $("socialOverlay")?.addEventListener("click",e=>{if(e.target.id==="socialOverlay")closeSocial();});
@@ -4003,7 +4010,7 @@ body.social-open #paxBuddy{display:none}
   const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if(reduce) return;
   const mobile=window.matchMedia("(max-width:600px)").matches;
-  const total=mobile?34:62;
+  const total=mobile?20:44;
   const fragment=document.createDocumentFragment();
   for(let i=0;i<total;i++){
     const flake=document.createElement("span");
