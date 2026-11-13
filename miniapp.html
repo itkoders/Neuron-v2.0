@@ -1602,6 +1602,18 @@ body.social-open #paxBuddy{display:none}
     background:linear-gradient(125deg,#124b70 0%,#263f78 55%,#4b376d 100%)!important;
     border:1px solid rgba(172,222,255,.18);
   }
+  .newyear-countdown{
+    margin:10px 14px 12px;padding:12px 15px;border-radius:18px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+    color:#effaff;background:linear-gradient(115deg,rgba(5,35,76,.96),rgba(18,91,145,.92),rgba(50,64,133,.92));
+    border:1px solid rgba(160,224,255,.58);
+    box-shadow:0 10px 28px rgba(4,45,91,.22),inset 0 1px 0 rgba(255,255,255,.18);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)
+  }
+  .newyear-countdown-label{font-size:11px;font-weight:900;letter-spacing:.08em;color:#bcecff}
+  .newyear-countdown strong{font-size:clamp(15px,3.5vw,21px);font-variant-numeric:tabular-nums;color:#fff}
+  .newyear-countdown-sub{font-size:10px;color:#c9e8ff;opacity:.9}
+  :root[data-theme="light"] .newyear-countdown{box-shadow:0 12px 28px rgba(28,99,150,.18),inset 0 1px 0 rgba(255,255,255,.25)}
   .hero{position:relative}
   .hero::before{
     content:"❄  ✦  ❄";position:absolute;right:18px;top:14px;
@@ -1649,6 +1661,12 @@ body.social-open #paxBuddy{display:none}
       <button type="button" id="switchCabinetBtn" class="chip-btn hidden" style="min-height:38px;padding:0 11px;font-size:12px">↩ Chiqish</button>
       <span id="status" class="status">Tayyor</span>
     </div>
+  </div>
+
+  <div class="newyear-countdown" id="newYearCountdown" aria-live="off">
+    <span class="newyear-countdown-label">🎄 2027-YILGACHA QOLDI</span>
+    <strong id="newYearTimer">Hisoblanmoqda…</strong>
+    <span class="newyear-countdown-sub">NEURON × ITKODERS · YANGI YIL</span>
   </div>
 
   <div id="teacherControls" class="controls hidden">
@@ -3846,6 +3864,24 @@ body.social-open #paxBuddy{display:none}
     setBuddy();
     new MutationObserver(setBuddy).observe(label,{childList:true,subtree:true,characterData:true});
   })();
+  (() => {
+    const out = $("newYearTimer");
+    if (!out) return;
+    const target = new Date("2026-12-31T19:00:00Z").getTime(); // 2027-01-01 00:00 Toshkent
+    const pad = n => String(n).padStart(2, "0");
+    const tick = () => {
+      const left = Math.max(0, target - Date.now());
+      if (left <= 0) { out.textContent = "🎆 YANGI YIL MUBORAK!"; return; }
+      const days = Math.floor(left / 86400000);
+      const hours = Math.floor(left / 3600000) % 24;
+      const mins = Math.floor(left / 60000) % 60;
+      const secs = Math.floor(left / 1000) % 60;
+      out.textContent = days + " kun · " + pad(hours) + ":" + pad(mins) + ":" + pad(secs);
+    };
+    tick();
+    setInterval(tick, 1000);
+  })();
+
   init();
 })();
 </script>
