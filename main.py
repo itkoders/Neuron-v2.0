@@ -281,6 +281,18 @@ def init_db():
         run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_type TEXT DEFAULT 'card'")
     if "payment_details" not in payment_cols:
         run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_details TEXT DEFAULT ''")
+    run("""CREATE TABLE IF NOT EXISTS student_monthly_charges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+        month TEXT NOT NULL, due_amount INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT, updated_at TEXT,
+        UNIQUE(student_id, month))""")
+    run("""CREATE TABLE IF NOT EXISTS student_payment_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        teacher_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+        month TEXT NOT NULL, amount INTEGER NOT NULL,
+        paid_date TEXT NOT NULL, note TEXT DEFAULT '',
+        created_at TEXT)""")
     run("""CREATE TABLE IF NOT EXISTS payment_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id BIGINT NOT NULL,
         amount INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT DEFAULT '', status TEXT DEFAULT 'pending',
@@ -5336,6 +5348,126 @@ async def api_onboard_teacher_login(request):
     return web.json_response({"ok": True, "pending": False})
 
 
+async def api_teacher_payments(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    month = str(request.query.get("month", local_now().strftime("%Y-%m"))).strip()
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return web.json_response({"error":"bad_month"}, status=400)
+    students = list(db_students(teacher["id"]).values())
+    # Har ko'rilgan oy uchun o'quvchining belgilangan oylik summasi avtomatik qarzdorlikka yoziladi.
+    for st in students:
+        run("""INSERT INTO student_monthly_charges
+            (teacher_id,student_id,month,due_amount,created_at,updated_at)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(student_id,month) DO NOTHING""",
+            (teacher["id"], st["id"], month, int(st.get("payment_amount") or 0),
+             local_now().strftime("%Y-%m-%d %H:%M:%S"), local_now().strftime("%Y-%m-%d %H:%M:%S")))
+    charge_rows = run("""SELECT c.student_id,c.due_amount,
+        COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
+          WHERE p.student_id=c.student_id AND p.month=c.month),0)
+        FROM student_monthly_charges c WHERE c.teacher_id=? AND c.month=?""",
+        (teacher["id"], month), fetch="all")
+    month_map = {int(r[0]): {"due":int(r[1] or 0),"paid":int(r[2] or 0)} for r in charge_rows}
+    debt_rows = run("""SELECT c.student_id,
+        SUM(c.due_amount-COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
+          WHERE p.student_id=c.student_id AND p.month=c.month),0))
+        FROM student_monthly_charges c WHERE c.teacher_id=? GROUP BY c.student_id""",
+        (teacher["id"],), fetch="all")
+    total_debt = {int(r[0]): max(0,int(r[1] or 0)) for r in debt_rows}
+    history = run("""SELECT p.id,p.student_id,p.month,p.amount,p.paid_date,p.note,s.fio
+        FROM student_payment_entries p JOIN students s ON s.id=p.student_id
+        WHERE p.teacher_id=? AND p.month=? ORDER BY p.paid_date DESC,p.id DESC LIMIT 150""",
+        (teacher["id"], month), fetch="all")
+    return web.json_response({
+        "month":month,
+        "students":[{"id":st["id"],"fio":st["fio"],"group_name":st.get("group_name") or "Guruhsiz",
+            "monthly_fee":int(st.get("payment_amount") or 0),
+            "due":month_map.get(st["id"],{}).get("due",0),
+            "paid":month_map.get(st["id"],{}).get("paid",0),
+            "month_debt":max(0,month_map.get(st["id"],{}).get("due",0)-month_map.get(st["id"],{}).get("paid",0)),
+            "total_debt":total_debt.get(st["id"],0)} for st in students],
+        "history":[{"id":r[0],"student_id":r[1],"month":r[2],"amount":int(r[3] or 0),
+            "paid_date":r[4],"note":r[5] or "","fio":r[6]} for r in history]
+    })
+
+
+async def api_teacher_payment_charge(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("student_id"))
+        amount = int(body.get("due_amount"))
+        month = str(body.get("month","")).strip()
+        datetime.strptime(month, "%Y-%m")
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error":"bad"}, status=400)
+    if amount < 0 or amount > 1000000000:
+        return web.json_response({"error":"bad_amount"}, status=400)
+    st = owned_student(teacher, sid)
+    if not st:
+        return web.json_response({"error":"not_found"}, status=404)
+    now = local_now().strftime("%Y-%m-%d %H:%M:%S")
+    run("""INSERT INTO student_monthly_charges
+        (teacher_id,student_id,month,due_amount,created_at,updated_at)
+        VALUES (?,?,?,?,?,?)
+        ON CONFLICT(student_id,month) DO UPDATE SET due_amount=excluded.due_amount,updated_at=excluded.updated_at""",
+        (teacher["id"],sid,month,amount,now,now))
+    run("UPDATE students SET payment_amount=? WHERE id=? AND teacher_id=?",(amount,sid,teacher["id"]))
+    audit(teacher["chat_id"],"monthly_charge_set",str(sid),f"{month}; due={amount}")
+    return web.json_response({"ok":True})
+
+
+async def api_teacher_payment_record(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("student_id"))
+        amount = int(body.get("amount"))
+        month = str(body.get("month","")).strip()
+        datetime.strptime(month, "%Y-%m")
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error":"bad"}, status=400)
+    if amount <= 0 or amount > 1000000000:
+        return web.json_response({"error":"bad_amount"}, status=400)
+    st = owned_student(teacher, sid)
+    if not st:
+        return web.json_response({"error":"not_found"}, status=404)
+    paid_date = str(body.get("paid_date") or local_now().strftime("%Y-%m-%d")).strip()
+    try:
+        datetime.strptime(paid_date, "%Y-%m-%d")
+    except ValueError:
+        return web.json_response({"error":"bad_date"}, status=400)
+    note = str(body.get("note","")).strip()[:250]
+    charge = run("SELECT id FROM student_monthly_charges WHERE teacher_id=? AND student_id=? AND month=?",
+                 (teacher["id"],sid,month),fetch="one")
+    if not charge:
+        now = local_now().strftime("%Y-%m-%d %H:%M:%S")
+        run("""INSERT INTO student_monthly_charges
+            (teacher_id,student_id,month,due_amount,created_at,updated_at)
+            VALUES (?,?,?,?,?,?)""",
+            (teacher["id"],sid,month,int(st.get("payment_amount") or 0),now,now))
+    run("""INSERT INTO student_payment_entries
+        (teacher_id,student_id,month,amount,paid_date,note,created_at)
+        VALUES (?,?,?,?,?,?,?)""",
+        (teacher["id"],sid,month,amount,paid_date,note,local_now().strftime("%Y-%m-%d %H:%M:%S")))
+    audit(teacher["chat_id"],"monthly_payment_recorded",str(sid),f"{month}; amount={amount}; date={paid_date}")
+    return web.json_response({"ok":True})
+
+
 async def api_teacher_tools(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
@@ -6134,6 +6266,9 @@ async def start_web_server():
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
     app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
+    app.router.add_get("/api/teacher/payments", api_teacher_payments)
+    app.router.add_post("/api/teacher/payments/charge", api_teacher_payment_charge)
+    app.router.add_post("/api/teacher/payments/record", api_teacher_payment_record)
     app.router.add_get("/api/teacher/tools", api_teacher_tools)
     app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
     app.router.add_post("/api/teacher/export-ticket", api_teacher_export_ticket)
