@@ -5080,11 +5080,13 @@ async def api_social_direct_get(request):
         return web.json_response({"error":"not_found"},status=404)
     try: after=max(0,int(request.query.get("after","0")))
     except ValueError: after=0
-    rows=run("SELECT id,sender_chat_id,recipient_chat_id,body,created_at FROM social_direct_messages "
-             "WHERE hidden=0 AND id>? AND ((sender_chat_id=? AND recipient_chat_id=?) OR (sender_chat_id=? AND recipient_chat_id=?)) "
-             "ORDER BY id DESC LIMIT 60",(after,uid,peer,peer,uid),fetch="all")
+    rows=run("SELECT m.id,m.sender_chat_id,m.recipient_chat_id,m.body,m.created_at,p.display_name,p.avatar_data,p.username "
+             "FROM social_direct_messages m LEFT JOIN user_profiles p ON p.chat_id=m.sender_chat_id "
+             "WHERE m.hidden=0 AND m.id>? AND ((m.sender_chat_id=? AND m.recipient_chat_id=?) OR (m.sender_chat_id=? AND m.recipient_chat_id=?)) "
+             "ORDER BY m.id DESC LIMIT 60",(after,uid,peer,peer,uid),fetch="all")
     rows.reverse()
-    return web.json_response({"messages":[{"id":int(r[0]),"sender":int(r[1]),"recipient":int(r[2]),"body":r[3],"created_at":r[4]} for r in rows]})
+    return web.json_response({"messages":[{"id":int(r[0]),"sender":int(r[1]),"recipient":int(r[2]),"body":r[3],"created_at":r[4],
+        "display_name":r[5] or "Foydalanuvchi","avatar":_social_avatar_thumb(r[6]),"username":r[7] or ""} for r in rows]})
 
 
 async def api_social_direct_send(request):
