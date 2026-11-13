@@ -2821,7 +2821,7 @@ body.social-open #paxBuddy{display:none}
         parts.push('<div class="card panel"><h3>⏰ Rejalashtirilgan e’lon</h3><p class="hint">Vaqt O‘zbekiston vaqti bo‘yicha olinadi.</p><form id="toolScheduleForm" class="entry-form"><textarea class="field" name="text" rows="2" maxlength="1500" placeholder="E’lon matni..." required></textarea><input class="field" name="send_at" type="datetime-local" required><button class="chip-btn primary">Rejalashtirish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
       }
       if(f.has("payments")) parts.push('<div class="card panel"><h3>💳 Oylik to‘lovlar jurnali</h3><p class="hint">Har oy uchun to‘lovni kiriting. Qarzdorlik avtomatik hisoblanadi va oldingi oylar tarixi saqlanadi.</p><div id="teacherPayments"><div class="loading">To‘lovlar yuklanmoqda…</div></div></div>');
-      if(f.has("export")) parts.push('<div class="card panel"><h3>📊 To‘liq kunlik Excel hisobot</h3><p class="hint">Ro‘yxatdan o‘tgan kundan bugungacha. Har bir sana alohida Excel varag‘ida, umumiy dashboard, davomat ko‘rsatkichlari va o‘quvchilar ro‘yxati bilan.</p><button class="chip-btn primary" id="toolExport">📥 Excel hisobotni yuklab olish (.xlsx)</button></div>');
+      if(f.has("export")) parts.push('<div class="card panel"><h3>📊 To‘liq kunlik Excel hisobot</h3><p class="hint">Ro‘yxatdan o‘tgan kundan bugungacha. Har bir sana alohida Excel varag‘ida, umumiy dashboard, davomat ko‘rsatkichlari va o‘quvchilar ro‘yxati bilan.</p><button class="chip-btn primary" id="toolExport">📥 Excel hisobotni Telegramga yuborish</button></div>');
       if(!parts.length) parts.push('<div class="card panel"><h3>🧰 Qo‘shimcha vositalar</h3><p class="hint">Bu bo‘limlar joriy tarifingizda yoqilmagan. Tarifni Super Admin orqali yangilashingiz mumkin.</p></div>');
       host.innerHTML=parts.join("");
       const cf=$("toolCalendarForm");
@@ -2864,9 +2864,19 @@ body.social-open #paxBuddy{display:none}
         +'<input class="field" type="text" maxlength="250" data-pay-note="'+st.id+'" placeholder="Izoh (ixtiyoriy)" style="margin-top:8px">'
         +'<button class="chip-btn primary" data-pay-save="'+st.id+'" style="width:100%;margin-top:8px">Saqlash</button></div>').join("")||'<p class="hint">O‘quvchilar topilmadi.</p>';
       const history=(data.history||[]).map(x=>'<div class="history-item"><b>'+esc(x.fio)+'</b><div>'+formatSom(x.amount)+' · '+esc(x.paid_date)+'</div>'+(x.note?'<div class="hint">'+esc(x.note)+'</div>':'')+'</div>').join("")||'<p class="hint">Bu oyda to‘lov qayd etilmagan.</p>';
-      host.innerHTML='<label class="hint" for="paymentMonth">Oy</label><input class="field" id="paymentMonth" type="month" value="'+esc(data.month)+'"><div class="stats-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0"><div class="card" style="padding:10px"><div class="hint">O‘quvchilar</div><b>'+data.students.length+'</b></div><div class="card" style="padding:10px"><div class="hint">Jami qarzdorlik</div><b>'+formatSom((data.students||[]).reduce((a,x)=>a+x.total_debt,0))+'</b></div></div>'+rows+'<div class="card" style="padding:12px;margin-top:12px"><h4>🧾 '+esc(data.month)+' — to‘lovlar tarixi</h4>'+history+'</div>';
+      host.innerHTML='<div class="card panel" style="padding:14px;margin-bottom:12px"><h3 style="margin:0 0 6px">💳 Oylik to‘lovni belgilash</h3><p class="hint" style="margin:0 0 10px">1. Hisob-kitob qilinadigan oyni tanlang. 2. Barcha o‘quvchilar uchun bir xil oylik summani kiriting. 3. Tugmani bosing. Har bir o‘quvchiga shu oy uchun qarzdorlik yoziladi.</p><label class="hint" for="paymentMonth">Hisob-kitob oyi</label><input class="field" id="paymentMonth" type="month" value="'+esc(data.month)+'"><label class="hint" for="allMonthlyFee" style="display:block;margin-top:10px">Barcha o‘quvchilar uchun oylik summa (so‘m)</label><input class="field" id="allMonthlyFee" type="number" min="0" step="1000" inputmode="numeric" placeholder="Masalan: 150000"><button class="chip-btn primary" id="setAllMonthlyFee" style="width:100%;margin-top:10px">Barchasiga bir xil oylik belgilash</button><p class="hint" style="margin:8px 0 0">Bu amal tanlangan oy uchun summani yangilaydi. Oldin qayd etilgan to‘lovlar o‘chmaydi.</p></div><div class="stats-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0"><div class="card" style="padding:10px"><div class="hint">O‘quvchilar soni</div><b>'+data.students.length+'</b></div><div class="card" style="padding:10px"><div class="hint">Jami barcha oylar qarzi</div><b>'+formatSom((data.students||[]).reduce((a,x)=>a+x.total_debt,0))+'</b></div></div><h3 style="margin:16px 0 6px">👥 O‘quvchilar bo‘yicha hisob</h3><p class="hint">Har bir o‘quvchining oylik summasini alohida o‘zgartirishingiz yoki to‘lov qabul qilganingizni qayd etishingiz mumkin.</p>'+rows+'<div class="card" style="padding:12px;margin-top:12px"><h4>🧾 '+esc(data.month)+' — to‘lovlar tarixi</h4>'+history+'</div>';
       const picker=$("paymentMonth");
       if(picker)picker.onchange=()=>loadTeacherPayments(picker.value);
+      const setAll=$("setAllMonthlyFee");
+      if(setAll)setAll.onclick=async()=>{
+        const amount=Number(($("allMonthlyFee")||{}).value||0);
+        const selectedMonth=(picker&&picker.value)||data.month;
+        if(!Number.isSafeInteger(amount)||amount<0){toast("Oylik summani to‘g‘ri kiriting.");return;}
+        if(!confirm(selectedMonth+" oyi uchun "+formatSom(amount)+" barcha "+data.students.length+" nafar o‘quvchiga belgilansinmi?"))return;
+        setAll.disabled=true;setAll.textContent="Saqlanmoqda…";
+        try{const result=await api("/api/teacher/payments/set-all",{method:"POST",body:JSON.stringify({month:selectedMonth,amount})});toast("✅ "+result.updated+" nafar o‘quvchiga oylik belgilandi.");await loadTeacherPayments(selectedMonth);}
+        catch(err){toast(errText(err));setAll.disabled=false;setAll.textContent="Barchasiga bir xil oylik belgilash";}
+      };
       host.querySelectorAll("[data-pay-save]").forEach(btn=>btn.onclick=async()=>{
         const id=Number(btn.dataset.paySave);
         const due=Number(host.querySelector('[data-pay-due="'+id+'"]').value||0);
@@ -2889,40 +2899,21 @@ body.social-open #paxBuddy{display:none}
 
   async function downloadTeacherExcel() {
     const b = $("toolExport");
-    if (b) { b.disabled = true; b.textContent = "Excel tayyorlanmoqda…"; }
+    if (b) { b.disabled = true; b.textContent = "Telegramga yuborilmoqda…"; }
     try {
-      // Faylni blob orqali emas, serverning bir martalik URL manzili orqali yuklaymiz.
-      // Bu Android/Telegram WebView'da download manager bilan mosroq ishlaydi.
-      const res = await fetch("/api/teacher/export-ticket", {
-        method: "POST", cache: "no-store", credentials: "same-origin",
-        headers: {
-          "X-Init-Data": INIT,
-          "X-App-Role": new URLSearchParams(location.search).get("role") || "",
-          "Content-Type": "application/json"
-        },
-        body: "{}"
+      // Excel faylini server yaratadi va o‘qituvchining Telegram chatiga yuboradi.
+      // Bu usul telefon, planshet va kompyuter brauzerining download imkoniyatiga bog‘liq emas.
+      const out = await api("/api/teacher/export-to-chat", {
+        method:"POST", body:JSON.stringify({})
       });
-      let data = {};
-      try { data = await res.json(); } catch (_) {}
-      if (!res.ok) {
-        const messages = {
-          auth: "Sessiya tugagan. Ilovani qayta oching.",
-          forbidden: "Hisobotni yuklashga ruxsat yo‘q.",
-          feature_locked: "Excel eksport joriy tarifda yoqilmagan."
-        };
-        throw new Error(messages[data.error] || data.error || "Excel hisobotini tayyorlab bo‘lmadi.");
-      }
-      if (!data.url) throw new Error("Yuklab olish manzili olinmadi.");
-      toast("Excel hisoboti yuklanmoqda…");
-      // Content-Disposition: attachment javobi Android yuklab olish oynasini ishga tushiradi.
-      location.href = data.url;
+      toast("✅ Excel hisoboti Telegram chatiga yuborildi.");
     } catch (err) {
-      toast(err.message || errText(err));
+      toast(errText(err));
     } finally {
       if (b) {
         setTimeout(() => {
           b.disabled = false;
-          b.textContent = "📥 Excel hisobotni yuklab olish (.xlsx)";
+          b.textContent = "📥 Excel hisobotni Telegramga yuborish";
         }, 1200);
       }
     }
