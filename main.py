@@ -6240,6 +6240,52 @@ async def api_teacher_export(request):
         }
     )
 
+
+async def api_teacher_payment_set_all(request):
+    """Barcha o‘quvchilarga tanlangan oy uchun bir xil oylik belgilash."""
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    body = await _read_json(request)
+    try:
+        amount = int(body.get("amount"))
+        month = str(body.get("month", local_now().strftime("%Y-%m"))).strip()
+        datetime.strptime(month, "%Y-%m")
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error":"bad"}, status=400)
+    if amount < 0 or amount > 1000000000:
+        return web.json_response({"error":"bad_amount"}, status=400)
+    students = list(db_students(teacher["id"]).values())
+    now = local_now().strftime("%Y-%m-%d %H:%M:%S")
+    for st in students:
+        run("""INSERT INTO student_monthly_charges
+            (teacher_id,student_id,month,due_amount,created_at,updated_at)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(student_id,month) DO UPDATE SET
+                due_amount=excluded.due_amount,updated_at=excluded.updated_at""",
+            (teacher["id"], st["id"], month, amount, now, now))
+        run("UPDATE students SET payment_amount=? WHERE id=? AND teacher_id=?",
+            (amount, st["id"], teacher["id"]))
+    audit(teacher["chat_id"], "monthly_charge_set_all", month,
+          f"amount={amount}; students={len(students)}")
+    return web.json_response({"ok":True,"updated":len(students),"month":month,"amount":amount})
+
+
+async def api_teacher_export_to_chat(request):
+    """Excelni qurilmaga yuklashga bog‘lamasdan o‘qituvchining Telegram chatiga yuboradi."""
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not bot or not teacher.get("chat_id"):
+        return web.json_response({"error":"telegram_unavailable"}, status=503)
+    response = await api_teacher_export(request)
+    if response.status != 200:
+        return response
+    # api_teacher_export faylni Telegram chatiga jo‘natadi; bu endpoint faqat natijani qaytaradi.
+    return web.json_response({"ok":True,"sent":True,"message":"Telegram chatiga yuborildi."})
+
 async def api_teacher_requests(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
