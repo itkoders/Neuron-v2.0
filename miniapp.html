@@ -1906,7 +1906,18 @@ body.social-open #paxBuddy{display:none}
       '<div class="social-section-head"><div><h3>👥 Foydalanuvchilar</h3><small>Profilni ochish va shaxsiy xabar yuborish</small></div><b>'+(d.users||[]).length+'</b></div>'+
       '<input class="field" id="socialHomeSearch" type="search" placeholder="Ism yoki @username bo‘yicha qidirish…">'+
       '<div id="socialPeopleList" class="social-people-list">'+(makeUsers(d.users)||'<div class="social-empty">Hozircha foydalanuvchilar topilmadi.</div>')+'</div>';
-      $("socialHomeSearch").oninput=async()=>{const q=$("socialHomeSearch").value.trim();try{const x=await api("/api/social/home?q="+encodeURIComponent(q));$("socialPeopleList").innerHTML=makeUsers(x.users)||'<div class="social-empty">Foydalanuvchi topilmadi.</div>';}catch(e){toast(errText(e));}};
+      let homeSearchTimer=0,homeSearchSeq=0;
+      $("socialHomeSearch").oninput=()=>{
+        clearTimeout(homeSearchTimer);
+        const q=$("socialHomeSearch").value.trim(),seq=++homeSearchSeq;
+        homeSearchTimer=setTimeout(async()=>{
+          try{
+            const x=await api("/api/social/home?q="+encodeURIComponent(q));
+            if(seq!==homeSearchSeq)return;
+            $("socialPeopleList").innerHTML=makeUsers(x.users)||'<div class="social-empty">Foydalanuvchi topilmadi.</div>';
+          }catch(e){if(seq===homeSearchSeq)toast(errText(e));}
+        },280);
+      };
       $("socialPeopleList").onclick=e=>{const b=e.target.closest("[data-direct-user]");if(b)renderSocialDirect(b.dataset.directUser,b.dataset.userName);};
       if($("socialAdForm"))$("socialAdForm").onsubmit=async e=>{e.preventDefault();const btn=e.submitter||$("socialAdForm").querySelector("button");btn.disabled=true;try{await api("/api/social/ads",{method:"POST",body:JSON.stringify({body:$("socialAdText").value,link:$("socialAdLink").value})});toast("Reklama joylandi.");await renderSocialHome();}catch(err){toast(err.data?.error==="feature_locked"?"Bu funksiya tarifingizda yoqilmagan.":errText(err));}finally{btn.disabled=false;}};
     }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
@@ -3474,6 +3485,43 @@ body.social-open #paxBuddy{display:none}
     await init();
     switchCabinet.disabled = false;
   });
+
+  /* ===== NEYRON performance layer: preserve effects, pause only off-screen work ===== */
+  (() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      /* Ko‘rinmayotgan kartalar ekranga qaytganda animatsiyasini davom ettiradi. */
+      .perf-offscreen{animation-play-state:paused!important}
+      html.perf-page-hidden,html.perf-page-hidden body,
+      html.perf-page-hidden body::before,html.perf-page-hidden body::after,
+      html.perf-page-hidden *{animation-play-state:paused!important}
+    `;
+    document.head.appendChild(style);
+
+    const selector = ".card,.hero,.panel,.stat,.att-item,.score-card,.fact,.profile,.report-actions,.settings-card,.social-ad-card,.social-person-card,.tg-message,.skeleton";
+    if ("IntersectionObserver" in window) {
+      const seen = new WeakSet();
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(entry => entry.target.classList.toggle("perf-offscreen", !entry.isIntersecting));
+      }, {root:null,rootMargin:"120px 0px",threshold:0});
+      const watch = node => {
+        if (!node || node.nodeType !== 1) return;
+        if (node.matches(selector) && !seen.has(node)) { seen.add(node); io.observe(node); }
+        if (node.querySelectorAll) node.querySelectorAll(selector).forEach(el => {
+          if (!seen.has(el)) { seen.add(el); io.observe(el); }
+        });
+      };
+      watch(document.body);
+      const mutations = new MutationObserver(records => {
+        records.forEach(record => record.addedNodes.forEach(watch));
+      });
+      mutations.observe(document.body,{childList:true,subtree:true});
+    }
+
+    const syncPageVisibility = () => document.documentElement.classList.toggle("perf-page-hidden", document.hidden);
+    document.addEventListener("visibilitychange", syncPageVisibility,{passive:true});
+    syncPageVisibility();
+  })();
 
   // Role-aware PAXMOQ mascot; CSS animation uses transforms only for low-cost rendering.
   (() => {
