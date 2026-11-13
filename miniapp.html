@@ -3297,6 +3297,35 @@ body.social-open #paxBuddy{display:none}
       .hero .title{font-size:38px!important}
     }
   `;
+  /* NEURON mobile vertical scrolling compatibility (Telegram WebView / Android) */
+  const verticalScrollFix = document.createElement("style");
+  verticalScrollFix.textContent = `
+    html, body {
+      height: auto !important;
+      min-height: 100% !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior-y: auto !important;
+    }
+    body:not(.social-open) {
+      touch-action: pan-y pinch-zoom !important;
+    }
+    body:not(.social-open) main,
+    body:not(.social-open) header,
+    body:not(.social-open) #teacherView,
+    body:not(.social-open) #studentView,
+    body:not(.social-open) #parentView,
+    body:not(.social-open) #adminView {
+      touch-action: pan-y pinch-zoom !important;
+    }
+    body.social-open { overflow: hidden !important; }
+    #socialContent, .social-sheet, .tg-chat-messages {
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+  `;
+  document.head.appendChild(verticalScrollFix);
   document.head.appendChild(perfStyle);
   const roleAndJournalFixStyle = document.createElement("style");
   roleAndJournalFixStyle.textContent = `
