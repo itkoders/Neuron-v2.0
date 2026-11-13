@@ -3693,6 +3693,25 @@ body.social-open #paxBuddy{display:none}
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
     }
+    /* Android / Telegram WebView: sahifa vertikal, jurnallar gorizontal suriladi. */
+    body:not(.social-open){position:relative!important;overflow-y:auto!important;overscroll-behavior-y:auto!important}
+    main,#teacherView,#studentView,#parentView,#adminView,
+    #teacherView>section,#adminView>.panel{min-height:0!important;overflow:visible!important}
+    .journal-shell{min-width:0!important;width:100%!important;overflow:visible!important}
+    .grid-wrap{display:block!important;width:100%!important;max-width:100%!important;
+      min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important;
+      -webkit-overflow-scrolling:touch!important;overscroll-behavior-x:contain!important;
+      touch-action:pan-x pan-y pinch-zoom!important;contain:layout paint}
+    .journal-table{width:max-content;min-width:560px}
+    .payment-journal{min-width:1040px!important}
+    .social-sheet{overscroll-behavior:contain}
+    .social-chat-list,.social-sheet,#socialContent,.tg-chat-messages{
+      overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+    @media(max-width:760px){
+      .grid-wrap{max-height:none!important}
+      .journal-shell{padding-left:0!important;padding-right:0!important}
+      .journal-table thead th{position:sticky;top:0}
+    }
   `;
   document.head.appendChild(verticalScrollFix);
   document.head.appendChild(perfStyle);
