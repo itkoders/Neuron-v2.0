@@ -333,6 +333,10 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, actor BIGINT, action TEXT,
         target TEXT, details TEXT, created_at TEXT)""")
     run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+    run("""CREATE TABLE IF NOT EXISTS new_year_delivery (
+        campaign TEXT NOT NULL, target_id TEXT NOT NULL, target_type TEXT NOT NULL,
+        status TEXT DEFAULT 'pending', error TEXT DEFAULT '', updated_at TEXT,
+        PRIMARY KEY(campaign, target_id))""")
     run("CREATE TABLE IF NOT EXISTS export_download_tokens (token TEXT PRIMARY KEY, teacher_id INTEGER NOT NULL, expires_at TEXT NOT NULL)")
     run("""CREATE TABLE IF NOT EXISTS user_profiles (
         chat_id BIGINT PRIMARY KEY, username TEXT DEFAULT '', display_name TEXT DEFAULT '',
@@ -4087,6 +4091,119 @@ async def scheduled_broadcast_once():
         audit(0, "scheduled_broadcast", str(tid), f"{sent} ta")
 
 
+NEW_YEAR_CAMPAIGN = "neuron-2027"
+NEW_YEAR_SEND_AT = datetime(2027, 1, 1, 0, 0)
+
+
+def new_year_targets():
+    """NEURON foydalanuvchilari va o'qituvchilar sozlagan kanallar."""
+    targets = set()
+    queries = [
+        ("SELECT chat_id FROM teachers WHERE chat_id IS NOT NULL", "user"),
+        ("SELECT chat_id FROM teacher_access WHERE chat_id IS NOT NULL", "user"),
+        ("SELECT parent_chat_id FROM parent_children WHERE parent_chat_id IS NOT NULL", "user"),
+        ("SELECT chat_id FROM student_links WHERE chat_id IS NOT NULL", "user"),
+        ("SELECT chat_id FROM user_profiles WHERE chat_id IS NOT NULL", "user"),
+        ("SELECT chat_id FROM super_admins WHERE chat_id IS NOT NULL", "user"),
+    ]
+    for sql, kind in queries:
+        for row in run(sql, fetch="all") or []:
+            if row and row[0] is not None:
+                targets.add((str(row[0]).strip(), kind))
+    for row in run("SELECT channel_id FROM teachers WHERE channel_id IS NOT NULL AND channel_id <> ''", fetch="all") or []:
+        if row and row[0]:
+            targets.add((str(row[0]).strip(), "channel"))
+    for channel in os.environ.get("NEW_YEAR_CHANNELS", "").split(","):
+        channel = channel.strip()
+        if channel:
+            targets.add((channel, "channel"))
+    return sorted(targets)
+
+
+NEW_YEAR_CAPTION = (
+    "🎄✨ YANGI 2027-YIL BILAN! ✨🎄\n\n"
+    "Assalomu alaykum, aziz NEURON foydalanuvchilari!\n\n"
+    "Sizlarni kirib kelayotgan 2027-yil bilan ITKODERS jamoasi nomidan chin qalbimizdan tabriklaymiz! 💙\n\n"
+    "❄️ Mustahkam sog'liq va oilaviy xotirjamlik;\n"
+    "🎁 Cheksiz quvonch va baxt;\n"
+    "📚 Yangi bilimlar va ulkan yutuqlar;\n"
+    "🚀 Yangi imkoniyatlar va muvaffaqiyatlar olib kelsin!\n\n"
+    "Barcha ezgu niyatlaringiz amalga oshsin. Har bir kuningiz yangi umidlar va quvonchli yangiliklarga boy bo'lsin!\n\n"
+    "🌟 2027-yil — yangi maqsadlar, yangi marralar va yangi muvaffaqiyatlar yili bo'lsin!\n\n"
+    "Hurmat bilan, 💙 ITKODERS jamoasi\n"
+    "NEURON — bilim sari yangi qadam! 🎆"
+)
+
+
+async def new_year_broadcast_once():
+    """2027-01-01 00:00 dan boshlab har bir manzilga tabrikni faqat bir marta yuboradi."""
+    if not bot:
+        return
+    now = local_now()
+    send_at = NEW_YEAR_SEND_AT.replace(tzinfo=now.tzinfo)
+    if now < send_at:
+        return
+
+    image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "assets", "neuron_new_year_2027.jpg")
+    image_url = os.environ.get("NEW_YEAR_IMAGE_URL", "").strip()
+    image_bytes = None
+    if os.path.isfile(image_path):
+        try:
+            with open(image_path, "rb") as image_file:
+                image_bytes = image_file.read()
+        except OSError:
+            logging.exception("Yangi yil rasmi o'qilmadi")
+    elif image_url:
+        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(image_url) as response:
+                    response.raise_for_status()
+                    image_bytes = await response.read()
+        except Exception:
+            logging.exception("NEW_YEAR_IMAGE_URL dan rasm olinmadi")
+
+    if not image_bytes:
+        logging.error("Yangi yil tabrigi uchun rasm topilmadi; NEW_YEAR_IMAGE_URL yoki assets/neuron_new_year_2027.jpg kerak.")
+        return
+
+    now = local_now()
+    for target_id, target_type in new_year_targets():
+        run("INSERT INTO new_year_delivery (campaign, target_id, target_type, status, updated_at) "
+            "VALUES (?, ?, ?, 'pending', ?) ON CONFLICT(campaign, target_id) DO NOTHING",
+            (NEW_YEAR_CAMPAIGN, target_id, target_type, now.isoformat()))
+
+    pending = run("SELECT target_id, target_type FROM new_year_delivery "
+                  "WHERE campaign = ? AND status = 'pending' ORDER BY target_type, target_id",
+                  (NEW_YEAR_CAMPAIGN,), fetch="all") or []
+    for target_id, target_type in pending:
+        run("UPDATE new_year_delivery SET status='sending', updated_at=? "
+            "WHERE campaign=? AND target_id=? AND status='pending'",
+            (local_now().isoformat(), NEW_YEAR_CAMPAIGN, target_id))
+        try:
+            await bot.send_photo(
+                chat_id=target_id,
+                photo=BufferedInputFile(image_bytes, filename="NEURON-2027-ITKODERS.jpg"),
+                caption=NEW_YEAR_CAPTION
+            )
+            status, error = "sent", ""
+        except Exception as exc:
+            status, error = "failed", str(exc)[:500]
+            logging.warning("Yangi yil tabrigi yuborilmadi (%s): %s", target_id, error)
+        run("UPDATE new_year_delivery SET status=?, error=?, updated_at=? "
+            "WHERE campaign=? AND target_id=?",
+            (status, error, local_now().isoformat(), NEW_YEAR_CAMPAIGN, target_id))
+
+    sent_count = run("SELECT COUNT(*) FROM new_year_delivery WHERE campaign=? AND status='sent'",
+                     (NEW_YEAR_CAMPAIGN,), fetch="one")
+    failed_count = run("SELECT COUNT(*) FROM new_year_delivery WHERE campaign=? AND status='failed'",
+                       (NEW_YEAR_CAMPAIGN,), fetch="one")
+    db_set_setting("new_year_2027_last_run", local_now().isoformat())
+    db_set_setting("new_year_2027_sent_count", sent_count[0] if sent_count else 0)
+    db_set_setting("new_year_2027_failed_count", failed_count[0] if failed_count else 0)
+
+
 async def background_loop():
     while True:
         try:
@@ -4094,6 +4211,7 @@ async def background_loop():
             check_and_reset_daily_data()
             await auto_notify_once()
             await scheduled_broadcast_once()
+            await new_year_broadcast_once()
         except Exception:
             logging.exception("Fon vazifasi xatosi")
         await asyncio.sleep(60)
