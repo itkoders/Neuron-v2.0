@@ -5906,6 +5906,10 @@ async def api_teacher_export(request):
         kind, teacher, err = miniapp_identity(request)
         if err or kind != "teacher":
             return err or web.json_response({"error": "forbidden"}, status=403)
+        # Joriy Mini Appni ochgan, imzosi tekshirilgan Telegram akkaunti.
+        # teacher["chat_id"] asosiy akkaunt bo‘lishi mumkin; qo‘shimcha qurilmada
+        # hisobot aynan hozir kirgan akkauntga yuborilishi kerak.
+        telegram_target = int(verify_init_data(request.headers.get("X-Init-Data", "")) or teacher.get("chat_id") or 0)
     if not has_feature(teacher, "export"):
         return web.json_response({"error": "feature_locked"}, status=403)
 
@@ -6221,10 +6225,10 @@ async def api_teacher_export(request):
     wb.save(output)
     output.seek(0)
     telegram_sent = False
-    if bot and teacher.get("chat_id"):
+    if bot and (locals().get("telegram_target") or teacher.get("chat_id")):
         try:
             await bot.send_document(
-                teacher["chat_id"],
+                locals().get("telegram_target") or teacher["chat_id"],
                 BufferedInputFile(output.getvalue(), filename="NEURON_hisobot.xlsx"),
                 caption="📊 NEURON Excel hisobotingiz tayyor. Hisobot Excel formatida biriktirildi."
             )
