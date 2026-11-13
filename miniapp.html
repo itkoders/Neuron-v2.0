@@ -2296,6 +2296,7 @@ header{background:var(--bg)!important}
         const rows=(data.scheduled||[]).map(x=>'<div class="history-item card"><b>'+esc(x.send_at)+'</b><div>'+esc(x.text)+'</div><div class="hint">'+(x.sent===0?'Kutilmoqda':x.sent===1?'Yuborilgan':'Bekor qilingan')+'</div>'+(x.sent===0?'<button class="chip-btn danger" data-tool-action="schedule_cancel" data-id="'+x.id+'">Bekor qilish</button>':'')+'</div>').join("")||'<p class="hint">Rejalashtirilgan e’lon yo‘q.</p>';
         parts.push('<div class="card panel"><h3>⏰ Rejalashtirilgan e’lon</h3><p class="hint">Vaqt O‘zbekiston vaqti bo‘yicha olinadi.</p><form id="toolScheduleForm" class="entry-form"><textarea class="field" name="text" rows="2" maxlength="1500" placeholder="E’lon matni..." required></textarea><input class="field" name="send_at" type="datetime-local" required><button class="chip-btn primary">Rejalashtirish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
       }
+      if(f.has("payments")) parts.push('<div class="card panel"><h3>💳 Oylik to‘lovlar jurnali</h3><p class="hint">Har oy uchun to‘lovni kiriting. Qarzdorlik avtomatik hisoblanadi va oldingi oylar tarixi saqlanadi.</p><div id="teacherPayments"><div class="loading">To‘lovlar yuklanmoqda…</div></div></div>');
       if(f.has("export")) parts.push('<div class="card panel"><h3>📊 To‘liq kunlik Excel hisobot</h3><p class="hint">Ro‘yxatdan o‘tgan kundan bugungacha. Har bir sana alohida Excel varag‘ida, umumiy dashboard, davomat ko‘rsatkichlari va o‘quvchilar ro‘yxati bilan.</p><button class="chip-btn primary" id="toolExport">📥 Excel hisobotni yuklab olish (.xlsx)</button></div>');
       if(!parts.length) parts.push('<div class="card panel"><h3>🧰 Qo‘shimcha vositalar</h3><p class="hint">Bu bo‘limlar joriy tarifingizda yoqilmagan. Tarifni Super Admin orqali yangilashingiz mumkin.</p></div>');
       host.innerHTML=parts.join("");
@@ -2309,6 +2310,7 @@ header{background:var(--bg)!important}
       if(sf)sf.onsubmit=async e=>{e.preventDefault();const d=new FormData(sf);await submitTool({action:"schedule_add",text:d.get("text"),send_at:d.get("send_at")});};
       const ex=$("toolExport");
       if(ex)ex.onclick=downloadTeacherExcel;
+      if(f.has("payments")) await loadTeacherPayments();
     } catch(err) { host.innerHTML='<div class="card empty">'+esc(errText(err))+'</div>'; }
   }
   async function submitTool(payload, refresh=true) {
@@ -2318,6 +2320,49 @@ header{background:var(--bg)!important}
       return out;
     } catch(err) {toast(errText(err));return null;}
   }
+  function formatSom(value) {
+    return new Intl.NumberFormat("uz-UZ").format(Number(value||0)) + " so‘m";
+  }
+
+  async function loadTeacherPayments(month) {
+    const host=$("teacherPayments");
+    if(!host)return;
+    host.innerHTML='<div class="loading">To‘lovlar yuklanmoqda…</div>';
+    try {
+      const query=month ? "?month="+encodeURIComponent(month) : "";
+      const data=await api("/api/teacher/payments"+query);
+      const rows=(data.students||[]).map(st=>'<div class="card payment-student" style="padding:12px;margin:10px 0;border-radius:16px">'
+        +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><b>'+esc(st.fio)+'</b><div class="hint">'+esc(st.group_name)+'</div></div><div style="text-align:right"><b>'+formatSom(st.total_debt)+'</b><div class="hint">Jami qarz</div></div></div>'
+        +'<div class="hint" style="margin:10px 0 6px">Oylik to‘lovi</div><input class="field" type="number" min="0" step="1000" inputmode="numeric" data-pay-due="'+st.id+'" value="'+st.due+'" placeholder="Oylik summa">'
+        +'<div class="hint" style="margin:8px 0 6px">Shu oy to‘langan: '+formatSom(st.paid)+' · Qoldiq: <b>'+formatSom(st.month_debt)+'</b></div>'
+        +'<input class="field" type="number" min="0" step="1000" inputmode="numeric" data-pay-amount="'+st.id+'" placeholder="Hozir to‘langan summa">'
+        +'<input class="field" type="date" data-pay-date="'+st.id+'" value="'+new Date().toLocaleDateString("en-CA")+'" style="margin-top:8px">'
+        +'<input class="field" type="text" maxlength="250" data-pay-note="'+st.id+'" placeholder="Izoh (ixtiyoriy)" style="margin-top:8px">'
+        +'<button class="chip-btn primary" data-pay-save="'+st.id+'" style="width:100%;margin-top:8px">Saqlash</button></div>').join("")||'<p class="hint">O‘quvchilar topilmadi.</p>';
+      const history=(data.history||[]).map(x=>'<div class="history-item"><b>'+esc(x.fio)+'</b><div>'+formatSom(x.amount)+' · '+esc(x.paid_date)+'</div>'+(x.note?'<div class="hint">'+esc(x.note)+'</div>':'')+'</div>').join("")||'<p class="hint">Bu oyda to‘lov qayd etilmagan.</p>';
+      host.innerHTML='<label class="hint" for="paymentMonth">Oy</label><input class="field" id="paymentMonth" type="month" value="'+esc(data.month)+'"><div class="stats-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0"><div class="card" style="padding:10px"><div class="hint">O‘quvchilar</div><b>'+data.students.length+'</b></div><div class="card" style="padding:10px"><div class="hint">Jami qarzdorlik</div><b>'+formatSom((data.students||[]).reduce((a,x)=>a+x.total_debt,0))+'</b></div></div>'+rows+'<div class="card" style="padding:12px;margin-top:12px"><h4>🧾 '+esc(data.month)+' — to‘lovlar tarixi</h4>'+history+'</div>';
+      const picker=$("paymentMonth");
+      if(picker)picker.onchange=()=>loadTeacherPayments(picker.value);
+      host.querySelectorAll("[data-pay-save]").forEach(btn=>btn.onclick=async()=>{
+        const id=Number(btn.dataset.paySave);
+        const due=Number(host.querySelector('[data-pay-due="'+id+'"]').value||0);
+        const amount=Number(host.querySelector('[data-pay-amount="'+id+'"]').value||0);
+        const paidDate=host.querySelector('[data-pay-date="'+id+'"]').value;
+        const note=host.querySelector('[data-pay-note="'+id+'"]').value;
+        const selectedMonth=(picker&&picker.value)||data.month;
+        if(!Number.isSafeInteger(due)||due<0||!Number.isSafeInteger(amount)||amount<0){toast("Summani to‘g‘ri kiriting.");return;}
+        btn.disabled=true;btn.textContent="Saqlanmoqda…";
+        try{
+          await api("/api/teacher/payments/charge",{method:"POST",body:JSON.stringify({student_id:id,month:selectedMonth,due_amount:due})});
+          if(amount>0)await api("/api/teacher/payments/record",{method:"POST",body:JSON.stringify({student_id:id,month:selectedMonth,amount,paid_date:paidDate,note})});
+          toast("To‘lov jurnali saqlandi.");await loadTeacherPayments(selectedMonth);
+        }catch(err){toast(errText(err));btn.disabled=false;btn.textContent="Saqlash";}
+      });
+    } catch(err) {
+      host.innerHTML='<div class="hint">'+esc(errText(err))+'</div>';
+    }
+  }
+
   async function downloadTeacherExcel() {
     const b = $("toolExport");
     if (b) { b.disabled = true; b.textContent = "Excel tayyorlanmoqda…"; }
