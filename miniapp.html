@@ -2281,7 +2281,12 @@ body.social-open #paxBuddy{display:none}
         const acts=adminBtn('Tarif berish','assign',t.id)+adminBtn('30 kun qo‘shish','extend',t.id)+adminBtn(t.active?'Bloklash':'Faollashtirish','toggle_active',t.id)+adminBtn(t.ai_enabled?'AI o‘chirish':'AI yoqish','toggle_ai',t.id)+adminBtn('Yangi kod','regen',t.id)+adminBtn('O‘chirish','delete',t.id);
         return adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.plan_name)+' · '+t.students+'/'+(t.student_limit||'∞')+' o‘quvchi</p><p class="admin-muted">'+(t.active?'Faol':'Bloklangan')+' · '+(t.approved?'Tasdiqlangan':'Kutilmoqda')+'</p><select class="field" data-plan-for="'+t.id+'">'+opts+'</select>',acts);
       }).join("")||'<div class="card empty">O‘qituvchi topilmadi.</div>';};
-      draw();$("adminTeacherSearch").addEventListener("input",draw);
+      draw();
+      let searchTimer=0;
+      $("adminTeacherSearch").addEventListener("input",()=>{
+        clearTimeout(searchTimer);
+        searchTimer=setTimeout(draw,180);
+      });
     } else if(state.adminTab==="plans") {
       const newForm='<div class="card panel"><h3>➕ Yangi tarif</h3><div class="admin-form"><input class="field" id="newPlanName" placeholder="Tarif nomi"><input class="field" id="newPlanPrice" type="number" placeholder="Narxi (so‘m)"><input class="field" id="newPlanLimit" type="number" placeholder="O‘quvchi limiti"><input class="field" id="newPlanDays" type="number" placeholder="Muddat (kun)"><label class="admin-feature"><input type="checkbox" id="newPlanBadgeEnabled"> ☑ Yangi tarif bilan galichka berilsin</label><select class="field" id="newPlanBadge"><option value="verified">NEURON Verified</option><option value="blue">NEURON Blue</option><option value="premium">NEURON Premium</option><option value="official">NEURON Official</option><option value="expert">NEURON Expert</option></select>'+adminBtn('Tarif yaratish','create-plan')+'</div></div>';
       host.innerHTML=newForm+d.plans.map(p=>{
@@ -3512,8 +3517,21 @@ body.social-open #paxBuddy{display:none}
         });
       };
       watch(document.body);
+      // DOM o‘zgarishlarini bitta kadrga yig‘amiz: katta ro‘yxat chizilganda
+      // har bir qo‘shilgan element uchun alohida querySelectorAll ishlamasin.
+      const pendingRoots = new Set();
+      let watchFrame = 0;
       const mutations = new MutationObserver(records => {
-        records.forEach(record => record.addedNodes.forEach(watch));
+        records.forEach(record => record.addedNodes.forEach(node => {
+          if (node && node.nodeType === 1) pendingRoots.add(node);
+        }));
+        if (watchFrame || !pendingRoots.size) return;
+        watchFrame = requestAnimationFrame(() => {
+          watchFrame = 0;
+          const roots = Array.from(pendingRoots);
+          pendingRoots.clear();
+          roots.forEach(watch);
+        });
       });
       mutations.observe(document.body,{childList:true,subtree:true});
     }
