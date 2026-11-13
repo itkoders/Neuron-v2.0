@@ -6259,20 +6259,22 @@ async def api_teacher_payment_set_all(request):
         return web.json_response({"error":"bad"}, status=400)
     if amount < 0 or amount > 1000000000:
         return web.json_response({"error":"bad_amount"}, status=400)
-    students = list(db_students(teacher["id"]).values())
+    # Oylikni bitta bulk SQL bilan yozamiz: har bir o‘quvchi uchun alohida
+    # DB ulanishi ochilmaydi, shuning uchun katta jurnallarda ancha tez ishlaydi.
     now = local_now().strftime("%Y-%m-%d %H:%M:%S")
-    for st in students:
-        run("""INSERT INTO student_monthly_charges
-            (teacher_id,student_id,month,due_amount,created_at,updated_at)
-            VALUES (?,?,?,?,?,?)
-            ON CONFLICT(student_id,month) DO UPDATE SET
-                due_amount=excluded.due_amount,updated_at=excluded.updated_at""",
-            (teacher["id"], st["id"], month, amount, now, now))
-        run("UPDATE students SET payment_amount=? WHERE id=? AND teacher_id=?",
-            (amount, st["id"], teacher["id"]))
+    count_row = run("SELECT COUNT(*) FROM students WHERE teacher_id=?", (teacher["id"],), fetch="one")
+    updated = int(count_row[0] or 0) if count_row else 0
+    run("""INSERT INTO student_monthly_charges
+        (teacher_id,student_id,month,due_amount,created_at,updated_at)
+        SELECT ?, id, ?, ?, ?, ? FROM students WHERE teacher_id=?
+        ON CONFLICT(student_id,month) DO UPDATE SET
+            due_amount=excluded.due_amount,updated_at=excluded.updated_at""",
+        (teacher["id"], month, amount, now, now, teacher["id"]))
+    run("UPDATE students SET payment_amount=? WHERE teacher_id=?",
+        (amount, teacher["id"]))
     audit(teacher["chat_id"], "monthly_charge_set_all", month,
-          f"amount={amount}; students={len(students)}")
-    return web.json_response({"ok":True,"updated":len(students),"month":month,"amount":amount})
+          f"amount={amount}; students={updated}")
+    return web.json_response({"ok":True,"updated":updated,"month":month,"amount":amount})
 
 
 async def api_teacher_export_to_chat(request):
@@ -6659,6 +6661,9 @@ async def start_web_server():
     app.router.add_get("/api/teacher/payments", api_teacher_payments)
     app.router.add_post("/api/teacher/payments/charge", api_teacher_payment_charge)
     app.router.add_post("/api/teacher/payments/record", api_teacher_payment_record)
+    # Mini App interfeysi ishlatayotgan endpointlar (oldin ro‘yxatdan o‘tmagani uchun 404 qaytargan).
+    app.router.add_post("/api/teacher/payments/set-all", api_teacher_payment_set_all)
+    app.router.add_post("/api/teacher/export-to-chat", api_teacher_export_to_chat)
     app.router.add_get("/api/teacher/tools", api_teacher_tools)
     app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
     app.router.add_post("/api/teacher/export-ticket", api_teacher_export_ticket)
