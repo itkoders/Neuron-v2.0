@@ -1993,6 +1993,8 @@ body.social-open #paxBuddy{display:none}
       bad_teacher_code: "6 xonali kod noto‘g‘ri.",
       teacher_pending: "O‘qituvchi hisobi hali Super Admin tomonidan tasdiqlanmagan.",
       teacher_blocked: "O‘qituvchi hisobi bloklangan.",
+      teacher_device_limit: "Bu o‘qituvchi kabinetiga 3 ta qurilma allaqachon ulangan.",
+      telegram_account_already_linked: "Bu Telegram akkaunt boshqa o‘qituvchi kabinetiga ulangan.",
       teacher_exists: "Sizda o‘qituvchi hisobi mavjud. 6 xonali kod bilan kiring.",
       bad_details: "Ism, familiya yoki telefon raqamini tekshiring.",
       bad_display_name: "Ko‘rinadigan ismda emoji yoki ruxsat etilmagan belgi bor.",
@@ -2272,14 +2274,14 @@ body.social-open #paxBuddy{display:none}
   function renderAdminTab() {
     const d=state.adminData;if(!d)return;const host=$("adminContent"),s=d.settings;
     if(state.adminTab==="overview") {
-      host.innerHTML='<div class="admin-grid"><div class="admin-kpi"><b>'+d.stats.teachers+'</b><span>O‘qituvchilar</span></div><div class="admin-kpi"><b>'+d.stats.active_teachers+'</b><span>Faol hisoblar</span></div><div class="admin-kpi"><b>'+d.stats.students+'</b><span>Jami o‘quvchilar</span></div><div class="admin-kpi"><b>'+d.stats.paid_teachers+'</b><span>Pullik tarifdagilar</span></div></div>'+
-      adminCard('⚡ Tezkor holat','<p class="admin-muted">Tasdiqlash navbatida: '+d.queue.length+' ta</p><p class="admin-muted">Majburiy obuna: '+(s.mandatory_sub?'Yoqilgan':'O‘chirilgan')+'</p><p class="admin-muted">AI: '+esc(s.ai_primary)+'</p>',adminBtn('Yangilash','refresh')+adminBtn('Tasdiqlash navbati','go-queue'));
+      host.innerHTML='<div class="admin-grid"><div class="admin-kpi"><b>'+d.stats.teachers+'</b><span>O‘qituvchilar</span></div><div class="admin-kpi"><b>'+d.stats.active_teachers+'</b><span>Faol hisoblar</span></div><div class="admin-kpi"><b>'+d.stats.students+'</b><span>Jami o‘quvchilar</span></div><div class="admin-kpi"><b>'+d.stats.paid_teachers+'</b><span>Pullik tarifdagilar</span></div><div class="admin-kpi"><b>'+(d.stats.admin_users||1)+'/3</b><span>Admin akkauntlari</span></div></div>'+
+      adminCard('⚡ Tezkor holat','<p class="admin-muted">Tasdiqlash navbatida: '+d.queue.length+' ta</p><p class="admin-muted">Admin kabineti: '+(d.stats.admin_users||1)+'/3 akkaunt</p><p class="admin-muted">Majburiy obuna: '+(s.mandatory_sub?'Yoqilgan':'O‘chirilgan')+'</p><p class="admin-muted">AI: '+esc(s.ai_primary)+'</p>',adminBtn('Yangilash','refresh')+adminBtn('Tasdiqlash navbati','go-queue'));
     } else if(state.adminTab==="teachers") {
       host.innerHTML='<div class="card panel"><h3>👩‍🏫 O‘qituvchilar</h3><input class="field" id="adminTeacherSearch" placeholder="Ism yoki telefon bo‘yicha qidirish"></div><div id="adminTeacherList"></div>';
       const draw=()=>{const q=($("adminTeacherSearch").value||"").toLowerCase();$("adminTeacherList").innerHTML=d.teachers.filter(t=>(t.name+" "+t.phone).toLowerCase().includes(q)).map(t=>{
         const opts=d.plans.map(p=>'<option value="'+esc(p.key)+'" '+(p.key===t.plan_key?'selected':'')+'>'+esc(p.name)+'</option>').join("");
-        const acts=adminBtn('Tarif berish','assign',t.id)+adminBtn('30 kun qo‘shish','extend',t.id)+adminBtn(t.active?'Bloklash':'Faollashtirish','toggle_active',t.id)+adminBtn(t.ai_enabled?'AI o‘chirish':'AI yoqish','toggle_ai',t.id)+adminBtn('Yangi kod','regen',t.id)+adminBtn('O‘chirish','delete',t.id);
-        return adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.plan_name)+' · '+t.students+'/'+(t.student_limit||'∞')+' o‘quvchi</p><p class="admin-muted">'+(t.active?'Faol':'Bloklangan')+' · '+(t.approved?'Tasdiqlangan':'Kutilmoqda')+'</p><select class="field" data-plan-for="'+t.id+'">'+opts+'</select>',acts);
+        const acts=adminBtn('Tarif berish','assign',t.id)+adminBtn('30 kun qo‘shish','extend',t.id)+adminBtn(t.active?'Bloklash':'Faollashtirish','toggle_active',t.id)+adminBtn(t.ai_enabled?'AI o‘chirish':'AI yoqish','toggle_ai',t.id)+adminBtn('Kodni ko‘rish','reveal-code',t.id)+adminBtn('Yangi kod','regen',t.id)+adminBtn('O‘chirish','delete',t.id);
+        return adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.plan_name)+' · '+t.students+'/'+(t.student_limit||'∞')+' o‘quvchi</p><p class="admin-muted">'+(t.active?'Faol':'Bloklangan')+' · '+(t.approved?'Tasdiqlangan':'Kutilmoqda')+' · Qurilmalar: '+(t.device_count||0)+'/3</p><select class="field" data-plan-for="'+t.id+'">'+opts+'</select>',acts);
       }).join("")||'<div class="card empty">O‘qituvchi topilmadi.</div>';};
       draw();
       let searchTimer=0;
@@ -2318,6 +2320,7 @@ body.social-open #paxBuddy{display:none}
       if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:document.querySelector('[data-plan-for="'+id+'"]').value});}
       else if(["extend","toggle_active","toggle_ai","approve"].includes(a)){await adminPost("/api/admin/teacher/"+id,{action:a});}
       else if(a==="reject"){const reason=prompt("Rad etish sababini kiriting:")||"Sabab ko‘rsatilmagan";await adminPost("/api/admin/teacher/"+id,{action:"reject",reason});}
+      else if(a==="reveal-code"){const z=await adminPost("/api/admin/teacher/"+id,{action:"reveal_code"});alert((z.rotated?"Eski kod xeshlanganligi sabab tiklanmadi. Yangi kod belgilandi: ":"Amaldagi o‘qituvchi kirish kodi: ")+z.code);}
       else if(a==="regen"){const z=await adminPost("/api/admin/teacher/"+id,{action:"regenerate_code"});alert("Yangi kod: "+z.code);}
       else if(a==="delete"){if(!confirm("O‘qituvchi va unga tegishli ma’lumotlar o‘chirilsinmi?"))return;await adminPost("/api/admin/teacher/"+id,{action:"delete"});}
       else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>{obj[i.dataset.field]=i.type==="checkbox"?(i.checked?"1":"0"):i.value;});const bc=document.querySelector('[data-key="'+id+'"][data-field="badge_enabled"]'),bs=document.querySelector('[data-key="'+id+'"][data-field="badge"]');obj.badge=bc&&bc.checked?(bs.value||"verified"):"";await adminPost("/api/admin/plan",obj);}
