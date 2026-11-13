@@ -919,7 +919,21 @@
   .social-user{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
   .social-user .social-avatar{width:42px;height:42px;border-radius:14px;font-size:15px;flex-shrink:0}
   .social-user-info{min-width:0;flex:1}.social-user-info b{display:block;overflow-wrap:anywhere}.social-user-info small{display:block;color:var(--muted);overflow-wrap:anywhere}
-  .social-badge{display:inline-flex;color:#38bdf8;font-weight:900;margin-left:4px}
+  .social-badge{--badge-a:#38bdf8;--badge-b:#2563eb;position:relative;display:inline-grid;place-items:center;vertical-align:-.28em;width:25px;height:25px;margin-left:5px;flex:0 0 25px;color:#fff;isolation:isolate;filter:drop-shadow(0 2px 5px color-mix(in srgb,var(--badge-a) 45%,transparent));}
+  .social-badge svg{width:100%;height:100%;overflow:visible;position:relative;z-index:1;animation:neuronBadgeFloat 3.8s ease-in-out infinite}
+  .social-badge .badge-core{fill:var(--badge-a);stroke:var(--badge-b);stroke-width:1.5}
+  .social-badge .badge-outline{fill:none;stroke:rgba(255,255,255,.92);stroke-width:1.25}
+  .social-badge .badge-check{fill:none;stroke:#fff;stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round}
+  .social-badge .badge-orbit{fill:none;stroke:rgba(255,255,255,.85);stroke-width:1.1;stroke-dasharray:3 2;transform-origin:16px 16px;animation:neuronBadgeSpin 7s linear infinite}
+  .social-badge .badge-glint{fill:none;stroke:#fff;stroke-width:1.2;stroke-linecap:round;opacity:.9}
+  .social-badge .badge-spark{position:absolute;z-index:2;right:-2px;top:0;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 5px 2px var(--badge-a);animation:neuronBadgeSpark 2.4s ease-in-out infinite}
+  .badge-blue{--badge-a:#27c8ff;--badge-b:#1765df}.badge-premium{--badge-a:#d7e8f7;--badge-b:#56718f}.badge-premium .badge-core{fill:linear-gradient(135deg,#fff,#8aa5c3)}.badge-official{--badge-a:#f5bd4b;--badge-b:#bd7416}.badge-expert{--badge-a:#24e4d1;--badge-b:#1765bd}.badge-verified{--badge-a:#438cff;--badge-b:#254cc9}
+  .social-badge-preview{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--surface-2)}
+  .social-badge-preview>div{min-width:72px;display:flex;align-items:center;flex-direction:column;gap:7px;padding:9px 6px;border-radius:13px;background:var(--surface)}
+  .social-badge-preview .social-badge{width:42px;height:42px;flex-basis:42px;margin:0}
+  .social-badge-preview small{font-size:10px;color:var(--muted);text-align:center}
+  @keyframes neuronBadgeSpin{to{transform:rotate(360deg)}}@keyframes neuronBadgeFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-1.5px) scale(1.035)}}@keyframes neuronBadgeSpark{0%,100%{opacity:.25;transform:scale(.65)}50%{opacity:1;transform:scale(1.25)}}
+  @media(prefers-reduced-motion:reduce){.social-badge svg,.social-badge .badge-orbit,.social-badge .badge-spark{animation:none}}
   .social-chat-list{display:flex;flex-direction:column;gap:10px;max-height:48dvh;overflow:auto;padding:8px 2px}
   .social-message{padding:11px 13px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere}
   .social-message.mine{border-color:var(--brand);background:var(--brand-soft)}
@@ -1590,8 +1604,18 @@ img,video,canvas{max-width:100%}
   }
 
   let socialPoll=null, socialProfile=null;
-  const socialBadges={blue:"NEURON Blue",premium:"NEURON Premium",official:"NEURON Official",expert:"NEURON Expert",verified:"NEURON Verified"};
-  const badgeMark=(b)=>b?'<span class="social-badge" data-kind="'+esc(b)+'" title="'+esc(socialBadges[b]||"NEURON Verified")+'" aria-label="NEURON tomonidan tasdiqlangan"><svg viewBox="0 0 32 32" role="img" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="currentColor"/><path d="m8.5 16.5 5 5L23.5 11" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>':"";
+  const socialBadges={blue:"NEURON Blue Verified",premium:"NEURON Shield",official:"NEURON Official",expert:"NEURON Holographic",verified:"NEURON Signature"};
+  const badgeMark=(b)=>{
+    if(!b)return "";
+    const shapes={
+      blue:'<circle class="badge-core" cx="16" cy="16" r="12.2"/><circle class="badge-orbit" cx="16" cy="16" r="14.1"/><path class="badge-check" d="m9.5 16.2 4.2 4.1 8.8-9"/>',
+      premium:'<path class="badge-core" d="M16 2.2 28 7v8.1c0 7.2-5.1 12-12 14.7C9.1 27.1 4 22.3 4 15.1V7z"/><path class="badge-outline" d="M16 5.2 25 8.8v6.1c0 5.6-3.8 9.7-9 12-5.2-2.3-9-6.4-9-12V8.8z"/><path class="badge-check" d="m10.2 15.9 4 4 7.8-8"/>',
+      official:'<path class="badge-core" d="M16 1.8 19.8 4l4.4-.2 2.1 3.8 3.8 2.1-.2 4.4 2.1 3.9-2.1 3.9.2 4.4-3.8 2.1-2.1 3.8-4.4-.2-3.8 2.2-3.8-2.2-4.4.2-2.1-3.8-3.8-2.1.2-4.4L.0 18l2.1-3.9-.2-4.4 3.8-2.1 2.1-3.8 4.4.2z" transform="translate(1 0) scale(.94)"/><path class="badge-check" d="m9.5 16.2 4.2 4.1 8.8-9"/>',
+      expert:'<path class="badge-core" d="M16 2.5 28 9.2v13.6L16 29.5 4 22.8V9.2z"/><path class="badge-outline" d="M16 6 24.5 10.7v10.6L16 26l-8.5-4.7V10.7z"/><path class="badge-check" d="m9.5 16.2 4.2 4.1 8.8-9"/>',
+      verified:'<circle class="badge-core" cx="16" cy="16" r="13.2"/><path class="badge-outline" d="M16 4.2 19 6l3.5-.1 1.7 3 3 1.7-.1 3.5 1.7 3-1.7 3 .1 3.5-3 1.7-1.7 3-3.5-.1-3 1.7-3-1.7-3.5.1-1.7-3-3-1.7.1-3.5-1.7-3 1.7-3-.1-3.5 3-1.7 1.7-3 3.5.1z"/><path class="badge-check" d="m9.5 16.2 4.2 4.1 8.8-9"/>'
+    };
+    return '<span class="social-badge badge-'+esc(b)+'" data-kind="'+esc(b)+'" title="'+esc(socialBadges[b]||"NEURON Verified")+'" aria-label="'+esc(socialBadges[b]||"NEURON Verified")+'"><svg viewBox="0 0 32 32" role="img" aria-hidden="true">'+(shapes[b]||shapes.verified)+'<path class="badge-glint" d="M23 2.5v5M20.5 5h5"/></svg><i class="badge-spark"></i></span>';
+  };
 
   const avatarHTML=(p)=>p.avatar?'<img class="social-avatar" src="'+esc(p.avatar)+'" alt="Profil rasmi">':'<div class="social-avatar">'+esc((p.display_name||"N").slice(0,1).toUpperCase())+'</div>';
   function closeSocial(){
