@@ -923,6 +923,9 @@
   .social-chat-list{display:flex;flex-direction:column;gap:10px;max-height:48dvh;overflow:auto;padding:8px 2px}
   .social-message{padding:11px 13px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere}
   .social-message.mine{border-color:var(--brand);background:var(--brand-soft)}
+  .tg-message-head{display:flex;align-items:center;justify-content:flex-start!important;gap:9px!important;margin-bottom:8px}
+  .tg-message-head .social-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:50%!important;object-fit:cover}
+  .tg-message-author{min-width:0;display:grid;gap:2px}.tg-message-author strong{font-size:13px;overflow-wrap:anywhere}.tg-message-author span{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
   .social-message-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);margin-bottom:5px}
   .social-message-head b{color:var(--text)}.social-message p{margin:0;white-space:pre-wrap}
   .social-compose{display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding-top:10px}
@@ -1653,7 +1656,7 @@ img,video,canvas{max-width:100%}
     const host=$("socialContent");$("socialTitle").textContent="💬 "+(peerName||"Direct");
     host.innerHTML='<div class="tg-chat-layout"><div class="tg-chat-toolbar"><button class="chip-btn" id="directBack">← Jamiyatga qaytish</button><b>'+esc(peerName||"Foydalanuvchi")+'</b></div><div class="tg-chat-messages" id="directMessages"><div class="loading">Xabarlar yuklanmoqda…</div></div><form class="tg-chat-compose" id="directSend"><input class="field" id="directMessage" maxlength="1000" placeholder="Shaxsiy xabar yozing…"><button class="btn" type="submit">➤</button></form></div>';
     let last=0,first=true;const box=$("directMessages");
-    const refresh=async()=>{try{const d=await api("/api/social/direct/"+encodeURIComponent(peerId)+"?after="+(first?0:last));const rows=d.messages||[];if(first){box.innerHTML="";first=false;}if(rows.length){box.querySelector(".social-empty")?.remove();}rows.forEach(m=>{if(Number(m.id)<=last)return;const mine=Number(m.sender)===Number(socialProfile?.chat_id);box.insertAdjacentHTML("beforeend",'<article class="tg-message '+(mine?'mine':'')+'"><div class="tg-message-head">'+(mine?'Siz':esc(peerName||"Foydalanuvchi"))+' · '+esc((m.created_at||"").slice(11,16))+'</div><p>'+esc(m.body)+'</p></article>');last=Math.max(last,Number(m.id)||0);});if(!box.children.length)box.innerHTML='<div class="social-empty">Suhbatni birinchi bo‘lib boshlang.</div>';box.scrollTop=box.scrollHeight;}catch(e){if(!box.children.length)box.innerHTML='<div class="social-empty">'+esc(errText(e))+'</div>';}};
+    const refresh=async()=>{try{const d=await api("/api/social/direct/"+encodeURIComponent(peerId)+"?after="+(first?0:last));const rows=d.messages||[];if(first){box.innerHTML="";first=false;}if(rows.length){box.querySelector(".social-empty")?.remove();}rows.forEach(m=>{if(Number(m.id)<=last)return;const mine=Number(m.sender)===Number(socialProfile?.chat_id);box.insertAdjacentHTML("beforeend",'<article class="tg-message '+(mine?'mine':'')+'"><div class="tg-message-head">'+avatarHTML(m)+'<div class="tg-message-author"><strong>'+esc(mine?'Siz':(m.display_name||peerName||"Foydalanuvchi"))+'</strong><span>· '+esc((m.created_at||"").slice(11,16))+'</span></div></div><p>'+esc(m.body)+'</p></article>');last=Math.max(last,Number(m.id)||0);});if(!box.children.length)box.innerHTML='<div class="social-empty">Suhbatni birinchi bo‘lib boshlang.</div>';box.scrollTop=box.scrollHeight;}catch(e){if(!box.children.length)box.innerHTML='<div class="social-empty">'+esc(errText(e))+'</div>';}};
     $("directBack").onclick=()=>renderSocialHome();
     $("directSend").onsubmit=async e=>{e.preventDefault();const input=$("directMessage"),message=input.value.trim();if(!message)return;const btn=e.submitter||$("directSend").querySelector("button");btn.disabled=true;try{await api("/api/social/direct/"+encodeURIComponent(peerId),{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();}catch(err){toast(err.data?.error==="chat_slow_down"?"Biroz kuting.":errText(err));}finally{btn.disabled=false;input.focus();}};
     await refresh();socialPoll=setInterval(refresh,3000);
@@ -1669,7 +1672,7 @@ img,video,canvas{max-width:100%}
       const controls=state.role==="admin"
         ? '<button class="chip-btn danger" data-hide="'+m.id+'">O‘chirish</button>'
         : (mine?'':'<button class="chip-btn" data-report="'+m.id+'">Shikoyat</button>');
-      return '<article class="tg-message '+(mine?'mine':'')+'" data-message-id="'+m.id+'"><div class="tg-message-head"><strong>'+esc(m.display_name)+badgeMark(m.badge)+'</strong><span>@'+esc(m.username||"neuron")+'</span><span>· '+esc((m.created_at||"").slice(11,16))+'</span></div><p>'+esc(m.body)+'</p><div class="tg-message-foot">'+controls+'</div></article>';
+      return '<article class="tg-message '+(mine?'mine':'')+'" data-message-id="'+m.id+'"><div class="tg-message-head">'+avatarHTML(m)+'<div class="tg-message-author"><strong>'+esc(m.display_name)+badgeMark(m.badge)+'</strong><span>@'+esc(m.username||"neuron")+' · '+esc((m.created_at||"").slice(11,16))+'</span></div></div><p>'+esc(m.body)+'</p><div class="tg-message-foot">'+controls+'</div></article>';
     };
     const refresh=async()=>{
       try{
