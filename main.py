@@ -7,6 +7,7 @@ import hashlib
 import asyncio
 import logging
 import random
+import secrets
 import sqlite3
 import csv
 import json
@@ -301,6 +302,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, actor BIGINT, action TEXT,
         target TEXT, details TEXT, created_at TEXT)""")
     run("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+    run("CREATE TABLE IF NOT EXISTS export_download_tokens (token TEXT PRIMARY KEY, teacher_id INTEGER NOT NULL, expires_at TEXT NOT NULL)")
     run("""CREATE TABLE IF NOT EXISTS user_profiles (
         chat_id BIGINT PRIMARY KEY, username TEXT DEFAULT '', display_name TEXT DEFAULT '',
         bio TEXT DEFAULT '', avatar_data TEXT DEFAULT '', badge TEXT DEFAULT '',
@@ -5428,10 +5430,47 @@ async def api_teacher_tool_action(request):
     return web.json_response({"error":"bad_action"},status=400)
 
 
-async def api_teacher_export(request):
+async def api_teacher_export_ticket(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
         return err or web.json_response({"error": "forbidden"}, status=403)
+    if not has_feature(teacher, "export"):
+        return web.json_response({"error": "feature_locked"}, status=403)
+
+    # Telegram WebView blob-download cheklovlarini chetlab o'tish uchun
+    # qisqa muddatli, bir martalik server download havolasi.
+    token = secrets.token_urlsafe(32)
+    now = local_now()
+    expires_at = (now + timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S")
+    run("DELETE FROM export_download_tokens WHERE expires_at < ?",
+        (now.strftime("%Y-%m-%d %H:%M:%S"),))
+    run("INSERT INTO export_download_tokens (token, teacher_id, expires_at) VALUES (?, ?, ?)",
+        (token, teacher["id"], expires_at))
+    return web.json_response({"url": "/api/teacher/export.xlsx?ticket=" + token})
+
+
+async def api_teacher_export(request):
+    ticket = str(request.query.get("ticket", "")).strip()
+    if ticket:
+        ticket_row = run(
+            "SELECT teacher_id, expires_at FROM export_download_tokens WHERE token = ?",
+            (ticket,), fetch="one"
+        )
+        now_label = local_now().strftime("%Y-%m-%d %H:%M:%S")
+        if not ticket_row or str(ticket_row[1]) < now_label:
+            if ticket_row:
+                run("DELETE FROM export_download_tokens WHERE token = ?", (ticket,))
+            return web.json_response({"error": "download_link_expired"}, status=403)
+        # Havola faqat bir marta ishlaydi.
+        run("DELETE FROM export_download_tokens WHERE token = ?", (ticket,))
+        teacher = db_teacher(ticket_row[0])
+        if not teacher or not teacher.get("active") or teacher.get("verify_status") != "approved" or not teacher.get("admin_approved"):
+            return web.json_response({"error": "forbidden"}, status=403)
+        kind = "teacher"
+    else:
+        kind, teacher, err = miniapp_identity(request)
+        if err or kind != "teacher":
+            return err or web.json_response({"error": "forbidden"}, status=403)
     if not has_feature(teacher, "export"):
         return web.json_response({"error": "feature_locked"}, status=403)
 
@@ -5447,9 +5486,18 @@ async def api_teacher_export(request):
     students = list(db_students(teacher["id"]).values())
     today = local_now().date()
     created_at = str(teacher.get("created_at") or "")
-    try:
-        start_date = datetime.strptime(created_at[:10], "%d.%m.%Y").date()
-    except (TypeError, ValueError):
+    start_date = None
+    if created_at:
+        try:
+            start_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+        except (TypeError, ValueError):
+            for date_format in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    start_date = datetime.strptime(created_at, date_format).date()
+                    break
+                except (TypeError, ValueError):
+                    continue
+    if start_date is None:
         start_date = today
     if start_date > today:
         start_date = today
@@ -6086,6 +6134,7 @@ async def start_web_server():
     app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
     app.router.add_get("/api/teacher/tools", api_teacher_tools)
     app.router.add_post("/api/teacher/tools", api_teacher_tool_action)
+    app.router.add_post("/api/teacher/export-ticket", api_teacher_export_ticket)
     app.router.add_get("/api/teacher/export.xlsx", api_teacher_export)
     app.router.add_post("/api/teacher/requests/{kind}/{rid}", api_teacher_request_action)
     app.router.add_post("/api/subject", api_add_subject)
