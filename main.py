@@ -6100,21 +6100,52 @@ async def api_teacher_export(request):
 
     # O'quvchilar bo'yicha bugungi umumiy ro'yxat.
     roster = wb.create_sheet("O‘quvchilar")
-    roster_headers = ["O‘quvchi", "Guruh", "Fan", "Baholash 1", "Baholash 2", "Baholash 3",
-                      "Davomat", "To‘lov holati", "To‘lov summasi", "To‘lov sanasi"]
-    title_block(roster, "O‘QUVCHILAR RO‘YXATI", "Joriy kundagi holat. Eski to‘lov kunlari bazada saqlanmagan.", len(roster_headers))
+    roster_headers = ["O‘quvchi (ism-familiya)", "Guruh", "Fan", "Ball 1", "Ball 2", "Ball 3",
+                      "Jami ball", "O‘rtacha ball", "Bugungi davomat", "Kelgan kunlar",
+                      "Kelmagan kunlar", "Sababli kunlar", "To‘lov holati", "Oylik belgilangan",
+                      "Jami to‘langan", "Jami qarz", "Oxirgi to‘lov sanasi"]
+    title_block(roster, "O‘QUVCHILAR — UMUMIY HOLAT",
+                "Ism-familiya, joriy ballar, davomat statistikasi va barcha oylar bo‘yicha to‘lov/qarzdorlik.", len(roster_headers))
     header_row(roster, 4, roster_headers)
+    payment_totals_rows = run("""SELECT s.id,
+        COALESCE(ch.total_due,0), COALESCE(pay.total_paid,0)
+        FROM students s
+        LEFT JOIN (SELECT student_id,SUM(due_amount) AS total_due
+                   FROM student_monthly_charges WHERE teacher_id=? GROUP BY student_id) ch
+          ON ch.student_id=s.id
+        LEFT JOIN (SELECT student_id,SUM(amount) AS total_paid
+                   FROM student_payment_entries WHERE teacher_id=? GROUP BY student_id) pay
+          ON pay.student_id=s.id
+        WHERE s.teacher_id=?""", (teacher["id"], teacher["id"], teacher["id"]), fetch="all")
+    payment_totals = {int(row[0]): (int(row[1] or 0), int(row[2] or 0)) for row in payment_totals_rows}
+    attendance_totals = {}
+    for hrow in history_rows:
+        sid, status = hrow[0], str(hrow[2] or "").strip().lower()
+        counts = attendance_totals.setdefault(sid, {"present":0,"absent":0,"excused":0})
+        if "sabab" in status:
+            counts["excused"] += 1
+        elif "kelmagan" in status or "yo‘q" in status or "yo'q" in status or "absent" in status:
+            counts["absent"] += 1
+        elif "kelgan" in status or "bor" in status or "present" in status:
+            counts["present"] += 1
     for ridx, st in enumerate(students, 5):
         subj = subjects.get(st["subject_id"])
+        due_total, paid_total = payment_totals.get(st["id"], (0, 0))
+        att = attendance_totals.get(st["id"], {"present":0,"absent":0,"excused":0})
+        scored = [int(st.get(f"s{i}", 0) or 0) for i in (1,2,3)
+                  if bool(st.get(f"s{i}_scored", int(st.get(f"s{i}",0) or 0)>0))]
+        average = round(sum(scored)/len(scored), 1) if scored else ""
         vals = [st["fio"], st["group_name"], subj["name"] if subj else "", st["s1"], st["s2"], st["s3"],
-                st["davomat"], st["payment_status"], st["payment_amount"], st.get("payment_date", "")]
+                sum(scored), average, st["davomat"], att["present"], att["absent"], att["excused"],
+                st["payment_status"], st["payment_amount"], paid_total, max(0,due_total-paid_total),
+                st.get("payment_date", "")]
         for cidx, value in enumerate(vals, 1):
             roster.cell(ridx, cidx, value)
     if students:
         style_data(roster, 5, 4 + len(students), len(roster_headers))
-        roster.auto_filter.ref = f"A4:J{4 + len(students)}"
+        roster.auto_filter.ref = f"A4:Q{4 + len(students)}"
     roster.freeze_panes = "A5"
-    for col, width in enumerate([26, 18, 20, 14, 14, 14, 18, 18, 16, 16], 1):
+    for col, width in enumerate([28,16,20,10,10,10,12,14,18,14,16,14,18,18,18,16,18], 1):
         roster.column_dimensions[get_column_letter(col)].width = width
 
     # Har bir sana uchun alohida varaq: baholar, davomat, to'lov va izoh.
@@ -6218,6 +6249,34 @@ async def api_teacher_export(request):
             for col,width in enumerate([28,12,18,18,18,16,30],1):
                 pay_ws.column_dimensions[get_column_letter(col)].width=width
             pay_ws.sheet_view.showGridLines = False
+
+            # Har bir qabul qilingan to‘lov alohida qatorda — sana, o‘quvchi va izoh bilan.
+            pay_history_ws = wb.create_sheet("To‘lovlar tarixi")
+            pay_history_headers = ["To‘lov sanasi", "O‘quvchi (ism-familiya)", "Guruh", "Fan",
+                                   "Qaysi oy uchun", "Oylik belgilangan", "Qabul qilingan to‘lov", "Izoh"]
+            title_block(pay_history_ws, "TO‘LOVLAR TARIXI",
+                        "Har bir qabul qilingan to‘lov alohida yozilgan. Filtr orqali o‘quvchi, oy yoki sana bo‘yicha qidiring.",
+                        len(pay_history_headers))
+            header_row(pay_history_ws, 4, pay_history_headers)
+            transaction_rows = run("""SELECT p.paid_date,s.fio,s.group_name,COALESCE(sub.name,''),
+                    p.month,COALESCE(ch.due_amount,0),p.amount,COALESCE(p.note,'')
+                FROM student_payment_entries p
+                JOIN students s ON s.id=p.student_id
+                LEFT JOIN subjects sub ON sub.id=s.subject_id
+                LEFT JOIN student_monthly_charges ch
+                  ON ch.student_id=p.student_id AND ch.month=p.month AND ch.teacher_id=p.teacher_id
+                WHERE p.teacher_id=?
+                ORDER BY p.paid_date DESC,p.id DESC""", (teacher["id"],), fetch="all")
+            for ridx, values in enumerate(transaction_rows, 5):
+                for cidx, value in enumerate(values, 1):
+                    pay_history_ws.cell(ridx, cidx, value)
+            if transaction_rows:
+                style_data(pay_history_ws, 5, 4 + len(transaction_rows), len(pay_history_headers))
+                pay_history_ws.auto_filter.ref = f"A4:H{4 + len(transaction_rows)}"
+            pay_history_ws.freeze_panes = "A5"
+            for col,width in enumerate([16,28,16,20,14,20,22,34],1):
+                pay_history_ws.column_dimensions[get_column_letter(col)].width=width
+            pay_history_ws.sheet_view.showGridLines = False
         except Exception:
             logging.exception("Excelga oylik to'lovlar jurnalini qo'shishda xato")
 
