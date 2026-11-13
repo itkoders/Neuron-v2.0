@@ -617,6 +617,7 @@ def _digits(s):
 
 def create_teacher(chat_id, data, status, doc_file_id=None):
     code = new_teacher_code()
+    run("DELETE FROM teacher_access WHERE chat_id=?", (chat_id,))
     run("UPDATE teachers SET chat_id = NULL WHERE chat_id = ?", (chat_id,))
     created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
     run("INSERT INTO teachers (chat_id, first_name, last_name, phone, code_lookup, code_encrypted, plan_key, plan_expires, active, "
