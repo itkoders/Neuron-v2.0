@@ -4135,6 +4135,85 @@ NEW_YEAR_CAPTION = (
 )
 
 
+def create_new_year_poster():
+    """Pillow yordamida NEURON xizmati uchun qishki tabrik posterini yaratadi."""
+    from PIL import Image, ImageDraw, ImageFont
+    import math
+
+    w, h = 900, 1100
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        c1, c2 = (4, 15, 43), (10, 55, 104)
+        row = tuple(int(c1[i] * (1 - t) + c2[i] * t) for i in range(3))
+        for x in range(w):
+            glow = max(0, 1 - math.sqrt(((x - w * .52) / 560) ** 2 + ((y - h * .25) / 520) ** 2))
+            px[x, y] = tuple(min(255, int(row[i] + glow * (12 if i == 2 else 5))) for i in range(3))
+
+    d = ImageDraw.Draw(img)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    def font(size, bold=False):
+        try:
+            return ImageFont.truetype(bold_path if bold else font_path, size)
+        except OSError:
+            return ImageFont.load_default()
+
+    # Yulduzlar va qor
+    random.seed(2027)
+    for _ in range(190):
+        x, y = random.randrange(w), random.randrange(h)
+        r = random.choice((1, 1, 2, 3))
+        d.ellipse((x-r, y-r, x+r, y+r), fill=(170, 220, 255))
+    for _ in range(75):
+        x, y = random.randrange(w), random.randrange(h)
+        r = random.randrange(2, 5)
+        d.ellipse((x-r, y-r, x+r, y+r), fill=(235, 248, 255))
+
+    # Qorli archalar
+    for base_x, base_y, scale in [(70, 920, 1.0), (820, 930, 1.0), (145, 1030, .65), (760, 1035, .65)]:
+        for level in range(4):
+            yy = base_y - level * 65 * scale
+            half = (95 - level * 17) * scale
+            d.polygon([(base_x, yy-105*scale), (base_x-half, yy), (base_x+half, yy)],
+                      fill=(7, 74 + level*7, 105 + level*8))
+            d.line((base_x, yy-105*scale, base_x-half, yy, base_x+half, yy),
+                   fill=(160, 225, 255), width=max(2, int(4*scale)))
+        d.rectangle((base_x-9*scale, base_y, base_x+9*scale, base_y+32*scale), fill=(110, 70, 48))
+
+    # Ramka va sarlavha
+    d.rounded_rectangle((28, 28, w-28, h-28), radius=34, outline=(70, 185, 255), width=4)
+    d.text((w//2, 78), "NEURON V2", font=font(58, True), fill=(235, 248, 255), anchor="mm",
+           stroke_width=1, stroke_fill=(20, 110, 220))
+    d.text((w//2, 142), "Powered by ITKODERS", font=font(25, True), fill=(110, 220, 255), anchor="mm")
+    d.text((w//2, 250), "YANGI YIL", font=font(78, True), fill=(255, 255, 255), anchor="mm",
+           stroke_width=2, stroke_fill=(34, 125, 220))
+    d.text((w//2, 340), "MUBORAK!", font=font(68, True), fill=(255, 205, 105), anchor="mm")
+    d.rounded_rectangle((205, 390, 695, 520), radius=28, fill=(10, 65, 125), outline=(115, 220, 255), width=4)
+    d.text((w//2, 455), "2027", font=font(105, True), fill=(220, 245, 255), anchor="mm")
+
+    # Robotcha maskoti
+    d.rounded_rectangle((355, 555, 545, 735), radius=48, fill=(220, 242, 255), outline=(80, 190, 255), width=7)
+    d.rounded_rectangle((377, 590, 523, 685), radius=30, fill=(5, 25, 65), outline=(25, 135, 230), width=4)
+    d.ellipse((410, 620, 432, 644), fill=(45, 220, 255))
+    d.ellipse((468, 620, 490, 644), fill=(45, 220, 255))
+    d.arc((420, 625, 480, 670), 15, 165, fill=(45, 220, 255), width=5)
+    d.rounded_rectangle((390, 730, 510, 810), radius=24, fill=(12, 83, 155), outline=(80, 190, 255), width=4)
+    d.text((450, 770), "N", font=font(46, True), fill=(255,255,255), anchor="mm")
+
+    # Tabrik matni
+    d.rounded_rectangle((85, 835, 815, 1010), radius=28, fill=(5, 27, 62), outline=(60, 160, 230), width=3)
+    d.text((450, 875), "Aziz NEURON foydalanuvchilari!", font=font(28, True), fill=(255,255,255), anchor="mm")
+    d.text((450, 925), "Sog'liq, baxt, bilim va ulkan yutuqlar tilaymiz!", font=font(22), fill=(210,235,255), anchor="mm")
+    d.text((450, 970), "Yangi maqsadlar va yangi muvaffaqiyatlar sari!", font=font(21), fill=(210,235,255), anchor="mm")
+    d.text((450, 1040), "Hurmat bilan, ITKODERS jamoasi", font=font(25, True), fill=(255,220,145), anchor="mm")
+
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=90, optimize=True)
+    return out.getvalue()
+
+
 async def new_year_broadcast_once():
     """2027-01-01 00:00 dan boshlab har bir manzilga tabrikni faqat bir marta yuboradi."""
     if not bot:
@@ -4165,8 +4244,7 @@ async def new_year_broadcast_once():
             logging.exception("NEW_YEAR_IMAGE_URL dan rasm olinmadi")
 
     if not image_bytes:
-        logging.error("Yangi yil tabrigi uchun rasm topilmadi; NEW_YEAR_IMAGE_URL yoki assets/neuron_new_year_2027.jpg kerak.")
-        return
+        image_bytes = create_new_year_poster()
 
     now = local_now()
     for target_id, target_type in new_year_targets():
