@@ -1482,10 +1482,158 @@ body.social-open #paxBuddy{display:none}
     :root:not([data-theme="dark"]):not([data-theme="light"]) :is(.admin-kpi,.kpi,.notice,.empty-state,.journal-toolbar){background:linear-gradient(145deg,#fafdff,#e9f4fc) !important;border-color:#c9deef !important;color:#183954 !important}
   }
 
+
+  /* ================= NEYRON WINTER EDITION 2026 — FESTIVE LAYER ================= */
+  :root{
+    --winter-ice:#bfeaff;--winter-blue:#17649b;--winter-gold:#d59a35;
+    --winter-red:#b83b52;--winter-green:#197c68;
+  }
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --bg:#edf6ff;--surface:#fbfdff;--surface-2:#e4f1fb;--text:#102b49;--muted:#496783;--line:#c7dced;
+    --brand:#087eae;--brand-2:#3979d6;--brand-soft:#d9efff;--brand-ink:#075985;
+    --pax-bg:#edf6ff;--pax-surface:#fafdff;--pax-edge:rgba(37,105,151,.17);
+    --pax-light:#ffffff;--pax-shadow:#d7e8f5;--pax-text:#102b49;--pax-muted:#496783;
+    --neo-raised:7px 7px 18px #d7e8f5,-6px -6px 16px #ffffff;
+    --neo-raised-sm:4px 4px 10px #d7e8f5,-3px -3px 9px #ffffff;
+    --neo-inset:inset 3px 3px 8px #d7e8f5,inset -3px -3px 8px #ffffff;
+    --shadow:var(--neo-raised);
+    --grad:linear-gradient(125deg,#bcecff 0%,#b8d5ff 52%,#e5d8ff 100%);
+  }
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#081426;--surface:#10233a;--surface-2:#172f4b;--text:#edf7ff;--muted:#a9c0d6;--line:rgba(151,204,239,.2);
+    --brand:#63c9f5;--brand-2:#8baeff;--brand-soft:#173b59;--brand-ink:#bceaff;
+    --pax-bg:#0b192b;--pax-surface:#10233a;--pax-edge:rgba(151,204,239,.16);
+    --pax-light:#1a3552;--pax-shadow:#07111f;--pax-text:#edf7ff;--pax-muted:#a9c0d6;
+    --neo-raised:7px 7px 18px #07111f,-6px -6px 16px #1a3552;
+    --neo-raised-sm:4px 4px 10px #07111f,-3px -3px 9px #1a3552;
+    --neo-inset:inset 3px 3px 8px #07111f,inset -3px -3px 8px #1a3552;
+    --shadow:var(--neo-raised);
+    --grad:linear-gradient(125deg,#147ba8 0%,#315fae 55%,#6755a5 100%);
+  }
+  @media(prefers-color-scheme:light){
+    :root:not([data-theme="dark"]):not([data-theme="light"]){
+      color-scheme:light;
+      --bg:#edf6ff;--surface:#fbfdff;--surface-2:#e4f1fb;--text:#102b49;--muted:#496783;--line:#c7dced;
+      --brand:#087eae;--brand-2:#3979d6;--brand-soft:#d9efff;--brand-ink:#075985;
+      --pax-bg:#edf6ff;--pax-surface:#fafdff;--pax-edge:rgba(37,105,151,.17);
+      --pax-light:#ffffff;--pax-shadow:#d7e8f5;--pax-text:#102b49;--pax-muted:#496783;
+      --neo-raised:7px 7px 18px #d7e8f5,-6px -6px 16px #ffffff;
+      --neo-raised-sm:4px 4px 10px #d7e8f5,-3px -3px 9px #ffffff;
+      --neo-inset:inset 3px 3px 8px #d7e8f5,inset -3px -3px 8px #ffffff;
+      --shadow:var(--neo-raised);
+      --grad:linear-gradient(125deg,#bcecff 0%,#b8d5ff 52%,#e5d8ff 100%);
+    }
+  }
+  :root[data-theme="light"] html,:root[data-theme="light"] body,
+  @media(prefers-color-scheme:light){:root:not([data-theme="dark"]):not([data-theme="light"]) html,:root:not([data-theme="dark"]):not([data-theme="light"]) body{color:#102b49}}
+  :root[data-theme="light"] body{
+    color:#102b49!important;
+    background:
+      radial-gradient(ellipse at 8% 0%,rgba(170,225,250,.58),transparent 36%),
+      radial-gradient(ellipse at 96% 12%,rgba(202,220,255,.52),transparent 34%),
+      linear-gradient(180deg,#f8fcff 0%,#edf6ff 58%,#e8f2fc 100%)!important;
+  }
+  :root[data-theme="light"] header{
+    background:rgba(247,252,255,.9)!important;border-bottom:1px solid #c7dced;
+    box-shadow:0 8px 24px rgba(43,91,126,.06);backdrop-filter:blur(18px);
+  }
+  :root[data-theme="light"] .card,:root[data-theme="light"] .panel,
+  :root[data-theme="light"] .stat,:root[data-theme="light"] .score-card,
+  :root[data-theme="light"] .fact,:root[data-theme="light"] .att-item,
+  :root[data-theme="light"] .profile,:root[data-theme="light"] .history-item,
+  :root[data-theme="light"] .report-actions,:root[data-theme="light"] .grid-wrap,
+  :root[data-theme="light"] .tabs,:root[data-theme="light"] .theme-switch{
+    background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(235,246,255,.96))!important;
+    border-color:#c7dced!important;
+    box-shadow:7px 7px 18px rgba(73,116,149,.10),-5px -5px 14px rgba(255,255,255,.92)!important;
+  }
+  :root[data-theme="light"] .hero{
+    color:#123653!important;
+    background:linear-gradient(125deg,#dff5ff 0%,#dceaff 52%,#f4eaff 100%)!important;
+    border:1px solid #b9d9ed;box-shadow:0 16px 34px -20px rgba(48,111,160,.38),inset 0 1px 0 #fff!important;
+  }
+  :root[data-theme="light"] .hero :is(.title,.sub,.kicker,p,span,strong,b){color:#173b5c!important;opacity:1}
+  :root[data-theme="light"] body :is(h1,h2,h3,h4,p,label,small,li,td,th,strong,b,
+    .title,.sub,.label,.muted,.hint,.meta,.admin-muted,.kicker,.field-label,.stat-label,
+    .admin-item,.admin-kpi,.nav-label,.stat-value,.kpi-value,.description,.caption,
+    .section-title,.report-info,.report-heading,.att-item,.history-item,.fact,.profile,.note){
+    color:#173954!important;
+  }
+  :root[data-theme="light"] body :is(.muted,.admin-muted,.hint,.meta,small,.label,.section-title,.report-info){
+    color:#496783!important;
+  }
+  :root[data-theme="light"] body :is(input,select,textarea,.field){
+    color:#173954!important;background:#fbfdff!important;border-color:#bdd6e8!important;
+    -webkit-text-fill-color:#173954!important;
+  }
+  :root[data-theme="light"] body :is(input,select,textarea,.field)::placeholder{color:#607f98!important;opacity:1}
+  :root[data-theme="light"] .chip-btn:not(.primary):not(.danger),
+  :root[data-theme="light"] .tab:not(.active),
+  :root[data-theme="light"] .theme-switch button:not(.active),
+  :root[data-theme="light"] .btn.ghost,.help-btn{
+    color:#17466a!important;background:linear-gradient(145deg,#fff,#e5f2fb)!important;border-color:#c3dced!important;
+  }
+  :root[data-theme="light"] .btn,:root[data-theme="light"] .chip-btn.primary,
+  :root[data-theme="light"] .parent-pay-quick{color:#fff!important}
+  :root[data-theme="light"] .btn *,:root[data-theme="light"] .chip-btn.primary *,
+  :root[data-theme="light"] .parent-pay-quick *{color:#fff!important}
+  :root[data-theme="light"] .seg button.on-keldi,
+  :root[data-theme="light"] .seg button.on-kelmadi{color:#fff!important}
+  :root[data-theme="light"] .seg button.on-sababli{color:#332000!important}
+  :root[data-theme="light"] .status.saving{color:#754600!important}
+  :root[data-theme="light"] .status.ok{color:#08664d!important}
+  :root[data-theme="light"] .status.err{color:#9f263b!important}
+  :root[data-theme="light"] .journal-table td.cell-ok input{color:#08664d!important}
+  :root[data-theme="light"] .journal-table td.cell-warn input{color:#754600!important}
+  :root[data-theme="light"] .journal-table td.cell-bad input,
+  :root[data-theme="light"] .journal-table td.cell-err input{color:#9f263b!important}
+  :root[data-theme="light"] .social-badge[data-kind="admin"],
+  :root[data-theme="light"] .social-badge[data-kind="super_admin"]{color:#56318d!important}
+  :root[data-theme="light"] ::selection{background:#b9e6ff;color:#123653}
+  :root[data-theme="light"] :focus-visible{outline-color:#087eae}
+  :root[data-theme="dark"] body{
+    background:
+      radial-gradient(ellipse at 8% 0%,rgba(29,126,170,.16),transparent 38%),
+      radial-gradient(ellipse at 96% 12%,rgba(87,91,170,.14),transparent 34%),
+      linear-gradient(180deg,#081426 0%,#0b1a2d 100%)!important;
+  }
+  :root[data-theme="dark"] .hero{
+    background:linear-gradient(125deg,#124b70 0%,#263f78 55%,#4b376d 100%)!important;
+    border:1px solid rgba(172,222,255,.18);
+  }
+  .hero{position:relative}
+  .hero::before{
+    content:"❄  ✦  ❄";position:absolute;right:18px;top:14px;
+    color:rgba(255,255,255,.78);font-size:19px;letter-spacing:10px;
+    pointer-events:none;z-index:2;text-shadow:0 2px 12px rgba(64,147,199,.25)
+  }
+  .logo{background:linear-gradient(145deg,#dff7ff,#7cb9e8 52%,#8d9fe8)!important;color:#fff!important;box-shadow:0 7px 18px rgba(48,123,175,.28)!important}
+  .tabs{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+  #winterSnow{
+    position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:45;
+    contain:strict;opacity:.72;
+  }
+  #winterSnow .snowflake{
+    position:absolute;top:-8vh;left:var(--snow-left);font-size:var(--snow-size);
+    color:var(--snow-color);opacity:var(--snow-opacity);line-height:1;
+    text-shadow:0 1px 8px rgba(90,166,215,.22);
+    animation:winterFall var(--snow-duration) linear var(--snow-delay) infinite;
+    will-change:transform;
+  }
+  @keyframes winterFall{
+    0%{transform:translate3d(0,-8vh,0) rotate(0deg)}
+    50%{transform:translate3d(var(--snow-drift),52vh,0) rotate(180deg)}
+    100%{transform:translate3d(calc(var(--snow-drift) * -0.45),112vh,0) rotate(360deg)}
+  }
+  @media(prefers-reduced-motion:reduce){#winterSnow{display:none!important}.hero::before{display:none}}
+
 </style>
 
 </head>
 <body>
+<div id="winterSnow" aria-hidden="true"></div>
 <header>
   <div class="topbar">
     <div class="top-user-avatar" id="topUserAvatar" aria-label="Profil rasmi">N</div>
@@ -3702,5 +3850,38 @@ body.social-open #paxBuddy{display:none}
   init();
 })();
 </script>
+
+<script>
+/* NEYRON WINTER EDITION — lightweight decorative snowfall */
+(() => {
+  const root = document.getElementById("winterSnow");
+  if (!root || root.dataset.ready === "1") return;
+  root.dataset.ready = "1";
+  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) return;
+  const colors = ["#ffffff","#d8f2ff","#c5dcff"];
+  const count = window.matchMedia("(max-width: 600px)").matches ? 18 : 28;
+  const frag = document.createDocumentFragment();
+  for (let i=0;i<count;i++){
+    const flake=document.createElement("span");
+    flake.className="snowflake";
+    flake.textContent=i%5===0?"✦":"❄";
+    flake.style.setProperty("--snow-left",(Math.random()*100)+"%");
+    flake.style.setProperty("--snow-size",(8+Math.random()*10)+"px");
+    flake.style.setProperty("--snow-opacity",(0.24+Math.random()*0.34).toFixed(2));
+    flake.style.setProperty("--snow-color",colors[i%colors.length]);
+    flake.style.setProperty("--snow-duration",(15+Math.random()*16)+"s");
+    flake.style.setProperty("--snow-delay",(-Math.random()*28)+"s");
+    flake.style.setProperty("--snow-drift",(Math.random()*70-35)+"px");
+    frag.appendChild(flake);
+  }
+  root.appendChild(frag);
+  document.addEventListener("visibilitychange",()=>{
+    root.style.animationPlayState=document.hidden?"paused":"running";
+    root.querySelectorAll(".snowflake").forEach(el=>el.style.animationPlayState=document.hidden?"paused":"running");
+  },{passive:true});
+})();
+</script>
+
 </body>
 </html>
