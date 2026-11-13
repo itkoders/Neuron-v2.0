@@ -6238,7 +6238,9 @@ async def api_teacher_export(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": 'attachment; filename="NEURON_kunlik_hisobot.xlsx"',
-            "Cache-Control": "no-store"
+            "Cache-Control": "no-store",
+            # export-to-chat endpointi Telegram yuborish natijasini shu header orqali tekshiradi.
+            "X-Telegram-Sent": "1" if telegram_sent else "0"
         }
     )
 
