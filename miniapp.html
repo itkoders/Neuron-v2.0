@@ -1370,6 +1370,118 @@ body.social-open #paxBuddy{display:none}
   *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important}
 }
 
+
+  /* ================= NEYRON QISHGI KUNDUZGI MAVSUMI ================= */
+  /* Oqartirilgan fon ustidagi matnlar doim to‘q ko‘k: kontrast yo‘qolmaydi. */
+  :root[data-theme="light"]{
+    color-scheme:light;
+    --bg:#edf6ff; --surface:#fafdff; --surface-2:#e4f0fb; --text:#102b49; --muted:#496783; --line:#c8dced;
+    --brand:#087eae; --brand-2:#3979d6; --brand-soft:#d9efff; --brand-ink:#075985;
+    --ok:#0b946d; --ok-soft:#d9f7ec; --ok-ink:#08664d;
+    --warn:#a76508; --warn-soft:#fff0cf; --warn-ink:#754600;
+    --bad:#c33b50; --bad-soft:#ffe4e9; --bad-ink:#9f263b;
+    --shadow:0 2px 5px rgba(42,91,130,.07),0 14px 34px -18px rgba(33,91,139,.28);
+    --grad:linear-gradient(120deg,#8bd8f2 0%,#9dbdf8 52%,#c5b8f5 100%);
+  }
+  :root[data-theme="light"] body{
+    background:
+      radial-gradient(ellipse at 8% 0%,rgba(177,226,250,.62),transparent 36%),
+      radial-gradient(ellipse at 96% 18%,rgba(205,220,255,.58),transparent 34%),
+      linear-gradient(180deg,#f7fbff 0%,#edf6ff 52%,#eaf3fc 100%);
+    color:#102b49;
+  }
+  :root[data-theme="light"] body::before{background:#8bd8f2;opacity:.22}
+  :root[data-theme="light"] body::after{background:#a9bdf7;opacity:.22}
+  :root[data-theme="light"] header{
+    background:rgba(247,251,255,.88);
+    border-bottom:1px solid rgba(177,207,229,.7);
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  }
+  :root[data-theme="light"] .card,
+  :root[data-theme="light"] .panel,
+  :root[data-theme="light"] .stat,
+  :root[data-theme="light"] .modal,
+  :root[data-theme="light"] .sheet,
+  :root[data-theme="light"] .admin-card,
+  :root[data-theme="light"] .profile-card,
+  :root[data-theme="light"] .settings-card,
+  :root[data-theme="light"] .score-card{
+    background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(235,246,255,.96)) !important;
+    border-color:#c9deef !important;
+    box-shadow:7px 7px 18px rgba(91,132,165,.10),-6px -6px 16px rgba(255,255,255,.92),inset 0 1px 0 rgba(255,255,255,.9) !important;
+  }
+  :root[data-theme="light"] .hero{
+    background:linear-gradient(135deg,#dff4ff 0%,#e8edff 55%,#f5f0ff 100%) !important;
+    border:1px solid #c5dff1 !important;
+    color:#102b49 !important;
+    box-shadow:0 16px 34px -20px rgba(48,111,160,.38),inset 0 1px 0 rgba(255,255,255,.9) !important;
+  }
+  :root[data-theme="light"] .hero :is(.title,.sub,.kicker,p,span,strong,b){color:#173b5c !important}
+  :root[data-theme="light"] body :is(h1,h2,h3,h4,p,label,small,li,td,th,strong,b,.title,.sub,.label,.muted,.hint,.meta,.admin-muted,.kicker,.field-label,.stat-label){
+    color:#183954 !important;
+  }
+  :root[data-theme="light"] body :is(.muted,.admin-muted,.hint,.meta,small,.label){color:#4c6b85 !important}
+  :root[data-theme="light"] body :is(input,select,textarea,.field){
+    color:#173954 !important;background:#f8fcff !important;border-color:#c6dceb !important;
+  }
+  :root[data-theme="light"] body :is(input,select,textarea,.field)::placeholder{color:#718ba2 !important;opacity:1}
+  :root[data-theme="light"] .chip-btn:not(.primary):not(.danger),
+  :root[data-theme="light"] .tab:not(.active),
+  :root[data-theme="light"] .theme-switch button:not(.active){
+    color:#244b6a !important;background:linear-gradient(145deg,#fafdff,#e6f1fa) !important;border-color:#c7dceb !important;
+    box-shadow:4px 4px 10px rgba(73,116,149,.10),-3px -3px 8px rgba(255,255,255,.95) !important;
+  }
+  :root[data-theme="light"] .theme-switch button.active{
+    color:#075985 !important;background:linear-gradient(145deg,#dff4ff,#cdeaff) !important;border:1px solid #a9d6ee !important;
+  }
+  :root[data-theme="light"] .tab.active{
+    color:#075985 !important;box-shadow:inset 2px 2px 6px rgba(53,111,151,.12),inset -2px -2px 6px rgba(255,255,255,.9) !important;
+  }
+  :root[data-theme="light"] :is(.admin-kpi,.kpi,.notice,.empty-state,.journal-toolbar){
+    background:linear-gradient(145deg,#fafdff,#e9f4fc) !important;border-color:#c9deef !important;color:#183954 !important;
+  }
+  :root[data-theme="light"] :is(.divider,.separator){border-color:#c8dced !important}
+  :root[data-theme="light"] .status{color:#075985}
+  :root[data-theme="light"] ::selection{background:#b9e6ff;color:#123653}
+
+  @media(prefers-color-scheme:light){
+    :root:not([data-theme="dark"]):not([data-theme="light"]){
+      color-scheme:light;
+      --bg:#edf6ff;--surface:#fafdff;--surface-2:#e4f0fb;--text:#102b49;--muted:#496783;--line:#c8dced;
+      --brand:#087eae;--brand-2:#3979d6;--brand-soft:#d9efff;--brand-ink:#075985;
+      --ok:#0b946d;--ok-soft:#d9f7ec;--ok-ink:#08664d;--warn:#a76508;--warn-soft:#fff0cf;--warn-ink:#754600;
+      --bad:#c33b50;--bad-soft:#ffe4e9;--bad-ink:#9f263b;
+      --shadow:0 2px 5px rgba(42,91,130,.07),0 14px 34px -18px rgba(33,91,139,.28);
+      --grad:linear-gradient(120deg,#8bd8f2 0%,#9dbdf8 52%,#c5b8f5 100%);
+    }
+    :root:not([data-theme="dark"]):not([data-theme="light"]) body{
+      background:radial-gradient(ellipse at 8% 0%,rgba(177,226,250,.62),transparent 36%),radial-gradient(ellipse at 96% 18%,rgba(205,220,255,.58),transparent 34%),linear-gradient(180deg,#f7fbff 0%,#edf6ff 52%,#eaf3fc 100%);
+      color:#102b49;
+    }
+    :root:not([data-theme="dark"]):not([data-theme="light"]) header{background:rgba(247,251,255,.88);border-bottom:1px solid rgba(177,207,229,.7);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) body :is(h1,h2,h3,h4,p,label,small,li,td,th,strong,b,.title,.sub,.label,.muted,.hint,.meta,.admin-muted,.kicker,.field-label,.stat-label){color:#183954 !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) body :is(.muted,.admin-muted,.hint,.meta,small,.label){color:#4c6b85 !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) body :is(input,select,textarea,.field){color:#173954 !important;background:#f8fcff !important;border-color:#c6dceb !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) body :is(input,select,textarea,.field)::placeholder{color:#718ba2 !important;opacity:1}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .card,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .panel,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .stat,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .modal,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .sheet,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .admin-card,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .profile-card,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .settings-card,
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .score-card{background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(235,246,255,.96)) !important;border-color:#c9deef !important;box-shadow:7px 7px 18px rgba(91,132,165,.10),-6px -6px 16px rgba(255,255,255,.92),inset 0 1px 0 rgba(255,255,255,.9) !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .hero{background:linear-gradient(135deg,#dff4ff 0%,#e8edff 55%,#f5f0ff 100%) !important;border:1px solid #c5dff1 !important;color:#102b49 !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .hero :is(.title,.sub,.kicker,p,span,strong,b){color:#173b5c !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .chip-btn:not(.primary):not(.danger),
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .tab:not(.active),
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .theme-switch button:not(.active){color:#244b6a !important;background:linear-gradient(145deg,#fafdff,#e6f1fa) !important;border-color:#c7dceb !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .theme-switch button.active{color:#075985 !important;background:linear-gradient(145deg,#dff4ff,#cdeaff) !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) .tab.active{color:#075985 !important}
+    :root:not([data-theme="dark"]):not([data-theme="light"]) :is(.admin-kpi,.kpi,.notice,.empty-state,.journal-toolbar){background:linear-gradient(145deg,#fafdff,#e9f4fc) !important;border-color:#c9deef !important;color:#183954 !important}
+  }
+
 </style>
 
 </head>
