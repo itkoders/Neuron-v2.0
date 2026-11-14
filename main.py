@@ -714,7 +714,9 @@ def teacher_name(t):
 
 
 def verify_mode():
-    return db_get_setting("verify_mode") or "phone"
+    # O‘qituvchi faqat Telegram orqali o‘z telefon raqamini tasdiqlagach faollashadi.
+    # Admin tasdig‘i va hujjat tekshiruvi o‘chirildi.
+    return "phone"
 
 
 def _digits(s):
@@ -3402,8 +3404,7 @@ def sa_menu_text():
 def sa_menu_kb():
     return kb([
         [btn("👩‍🏫 O'qituvchilar", "sa_list"), btn("💼 Tariflar", "sa_plans")],
-        [btn("🪪 Tasdiqlash navbati", "sa_vqueue"),
-         btn(f"🔁 Rejim: {'hujjat' if verify_mode() == 'manual' else 'telefon'}", "sa_vmode")],
+        [btn("📱 Telefon tasdig‘i: avtomatik", "sa_vmode")],
         [btn("📜 Audit jurnali", "sa_audit")],
         [btn("🔔 Majburiy obuna", "sa_sub"), btn("🆘 Yordam tugmasi", "sa_support")],
         [btn("🤖 AI sozlamalari", "sa_ai")],
@@ -4052,10 +4053,9 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
     if not is_super(call.from_user.id):
         await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
         return
-    new_mode = "phone" if verify_mode() == "manual" else "manual"
-    db_set_setting("verify_mode", new_mode)
-    audit(call.from_user.id, "verify_mode", new_mode)
-    await call.answer(f"Rejim: {'hujjat tekshiruvi yoqildi' if new_mode == 'manual' else 'faqat telefon tasdiqi'}", show_alert=True)
+    db_set_setting("verify_mode", "phone")
+    audit(call.from_user.id, "verify_mode_locked", "phone", "Telefon tasdig‘i avtomatik rejimga o‘rnatildi")
+    await call.answer("✅ Telegram orqali telefon raqami tasdiqlansa, hisob avtomatik faollashadi. Admin tasdig‘i kerak emas.", show_alert=True)
     await call.message.edit_text(sa_menu_text(), reply_markup=sa_menu_kb(), parse_mode="Markdown")
 
 
@@ -5665,7 +5665,9 @@ async def api_admin_settings(request):
             value = " ".join(value.split())[:32]
             if len(value)<2: return web.json_response({"error":"bad_label"},status=400)
         elif key == "support_enabled" and value not in {"0","1"}: return web.json_response({"error":"bad_value"},status=400)
-        elif key == "verify_mode" and value not in {"phone","manual"}: return web.json_response({"error":"bad_value"},status=400)
+        elif key == "verify_mode":
+            value = "phone"
+            audit(uid, "verify_mode_locked", "phone", "Telefon tasdig‘i avtomatik rejim")
         elif key == "ai_primary" and value not in {"gemini","openai"}: return web.json_response({"error":"bad_value"},status=400)
         db_set_setting(key,value)
     elif key.startswith("ai_allowed_"):
