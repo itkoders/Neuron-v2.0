@@ -1808,6 +1808,9 @@ body.social-open #paxBuddy{display:none}
     <section data-pane="stats" class="hidden">
       <div id="stats" style="margin-top:14px"></div>
     </section>
+    <section data-pane="payments" class="hidden">
+      <div id="teacherPayments" style="display:grid;gap:12px;margin-top:14px"><div class="loading">Oylik tizimi yuklanmoqda…</div></div>
+    </section>
     <section data-pane="settings" class="hidden">
       <div id="settingsContent" style="margin-top:14px"><div class="loading">Sozlamalar yuklanmoqda…</div></div>
     </section>
@@ -1899,6 +1902,7 @@ body.social-open #paxBuddy{display:none}
   <button class="tab active" data-tab="grades"><span class="ico">📝</span>Ballar</button>
   <button class="tab" data-tab="attendance"><span class="ico">✅</span>Davomat</button>
   <button class="tab" data-tab="stats"><span class="ico">📊</span>Tahlil</button>
+  <button class="tab hidden" data-tab="payments"><span class="ico">💳</span>Oylik</button>
   <button class="tab" data-tab="settings"><span class="ico">⚙️</span>Sozlama</button>
   <button class="tab" data-tab="requests"><span class="ico">📨</span>So‘rovlar</button>
   <button class="tab" data-tab="tools"><span class="ico">🧰</span>Vositalar</button>
@@ -2729,6 +2733,9 @@ body.social-open #paxBuddy{display:none}
     state.subjects = me.subjects;
     state.plan = me.plan || {};
     state.features = new Set(state.plan.features || []);
+    const paymentsTab = document.querySelector('#tabsTeacher [data-tab="payments"]');
+    if (paymentsTab) paymentsTab.classList.toggle("hidden", !state.features.has("payments"));
+    if (state.tab === "payments" && !state.features.has("payments")) state.tab = "grades";
     const addSubject = $("addSubjectBtn"), addStudent = $("addStudentBtn");
     if (addSubject) addSubject.classList.toggle("hidden", !!(state.plan.subject_limit && me.subject_count >= state.plan.subject_limit));
     if (addStudent) addStudent.classList.toggle("hidden", !!(state.plan.student_limit && me.student_count >= state.plan.student_limit));
@@ -2858,7 +2865,6 @@ body.social-open #paxBuddy{display:none}
         const rows=(data.scheduled||[]).map(x=>'<div class="history-item card"><b>'+esc(x.send_at)+'</b><div>'+esc(x.text)+'</div><div class="hint">'+(x.sent===0?'Kutilmoqda':x.sent===1?'Yuborilgan':'Bekor qilingan')+'</div>'+(x.sent===0?'<button class="chip-btn danger" data-tool-action="schedule_cancel" data-id="'+x.id+'">Bekor qilish</button>':'')+'</div>').join("")||'<p class="hint">Rejalashtirilgan e’lon yo‘q.</p>';
         parts.push('<div class="card panel"><h3>⏰ Rejalashtirilgan e’lon</h3><p class="hint">Vaqt O‘zbekiston vaqti bo‘yicha olinadi.</p><form id="toolScheduleForm" class="entry-form"><textarea class="field" name="text" rows="2" maxlength="1500" placeholder="E’lon matni..." required></textarea><input class="field" name="send_at" type="datetime-local" required><button class="chip-btn primary">Rejalashtirish</button></form><div style="display:grid;gap:8px;margin-top:12px">'+rows+'</div></div>');
       }
-      if(f.has("payments")) parts.push('<div class="card panel"><h3>💳 Oylik to‘lovlar jurnali</h3><p class="hint">Har oy uchun to‘lovni kiriting. Qarzdorlik avtomatik hisoblanadi va oldingi oylar tarixi saqlanadi.</p><div id="teacherPayments"><div class="loading">To‘lovlar yuklanmoqda…</div></div></div>');
       if(f.has("export")) parts.push('<div class="card panel"><h3>📊 To‘liq kunlik Excel hisobot</h3><p class="hint">Ro‘yxatdan o‘tgan kundan bugungacha. Har bir sana alohida Excel varag‘ida, umumiy dashboard, davomat ko‘rsatkichlari va o‘quvchilar ro‘yxati bilan.</p><button class="chip-btn primary" id="toolExport">📥 Excel hisobotni Telegramga yuborish</button></div>');
       if(!parts.length) parts.push('<div class="card panel"><h3>🧰 Qo‘shimcha vositalar</h3><p class="hint">Bu bo‘limlar joriy tarifingizda yoqilmagan. Tarifni Super Admin orqali yangilashingiz mumkin.</p></div>');
       host.innerHTML=parts.join("");
@@ -2872,7 +2878,6 @@ body.social-open #paxBuddy{display:none}
       if(sf)sf.onsubmit=async e=>{e.preventDefault();const d=new FormData(sf);await submitTool({action:"schedule_add",text:d.get("text"),send_at:d.get("send_at")});};
       const ex=$("toolExport");
       if(ex)ex.onclick=downloadTeacherExcel;
-      if(f.has("payments")) await loadTeacherPayments();
     } catch(err) { host.innerHTML='<div class="card empty">'+esc(errText(err))+'</div>'; }
   }
   async function submitTool(payload, refresh=true) {
@@ -2965,6 +2970,7 @@ body.social-open #paxBuddy{display:none}
     if (state.tab === "stats") renderStats();
     if (state.tab === "settings" && !state.settingsLoaded) loadTeacherSettings();
     if (state.tab === "requests") loadTeacherRequests();
+    if (state.tab === "payments" && state.features.has("payments")) loadTeacherPayments();
     if (state.tab === "tools") loadTeacherTools();
   }
 
