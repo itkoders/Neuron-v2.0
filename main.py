@@ -4470,18 +4470,22 @@ async def sync_bot_profile():
         return
 
     now = local_now()
-    minute_name = f"ITKODERS | {now.strftime('%H:%M')}"
+    keycap_digits = {"0": "0️⃣", "1": "1️⃣", "2": "2️⃣", "3": "3️⃣",
+                     "4": "4️⃣", "5": "5️⃣", "6": "6️⃣", "7": "7️⃣",
+                     "8": "8️⃣", "9": "9️⃣"}
+    time_digits = "".join(keycap_digits[d] if d.isdigit() else ":" for d in now.strftime("%H:%M"))
+    minute_name = f"ITKODERS | {time_digits}"
     monotonic_now = time.monotonic()
 
-    # Nomni faqat minut o'zgarganda yangilaymiz; xatoda 5 daqiqa kutamiz.
+    # Soat alohida vazifada, har yangi minut chegarasida yangilanadi.
     if minute_name != PROFILE_LAST_NAME and monotonic_now >= PROFILE_NAME_RETRY_AT:
         try:
             await bot.set_my_name(name=minute_name)
             PROFILE_LAST_NAME = minute_name
-            logging.info("Telegram profil nomi yangilandi: %s", minute_name)
+            logging.info("Telegram profil emoji-soati yangilandi: %s", minute_name)
         except Exception:
-            PROFILE_NAME_RETRY_AT = monotonic_now + 300
-            logging.exception("Telegram profil nomini yangilashda xato")
+            PROFILE_NAME_RETRY_AT = monotonic_now + 30
+            logging.exception("Telegram profil emoji-soatini yangilashda xato")
 
     # Bio statik matn: Telegram bio maydoni jonli animatsiyani qo'llamaydi.
     if not PROFILE_BIO_CONFIGURED and monotonic_now >= PROFILE_BIO_RETRY_AT:
@@ -4498,10 +4502,22 @@ async def sync_bot_profile():
             logging.exception("Telegram profil bio matnini yangilashda xato")
 
 
-async def background_loop():
+async def profile_clock_loop():
+    """Profil soatini og'ir fon vazifalaridan mustaqil, minut chegarasida yangilaydi."""
     while True:
         try:
             await sync_bot_profile()
+        except Exception:
+            logging.exception("Telegram profil soati siklida xato")
+        now = local_now()
+        # Keyingi minutning aynan boshigacha kutamiz; drift yig'ilib qolmaydi.
+        seconds_to_next_minute = 60 - now.second - (now.microsecond / 1_000_000)
+        await asyncio.sleep(max(0.2, seconds_to_next_minute))
+
+
+async def background_loop():
+    while True:
+        try:
             # Yangi kun kirganda jurnalni bir daqiqa ichida avtomatik yangilash.
             check_and_reset_daily_data()
             await auto_notify_once()
@@ -7134,9 +7150,11 @@ async def start_web_server():
 async def main():
     init_db()
     runner = await start_web_server()
-    # Kundalik jurnal yangilanishi bot tokenidan mustaqil ishlashi kerak.
+    # Kundalik jurnal bot tokenidan mustaqil ishlaydi.
     asyncio.create_task(background_loop())
     if bot:
+        # Profil soati boshqa fon vazifalaridan alohida ishlaydi.
+        asyncio.create_task(profile_clock_loop())
         try:
             await dp.start_polling(bot)
         finally:
