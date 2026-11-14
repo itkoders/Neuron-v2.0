@@ -4132,6 +4132,79 @@ async def auto_notify_once():
                 await notify_parents_of(st["id"], f"🔔 **{md(st['fio'])}** — kunlik xabar ({md(subj['name'])}):\n\n" + "\n".join(lines))
 
 
+async def payment_reminders_once():
+    """O‘qituvchi belgilagan muddatdan keyin qarz uchun 2-7 kunlik intervalda eslatadi."""
+    if not bot:
+        return
+    now = local_now()
+    current_month = now.strftime("%Y-%m")
+    for teacher in db_all_teachers():
+        if not teacher or not teacher["active"] or teacher["verify_status"] != "approved" or not teacher.get("admin_approved"):
+            continue
+        if not has_feature(teacher, "payments"):
+            continue
+        schedule = teacher_payment_schedule(teacher["id"])
+        if not schedule["enabled"]:
+            continue
+        students = list(db_students(teacher["id"]).values())
+        for st in students:
+            start_month = str(st.get("enrolled_month") or current_month)
+            try:
+                cursor = datetime.strptime(start_month, "%Y-%m")
+            except ValueError:
+                cursor = datetime.strptime(current_month, "%Y-%m")
+            end = datetime.strptime(current_month, "%Y-%m")
+            while cursor <= end:
+                month_key = cursor.strftime("%Y-%m")
+                stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                run("""INSERT INTO student_monthly_charges
+                    (teacher_id,student_id,month,due_amount,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?) ON CONFLICT(student_id,month) DO NOTHING""",
+                    (teacher["id"],st["id"],month_key,int(st.get("payment_amount") or 0),stamp,stamp))
+                charge = run("""SELECT c.due_amount,
+                    COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
+                      WHERE p.student_id=c.student_id AND p.month=c.month),0)
+                    FROM student_monthly_charges c WHERE c.student_id=? AND c.month=?""",
+                    (st["id"],month_key),fetch="one")
+                due = max(0,int(charge[0] or 0)-int(charge[1] or 0)) if charge else 0
+                due_date = datetime.strptime(month_key+"-"+str(schedule["due_day"]).zfill(2),"%Y-%m-%d").date()
+                if due > 0 and now.date() > due_date:
+                    log = run("SELECT last_sent_date FROM payment_reminder_log WHERE student_id=? AND month=?",
+                              (st["id"],month_key),fetch="one")
+                    last = str(log[0] or "") if log else ""
+                    can_send = True
+                    if last:
+                        try:
+                            can_send = (now.date()-datetime.strptime(last,"%Y-%m-%d").date()).days >= schedule["reminder_interval_days"]
+                        except ValueError:
+                            can_send = True
+                    if can_send:
+                        subj = db_subject(st["subject_id"])
+                        text_msg = (f"⏰ **NEYRON — OYLIK TO‘LOV ESLATMASI**\n\n"
+                                    f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+                                    f"📚 Fan: {md(subj['name'] if subj else '-')}\n"
+                                    f"🗓 Oy: **{month_key}** · To‘lov sanasi: **{schedule['due_day']}-sana**\n"
+                                    f"💳 Qolgan qarz: **{due:,} so‘m**\n\n"
+                                    "Iltimos, to‘lovni amalga oshiring yoki o‘qituvchi bilan bog‘laning.")
+                        targets = set(db_parent_chat_ids_for_student(st["id"]))
+                        student_chat = run("SELECT chat_id FROM student_links WHERE student_id=?",(st["id"],),fetch="one")
+                        if student_chat and student_chat[0]:
+                            targets.add(int(student_chat[0]))
+                        sent = 0
+                        for target in targets:
+                            try:
+                                await bot.send_message(target,text_msg,parse_mode="Markdown")
+                                sent += 1
+                            except Exception:
+                                logging.info("To‘lov eslatmasi yuborilmadi: student=%s chat=%s",st["id"],target)
+                        if sent:
+                            run("""INSERT INTO payment_reminder_log (student_id,month,last_sent_date,send_count)
+                                VALUES (?,?,?,1) ON CONFLICT(student_id,month) DO UPDATE SET
+                                last_sent_date=excluded.last_sent_date,send_count=payment_reminder_log.send_count+1""",
+                                (st["id"],month_key,now.strftime("%Y-%m-%d")))
+                cursor = (cursor.replace(day=28)+timedelta(days=4)).replace(day=1)
+
+
 async def scheduled_broadcast_once():
     if not bot:
         return
@@ -4352,6 +4425,7 @@ async def background_loop():
             # Yangi kun kirganda jurnalni bir daqiqa ichida avtomatik yangilash.
             check_and_reset_daily_data()
             await auto_notify_once()
+            await payment_reminders_once()
             await scheduled_broadcast_once()
             await new_year_broadcast_once()
         except Exception:
@@ -5703,6 +5777,41 @@ async def api_onboard_teacher_login(request):
     return web.json_response({"ok": True, "pending": False})
 
 
+def teacher_payment_schedule(teacher_id):
+    row = run("SELECT due_day,reminder_interval_days,enabled FROM teacher_payment_schedules WHERE teacher_id=?",
+              (teacher_id,), fetch="one")
+    return {"due_day":int(row[0]) if row else 5,
+            "reminder_interval_days":int(row[1]) if row else 2,
+            "enabled":bool(row[2]) if row else True}
+
+
+async def api_teacher_payment_schedule(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    if request.method == "POST":
+        body = await _read_json(request)
+        try:
+            due_day = int(body.get("due_day", 5))
+            interval = int(body.get("reminder_interval_days", 2))
+            enabled = 1 if body.get("enabled", True) else 0
+        except (TypeError, ValueError):
+            return web.json_response({"error":"bad_schedule"}, status=400)
+        if not 1 <= due_day <= 28 or not 1 <= interval <= 7:
+            return web.json_response({"error":"bad_schedule"}, status=400)
+        run("""INSERT INTO teacher_payment_schedules
+            (teacher_id,due_day,reminder_interval_days,enabled,updated_at) VALUES (?,?,?,?,?)
+            ON CONFLICT(teacher_id) DO UPDATE SET due_day=excluded.due_day,
+            reminder_interval_days=excluded.reminder_interval_days,enabled=excluded.enabled,
+            updated_at=excluded.updated_at""",
+            (teacher["id"],due_day,interval,enabled,local_now().isoformat()))
+        audit(teacher["chat_id"],"payment_schedule_saved",str(teacher["id"]),
+              f"due_day={due_day}; interval={interval}; enabled={enabled}")
+    return web.json_response({"schedule":teacher_payment_schedule(teacher["id"])})
+
+
 async def api_teacher_payments(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
@@ -5751,6 +5860,7 @@ async def api_teacher_payments(request):
         (teacher["id"], month), fetch="all")
     return web.json_response({
         "month":month,
+        "schedule":teacher_payment_schedule(teacher["id"]),
         "students":[{"id":st["id"],"fio":st["fio"],"group_name":st.get("group_name") or "Guruhsiz",
             "monthly_fee":int(st.get("payment_amount") or 0),
             "due":month_map.get(st["id"],{}).get("due",0),
@@ -6787,6 +6897,8 @@ async def start_web_server():
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
     app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
+    app.router.add_get("/api/teacher/payment-schedule", api_teacher_payment_schedule)
+    app.router.add_post("/api/teacher/payment-schedule", api_teacher_payment_schedule)
     app.router.add_get("/api/teacher/payments", api_teacher_payments)
     app.router.add_post("/api/teacher/payments/charge", api_teacher_payment_charge)
     app.router.add_post("/api/teacher/payments/record", api_teacher_payment_record)
