@@ -5139,7 +5139,6 @@ def _admin_overview_payload():
         "mandatory_sub": db_get_setting("mandatory_sub") == "1",
         "required_channel": db_get_setting("required_channel") or "",
         "required_channels": "\n".join(required_channels()),
-        "required_channels": "\\n".join(required_channels()),
         "support_contact": db_get_setting("support_contact") or "",
         "support_label": db_get_setting("support_label") or "Yordam",
         "support_enabled": db_get_setting("support_enabled") == "1",
