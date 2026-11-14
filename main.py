@@ -4454,66 +4454,37 @@ async def new_year_broadcast_once():
 
 
 # ============================================================
-# TELEGRAM PROFIL: ITKODERS jonli soati va NEURON V2 bio
 # ============================================================
-PROFILE_LAST_NAME = ""
-PROFILE_NAME_RETRY_AT = 0.0
+# TELEGRAM PROFIL: NEURON V2 bio
+# Telegram Bot API bot nomini tez-tez o'zgartirishni cheklaydi.
+# Shu sababli profil nomi avtomatik ravishda qayta-qayta yangilanmaydi.
+# ============================================================
 PROFILE_BIO_CONFIGURED = False
 PROFILE_BIO_RETRY_AT = 0.0
 
 async def sync_bot_profile():
-    """Bot nomidagi Toshkent vaqtini va profil bio matnini xavfsiz yangilaydi."""
-    global PROFILE_LAST_NAME, PROFILE_NAME_RETRY_AT
+    """Telegram profilining statik bio matnini bir marta xavfsiz sozlaydi."""
     global PROFILE_BIO_CONFIGURED, PROFILE_BIO_RETRY_AT
 
-    if not bot:
+    if not bot or PROFILE_BIO_CONFIGURED:
         return
 
-    now = local_now()
-    keycap_digits = {"0": "0️⃣", "1": "1️⃣", "2": "2️⃣", "3": "3️⃣",
-                     "4": "4️⃣", "5": "5️⃣", "6": "6️⃣", "7": "7️⃣",
-                     "8": "8️⃣", "9": "9️⃣"}
-    time_digits = "".join(keycap_digits[d] if d.isdigit() else ":" for d in now.strftime("%H:%M"))
-    minute_name = f"ITKODERS | {time_digits}"
     monotonic_now = time.monotonic()
+    if monotonic_now < PROFILE_BIO_RETRY_AT:
+        return
 
-    # Soat alohida vazifada, har yangi minut chegarasida yangilanadi.
-    if minute_name != PROFILE_LAST_NAME and monotonic_now >= PROFILE_NAME_RETRY_AT:
-        try:
-            await bot.set_my_name(name=minute_name)
-            PROFILE_LAST_NAME = minute_name
-            logging.info("Telegram profil emoji-soati yangilandi: %s", minute_name)
-        except Exception:
-            PROFILE_NAME_RETRY_AT = monotonic_now + 30
-            logging.exception("Telegram profil emoji-soatini yangilashda xato")
-
-    # Bio statik matn: Telegram bio maydoni jonli animatsiyani qo'llamaydi.
-    if not PROFILE_BIO_CONFIGURED and monotonic_now >= PROFILE_BIO_RETRY_AT:
-        short_bio = (
-            "◉ NEURON V2 • DIGITAL RADAR • SYSTEM ACTIVE • "
-            "AI • EDUCATION • TECHNOLOGY"
-        )
-        try:
-            await bot.set_my_short_description(short_description=short_bio)
-            PROFILE_BIO_CONFIGURED = True
-            logging.info("Telegram profil bio matni yangilandi")
-        except Exception:
-            PROFILE_BIO_RETRY_AT = monotonic_now + 300
-            logging.exception("Telegram profil bio matnini yangilashda xato")
-
-
-async def profile_clock_loop():
-    """Profil soatini og'ir fon vazifalaridan mustaqil, minut chegarasida yangilaydi."""
-    while True:
-        try:
-            await sync_bot_profile()
-        except Exception:
-            logging.exception("Telegram profil soati siklida xato")
-        now = local_now()
-        # Keyingi minutning aynan boshigacha kutamiz; drift yig'ilib qolmaydi.
-        seconds_to_next_minute = 60 - now.second - (now.microsecond / 1_000_000)
-        await asyncio.sleep(max(0.2, seconds_to_next_minute))
-
+    short_bio = (
+        "◉ NEURON V2 • DIGITAL RADAR • SYSTEM ACTIVE • "
+        "AI • EDUCATION • TECHNOLOGY"
+    )
+    try:
+        await bot.set_my_short_description(short_description=short_bio)
+        PROFILE_BIO_CONFIGURED = True
+        logging.info("Telegram profil bio matni yangilandi")
+    except Exception as exc:
+        retry_after = getattr(exc, "retry_after", 300)
+        PROFILE_BIO_RETRY_AT = monotonic_now + max(300, int(retry_after))
+        logging.exception("Telegram profil bio matnini yangilashda xato")
 
 async def background_loop():
     while True:
@@ -7153,8 +7124,8 @@ async def main():
     # Kundalik jurnal bot tokenidan mustaqil ishlaydi.
     asyncio.create_task(background_loop())
     if bot:
-        # Profil soati boshqa fon vazifalaridan alohida ishlaydi.
-        asyncio.create_task(profile_clock_loop())
+        # Telegram profil bio matnini bir marta sozlaymiz.
+        asyncio.create_task(sync_bot_profile())
         try:
             await dp.start_polling(bot)
         finally:
