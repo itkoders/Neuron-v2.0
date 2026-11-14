@@ -674,15 +674,35 @@ def create_teacher(chat_id, data, status, doc_file_id=None):
     return t, code
 
 
+async def notify_super_admins_registration(t):
+    """Telefon orqali ro‘yxatdan o‘tgan yangi o‘qituvchi haqida barcha adminlarga xabar."""
+    if not bot or not t:
+        return
+    text = (
+        "🆕 YANGI O‘QITUVCHI TASDIQLASHI\\n\\n"
+        f"👤 Ism: {md(teacher_name(t))}\\n"
+        f"📞 Telefon: {md(t.get('phone') or '—')}\\n"
+        f"🆔 ID: {t['id']}\\n"
+        "🪪 Holat: Tasdiqlash kutilmoqda"
+    )
+    markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"),
+                  btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
+    for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
+        try:
+            await bot.send_message(cid, text, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            logging.exception("O‘qituvchi tasdiqlash xabari yuborilmadi: admin_id=%s", cid)
+
+
 async def notify_super_admins_doc(t, file_id):
     for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
         try:
             await bot.send_photo(cid, file_id,
-                                 caption=f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\n📞 `{t['phone']}`",
+                                 caption=f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\\n📞 `{t['phone']}`",
                                  reply_markup=kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]]),
                                  parse_mode="Markdown")
         except Exception:
-            pass
+            logging.exception("O‘qituvchi hujjati adminlarga yuborilmadi: admin_id=%s", cid)
 
 
 def teacher_limit_reached(t):
@@ -1775,6 +1795,7 @@ async def miniapp_teacher_contact(message: types.Message):
         return
     try:
         teacher, code = create_teacher(uid, data, "admin_pending")
+        await notify_super_admins_registration(teacher)
         db_set_setting(key, "")
         audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram contact confirmed; admin approval pending")
         await message.answer(
@@ -1796,6 +1817,7 @@ async def _finish_phone(message: types.Message, state: FSMContext):
         return
     await state.clear()
     t, code = create_teacher(message.chat.id, data, "admin_pending")
+    await notify_super_admins_registration(t)
     await message.answer("✅ Raqam tasdiqlandi.", reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
@@ -3188,6 +3210,11 @@ async def tp_bcast_send(message: types.Message, state: FSMContext):
 # ============================================================
 # 8. SUPER ADMIN
 # ============================================================
+@dp.message(Command("id"), F.chat.type == "private")
+async def show_telegram_id(message: types.Message):
+    await message.answer(f"🆔 Telegram ID raqamingiz: `{message.from_user.id}`")
+
+
 @dp.message(Command("superadmin"), F.chat.type == "private")
 async def superadmin_cmd(message: types.Message, state: FSMContext):
     uid = message.from_user.id
@@ -3786,6 +3813,9 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "sa_vqueue")
 async def sa_verify_queue(call: types.CallbackQuery):
+    if not is_admin_member(call.from_user.id):
+        await call.answer("Ruxsat yo‘q.", show_alert=True)
+        return
     await call.answer()
     rows = run("SELECT id, first_name, last_name FROM teachers WHERE admin_approved = 0 AND verify_status IN ('approved', 'admin_pending', 'doc_pending') ORDER BY id", fetch="all")
     buttons = [[btn(f"🪪 {f} {l}"[:40], f"sa_vt_{i}")] for i, f, l in rows]
@@ -3796,6 +3826,9 @@ async def sa_verify_queue(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vt_"))
 async def sa_verify_view(call: types.CallbackQuery):
+    if not is_admin_member(call.from_user.id):
+        await call.answer("Ruxsat yo‘q.", show_alert=True)
+        return
     t = db_teacher(int(call.data.split("_")[2]))
     if not t:
         await call.answer("O‘qituvchi topilmadi.", show_alert=True)
@@ -3811,6 +3844,9 @@ async def sa_verify_view(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vapp_"))
 async def sa_verify_approve(call: types.CallbackQuery):
+    if not is_admin_member(call.from_user.id):
+        await call.answer("Ruxsat yo‘q.", show_alert=True)
+        return
     tid = int(call.data.split("_")[2])
     t = db_teacher(tid)
     if not t:
@@ -3825,6 +3861,9 @@ async def sa_verify_approve(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vrej_"))
 async def sa_verify_reject_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_admin_member(call.from_user.id):
+        await call.answer("Ruxsat yo‘q.", show_alert=True)
+        return
     tid = int(call.data.split("_")[2])
     await call.answer()
     await state.update_data(verify_tid=tid)
@@ -3834,6 +3873,10 @@ async def sa_verify_reject_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.verify_reason, F.chat.type == "private")
 async def sa_verify_reject_save(message: types.Message, state: FSMContext):
+    if not is_admin_member(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu amal uchun ruxsat yo‘q.")
+        return
     reason = (message.text or "").strip()[:200] or "Sabab ko'rsatilmagan"
     tid = (await state.get_data()).get("verify_tid")
     await state.clear()
@@ -5024,7 +5067,72 @@ def _admin_overview_payload():
 async def api_admin_overview(request):
     uid, err = miniapp_admin(request)
     if err: return err
-    return web.json_response(_admin_overview_payload())
+    payload = _admin_overview_payload()
+    payload["stats"]["can_manage_admins"] = is_super(uid)
+    if is_super(uid):
+        rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
+        payload["admins"] = [
+            {"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID}
+            for row in rows
+        ]
+    return web.json_response(payload)
+
+
+async def api_admin_admins(request):
+    """Faqat loyiha egasi qo‘shimcha adminlarni boshqarishi mumkin."""
+    uid, err = miniapp_admin(request)
+    if err:
+        return err
+    if not is_super(uid):
+        return web.json_response({"error": "owner_only"}, status=403)
+
+    if request.method == "GET":
+        rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
+        return web.json_response({
+            "admins": [{"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID}
+                       for row in rows],
+            "count": admin_member_count(), "limit": MAX_ADMIN_USERS
+        })
+
+    body = await _read_json(request)
+    action = str(body.get("action", "")).strip().lower()
+    try:
+        target_id = int(body.get("chat_id"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad_chat_id"}, status=400)
+    if target_id <= 0:
+        return web.json_response({"error": "bad_chat_id"}, status=400)
+
+    if action == "add":
+        if target_id == OWNER_TELEGRAM_ID:
+            return web.json_response({"error": "already_owner"}, status=400)
+        if run("SELECT 1 FROM super_admins WHERE chat_id=?", (target_id,), fetch="one"):
+            return web.json_response({"error": "already_admin"}, status=409)
+        if admin_member_count() >= MAX_ADMIN_USERS:
+            return web.json_response({"error": "admin_limit", "limit": MAX_ADMIN_USERS}, status=409)
+        run("INSERT INTO super_admins (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING", (target_id,))
+        audit(uid, "admin_add", str(target_id), "Super Admin panelidan qo‘shildi")
+        notified = False
+        if bot:
+            try:
+                await bot.send_message(target_id,
+                    "🛡 Siz NEURON V2 tizimiga qo‘shimcha administrator sifatida qo‘shildingiz. "
+                    "Ilovani Telegram orqali ochib, Super Admin rolini tanlang.")
+                notified = True
+            except Exception:
+                logging.info("Yangi admin hali botni boshlamagan yoki xabar qabul qilmaydi: %s", target_id)
+        return web.json_response({"ok": True, "chat_id": target_id, "notification_sent": notified})
+
+    if action == "remove":
+        if target_id == OWNER_TELEGRAM_ID:
+            return web.json_response({"error": "owner_protected"}, status=403)
+        exists = run("SELECT 1 FROM super_admins WHERE chat_id=?", (target_id,), fetch="one")
+        if not exists:
+            return web.json_response({"error": "not_found"}, status=404)
+        run("DELETE FROM super_admins WHERE chat_id=?", (target_id,))
+        audit(uid, "admin_remove", str(target_id), "Super Admin panelidan olib tashlandi")
+        return web.json_response({"ok": True, "chat_id": target_id})
+    return web.json_response({"error": "bad_action"}, status=400)
 
 
 async def api_admin_teacher_action(request):
@@ -7176,6 +7284,8 @@ async def start_web_server():
     app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
     app.router.add_post("/api/settings/payment", api_teacher_payment_save)
     app.router.add_get("/api/admin/overview", api_admin_overview)
+    app.router.add_get("/api/admin/admins", api_admin_admins)
+    app.router.add_post("/api/admin/admins", api_admin_admins)
     app.router.add_post("/api/admin/teacher/{tid}", api_admin_teacher_action)
     app.router.add_post("/api/admin/plan", api_admin_plan_action)
     app.router.add_post("/api/admin/settings", api_admin_settings)
