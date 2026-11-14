@@ -980,7 +980,19 @@ def db_parent_miniapp_children(parent_chat_id):
 
 
 def db_parent_chat_ids_for_student(student_id):
-    return [r[0] for r in run("SELECT parent_chat_id FROM parent_children WHERE student_id = ?", (student_id,), fetch="all")]
+    return [r[0] for r in run("""SELECT DISTINCT pc.parent_chat_id FROM parent_children pc
+        JOIN student_identity_members linked ON linked.student_id=pc.student_id
+        WHERE linked.identity_id=(SELECT identity_id FROM student_identity_members
+                                  WHERE student_id=? LIMIT 1)""",
+        (student_id,), fetch="all")]
+
+
+def db_student_chat_ids_for_student(student_id):
+    return [r[0] for r in run("""SELECT DISTINCT sl.chat_id FROM student_links sl
+        JOIN student_identity_members linked ON linked.student_id=sl.student_id
+        WHERE linked.identity_id=(SELECT identity_id FROM student_identity_members
+                                  WHERE student_id=? LIMIT 1)""",
+        (student_id,), fetch="all")]
 
 
 def db_log_student_login(s_id, fio):
@@ -4211,9 +4223,7 @@ async def payment_reminders_once():
                                     f"💳 Qolgan qarz: **{due:,} so‘m**\n\n"
                                     "Iltimos, to‘lovni amalga oshiring yoki o‘qituvchi bilan bog‘laning.")
                         targets = set(db_parent_chat_ids_for_student(st["id"]))
-                        student_chat = run("SELECT chat_id FROM student_links WHERE student_id=?",(st["id"],),fetch="one")
-                        if student_chat and student_chat[0]:
-                            targets.add(int(student_chat[0]))
+                        targets.update(int(x) for x in db_student_chat_ids_for_student(st["id"]) if x)
                         sent = 0
                         for target in targets:
                             try:
