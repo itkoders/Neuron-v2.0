@@ -5188,6 +5188,8 @@ async def api_teacher_payment_settings(request):
 async def api_teacher_payment_save(request):
     t, err = miniapp_teacher(request)
     if err: return err
+    if not has_feature(t, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"},status=403)
     body = await _read_json(request)
     kind = str(body.get("payment_type","card")).strip().lower()
     if kind not in {"card","cash","click","payme","bank_transfer"}:
@@ -5222,6 +5224,7 @@ async def api_teacher_settings(request):
     t, err = miniapp_teacher(request)
     if err:
         return err
+    payments_enabled = has_feature(t, "payments")
     rows = run(
         "SELECT s.id, s.fio, s.group_name, s.code, s.subject_id, sub.name, "
         "s.payment_amount, s.teacher_note, s.phone "
@@ -5232,11 +5235,11 @@ async def api_teacher_settings(request):
     return web.json_response({
         "channel_id": t.get("channel_id") or "",
         "channel_enabled": has_feature(t, "channel"),
-        "payment": teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""},
+        "payment": (teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}) if payments_enabled else {},
         "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
                       "code": student_public_code(r[0]), "subject_id": r[4], "subject_name": r[5],
-                      "payment_amount": r[6] or 0, "teacher_note": r[7] or "",
+                      "payment_amount": (r[6] or 0) if payments_enabled else 0, "teacher_note": r[7] or "",
                       "phone": r[8] or ""} for r in rows]
     })
 
@@ -5257,8 +5260,12 @@ async def api_teacher_student_settings(request):
     if amount < 0 or amount > 1000000000:
         return web.json_response({"error":"bad_amount"}, status=400)
     note = str(body.get("teacher_note", "")).strip()[:500]
-    run("UPDATE students SET payment_amount=?, teacher_note=? WHERE id=? AND teacher_id=?",
-        (amount, note or "Izoh mavjud emas", sid, t["id"]))
+    if has_feature(t, "payments"):
+        run("UPDATE students SET payment_amount=?, teacher_note=? WHERE id=? AND teacher_id=?",
+            (amount, note or "Izoh mavjud emas", sid, t["id"]))
+    else:
+        run("UPDATE students SET teacher_note=? WHERE id=? AND teacher_id=?",
+            (note or "Izoh mavjud emas", sid, t["id"]))
     audit(t["chat_id"], "miniapp_student_settings", str(sid), f"payment_amount={amount}")
     return web.json_response({"ok":True})
 
@@ -6715,7 +6722,7 @@ async def api_teacher_requests(request):
                              pr.created_at, s.fio, pr.reference
                       FROM payment_requests pr JOIN students s ON s.id=pr.student_id
                       WHERE s.teacher_id=? AND pr.status='pending' ORDER BY pr.id DESC""",
-                   (teacher["id"],), fetch="all")
+                   (teacher["id"],), fetch="all") if has_feature(teacher, "payments") else []
     return web.json_response({
         "links": [{"id": r[0], "student_id": r[1], "parent_id": r[2],
                    "parent_name": r[3] or "Ota-ona", "student": r[4]} for r in links],
@@ -6729,6 +6736,8 @@ async def api_teacher_payment_receipt(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
         return err or web.json_response({"error":"forbidden"},status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"},status=403)
     try:
         req_id = int(request.match_info.get("rid",""))
     except (TypeError,ValueError):
@@ -6765,6 +6774,8 @@ async def api_teacher_request_action(request):
     action = str(body.get("action", "")).lower()
     if action not in {"approve", "reject"} or req_kind not in {"link", "payment"}:
         return web.json_response({"error": "bad"}, status=400)
+    if req_kind == "payment" and not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"},status=403)
     now = local_now().strftime("%d.%m.%Y %H:%M")
     if req_kind == "link":
         req = run("""SELECT pr.student_id, pr.parent_chat_id, pr.parent_name, s.fio
@@ -6921,6 +6932,8 @@ async def api_parent_payment(request):
     if sid not in db_parent_miniapp_student_ids(parent_id):
         return web.json_response({"error": "forbidden"}, status=403)
     st = db_student(sid)
+    if st and not has_feature(db_teacher(st["teacher_id"]), "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"},status=403)
     if not st or st["payment_amount"] <= 0:
         return web.json_response({"error": "amount_not_set"}, status=400)
     if st["payment_status"] == PAID:
