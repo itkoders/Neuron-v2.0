@@ -1844,7 +1844,7 @@ body.social-open #paxBuddy{display:none}
   <section id="adminView" class="hidden">
     <div class="card panel" style="margin-top:14px"><h3>🛡 Super Admin boshqaruvi</h3><p class="hint">NEYRON tizimini ilovaning o‘zidan boshqaring.</p>
       <div class="admin-nav" id="adminNav">
-        <button class="chip-btn primary" data-admin-tab="overview">Umumiy</button><button class="chip-btn" data-admin-tab="teachers">O‘qituvchilar</button><button class="chip-btn" data-admin-tab="plans">Tariflar</button><button class="chip-btn" data-admin-tab="queue">Tasdiqlash</button><button class="chip-btn" data-admin-tab="admins">👥 Adminlar</button><button class="chip-btn" data-admin-tab="settings">Sozlamalar</button><button class="chip-btn" data-admin-tab="audit">Audit</button>
+        <button class="chip-btn primary" data-admin-tab="overview" data-perm="dashboard">Umumiy</button><button class="chip-btn" data-admin-tab="teachers" data-perm="teachers">O‘qituvchilar</button><button class="chip-btn" data-admin-tab="plans" data-perm="plans">Tariflar</button><button class="chip-btn" data-admin-tab="queue" data-perm="approvals">Tasdiqlash</button><button class="chip-btn" data-admin-tab="admins" data-owner-only="1">👥 Adminlar</button><button class="chip-btn" data-admin-tab="settings" data-perm="settings,channels">Sozlamalar</button><button class="chip-btn" data-admin-tab="audit" data-perm="audit">Audit</button>
       </div>
     </div><div id="adminContent"><div class="loading">Admin panel yuklanmoqda…</div></div>
   </section>
@@ -2661,7 +2661,19 @@ body.social-open #paxBuddy{display:none}
   }
   async function loadAdminOverview() {
     $("adminContent").innerHTML='<div class="loading">Boshqaruv ma’lumotlari yuklanmoqda…</div>';
-    try{state.adminData=await api("/api/admin/overview");const manage=document.querySelector('[data-admin-tab="admins"]');if(manage)manage.classList.toggle("hidden",!state.adminData.stats.can_manage_admins);if(!state.adminData.stats.can_manage_admins&&state.adminTab==="admins")state.adminTab="overview";renderAdminTab();setStatus("Admin tayyor");}
+    try{
+      state.adminData=await api("/api/admin/overview");
+      const d=state.adminData, perms=new Set(d.permissions||[]);
+      document.querySelectorAll("[data-perm]").forEach(el=>{
+        const needed=(el.dataset.perm||"").split(",").filter(Boolean);
+        el.classList.toggle("hidden",!needed.some(p=>perms.has(p)));
+      });
+      const manage=document.querySelector('[data-admin-tab="admins"]');
+      if(manage)manage.classList.toggle("hidden",!d.stats.can_manage_admins);
+      const first=document.querySelector('#adminNav [data-admin-tab]:not(.hidden)');
+      if(!document.querySelector('#adminNav [data-admin-tab="'+state.adminTab+'"]:not(.hidden)'))state.adminTab=first?.dataset.adminTab||"overview";
+      renderAdminTab();setStatus("Admin kabineti tayyor");
+    }
     catch(e){$("adminContent").innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';setStatus("Xato","err");}
   }
   function adminCard(title,body,actions) {
@@ -2699,9 +2711,13 @@ body.social-open #paxBuddy{display:none}
       host.innerHTML=d.queue.map(t=>adminCard(esc(t.name),'<p class="admin-muted">'+esc(t.phone)+' · '+esc(t.verify_status)+'</p>',adminBtn('Tasdiqlash','approve',t.id)+adminBtn('Rad etish','reject',t.id))).join("")||'<div class="card empty">Tasdiqlash navbati bo‘sh.</div>';
     } else if(state.adminTab==="admins") {
       const admins=d.admins||[];
-      host.innerHTML='<div class="card panel"><h3>👥 Qo‘shimcha administrator qo‘shish</h3><p class="admin-muted">Telegram ID raqamini kiriting. ID olish uchun yangi admin botga /id yuboradi. Jami 3 ta admin (asosiy egasi bilan birga).</p><input class="field" id="adminChatId" inputmode="numeric" placeholder="Telegram ID raqami"><div class="admin-actions">'+adminBtn('➕ Admin qo‘shish','add-admin')+'</div></div>'+
+      host.innerHTML='<div class="card panel"><h3>👥 Qo‘shimcha administrator qo‘shish</h3><p class="admin-muted">Telegram ID raqamini kiriting. ID olish uchun yangi admin botga /id yuboradi. Jami 3 ta admin (asosiy egasi bilan birga).</p><input class="field" id="adminChatId" inputmode="numeric" placeholder="Telegram ID raqami"><p class="admin-muted">Yangi admin uchun ruxsatlar:</p>'+
+        Object.entries(d.permission_labels||{}).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-new-admin-perm="'+k+'" '+(["dashboard","teachers","approvals"].includes(k)?'checked':'')+'> '+esc(v)+'</label>').join('')+
+        '<div class="admin-actions">'+adminBtn('➕ Admin qo‘shish','add-admin')+'</div></div>'+
         '<div class="card panel"><h3>Amaldagi administratorlar ('+admins.length+'/3)</h3>'+
-        (admins.map(a=>'<div class="admin-item"><b>'+(a.is_owner?'👑 Asosiy Super Admin':'🛡 Qo‘shimcha admin')+'</b><p class="admin-muted">Telegram ID: '+a.chat_id+'</p>'+(a.is_owner?'':adminBtn('Olib tashlash','remove-admin',a.chat_id))+'</div>').join('')||'<p class="admin-muted">Adminlar ro‘yxati bo‘sh.</p>')+'</div>';
+        (admins.map(a=>'<div class="admin-item"><b>'+(a.is_owner?'👑 Asosiy Super Admin':'🛡 Yordamchi admin kabineti')+'</b><p class="admin-muted">Telegram ID: '+a.chat_id+'</p>'+
+          (a.is_owner?'<p class="admin-muted">Barcha ruxsatlar egasida.</p>':Object.entries(d.permission_labels||{}).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-existing-admin-perm="'+a.chat_id+'" data-perm-key="'+k+'" '+((a.permissions||[]).includes(k)?'checked':'')+'> '+esc(v)+'</label>').join('')+
+          '<div class="admin-actions">'+adminBtn('Ruxsatlarni saqlash','save-admin-perms',a.chat_id)+adminBtn('Olib tashlash','remove-admin',a.chat_id)+'</div>')+'</div>').join('')||'<p class="admin-muted">Adminlar ro‘yxati bo‘sh.</p>')+'</div>';
     } else if(state.adminTab==="settings") {
       host.innerHTML='<div class="card panel"><h3>🔔 Majburiy obuna</h3><p class="admin-muted">Har bir qatorga bittadan kanal kiriting. Ko‘pi bilan 30 ta. Bot barcha kanallarda administrator bo‘lishi kerak.</p><textarea class="field" id="admChannel" rows="5" placeholder="@birinchi_kanal&#10;@ikkinchi_kanal">'+esc(s.required_channels||s.required_channel||'')+'</textarea><div class="admin-actions">'+adminBtn('📢 Kanallarni saqlash','save-channel')+adminBtn(s.mandatory_sub?'O‘chirish':'Yoqish','toggle-sub')+'</div></div>'+
       '<div class="card panel settings-card"><h3>🆘 Yordam</h3><input class="field" id="admSupport" value="'+esc(s.support_contact)+'" placeholder="@yordamchi yoki ID"><input class="field" id="admSupportLabel" value="'+esc(s.support_label)+'" placeholder="Tugma nomi"><div class="admin-actions">'+adminBtn('Saqlash','save-support')+adminBtn(s.support_enabled?'O‘chirish':'Yoqish','toggle-support')+'</div></div>'+
@@ -2721,7 +2737,8 @@ body.social-open #paxBuddy{display:none}
     try {
       if(a==="refresh"){await loadAdminOverview();return;}
       if(a==="go-queue"){state.adminTab="queue";renderAdminTab();return;}
-      if(a==="add-admin"){const chatId=($("adminChatId")?.value||"").trim();if(!/^\d{5,20}$/.test(chatId)){toast("To‘g‘ri Telegram ID kiriting.");return;}const z=await adminPost("/api/admin/admins",{action:"add",chat_id:chatId});toast(z.notification_sent?"Admin qo‘shildi va unga xabar yuborildi.":"Admin qo‘shildi. U botga /start yuborishi kerak.");}
+      if(a==="add-admin"){const chatId=($("adminChatId")?.value||"").trim();if(!/^\d{5,20}$/.test(chatId)){toast("To‘g‘ri Telegram ID kiriting.");return;}const permissions=[...document.querySelectorAll("[data-new-admin-perm]:checked")].map(x=>x.dataset.newAdminPerm);const z=await adminPost("/api/admin/admins",{action:"add",chat_id:chatId,permissions});toast(z.notification_sent?"Admin qo‘shildi. U bot orqali o‘z kabinetiga kirishi mumkin.":"Admin qo‘shildi. U botga /start yuborishi kerak.");}
+      else if(a==="save-admin-perms"){const permissions=[...document.querySelectorAll('[data-existing-admin-perm="'+id+'"]:checked')].map(x=>x.dataset.permKey);await adminPost("/api/admin/admins",{action:"update_permissions",chat_id:id,permissions});toast("Yordamchi admin ruxsatlari yangilandi.");}
       else if(a==="remove-admin"){if(!confirm("Ushbu administrator olib tashlansinmi?"))return;await adminPost("/api/admin/admins",{action:"remove",chat_id:id});toast("Admin olib tashlandi.");}
       if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:document.querySelector('[data-plan-for="'+id+'"]').value});}
       else if(["extend","toggle_active","toggle_ai","approve"].includes(a)){await adminPost("/api/admin/teacher/"+id,{action:a});}
