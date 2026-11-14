@@ -3956,10 +3956,22 @@ async def reg_enter_code_start(call: types.CallbackQuery, state: FSMContext):
 
 
 async def _request_link(student, parent_chat_id, parent_name):
-    run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
-        (student["id"], parent_chat_id, parent_name), fetch="lastid")
-    await notify_teacher(student["teacher_id"],
-        f"📨 **Yangi ota-ona so‘rovi**\nO‘quvchi: **{md(student['fio'])}**\nOta-ona: {md(parent_name)}\nTasdiqlash uchun NEYRON ilovasidagi “So‘rovlar” bo‘limini oching.")
+    request_id = run(
+        "INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
+        (student["id"], parent_chat_id, parent_name), fetch="lastid"
+    )
+    request_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        btn("✅ Tasdiqlash", f"tp_app_{request_id}"),
+        btn("❌ Rad etish", f"tp_rej_{request_id}")
+    ]])
+    await notify_teacher(
+        student["teacher_id"],
+        f"📨 **Yangi ota-ona ulanish so‘rovi**\n"
+        f"👤 Ota-ona: **{md(parent_name)}**\n"
+        f"🎓 O‘quvchi: **{md(student['fio'])}**\n"
+        "Quyidagi tugmalar orqali so‘rovni ko‘rib chiqing.",
+        reply_markup=request_keyboard
+    )
 
 
 @dp.message(ParentStates.waiting_for_code, F.chat.type == "private")
@@ -5793,15 +5805,15 @@ async def api_onboard_parent(request):
     audit(uid, "miniapp_parent_link_request", str(sid), parent_name)
     # O‘qituvchiga doimiy Telegram xabari yuboramiz: send_auto_clean_message ishlatilmaydi,
     # shuning uchun botning 120 soniyalik avtomatik tozalash taymeri bu xabarni o‘chirmaydi.
-    request_keyboard = kb([[
+    request_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         btn("✅ Tasdiqlash", f"tp_app_{request_id}"),
         btn("❌ Rad etish", f"tp_rej_{request_id}")
     ]])
     await notify_teacher(
         st["teacher_id"],
-        f"📨 **Yangi ota-ona ulanish so‘rovi**\\n"
-        f"👤 Ota-ona: **{md(parent_name)}**\\n"
-        f"🎓 O‘quvchi: **{md(st['fio'])}**\\n"
+        f"📨 **Yangi ota-ona ulanish so‘rovi**\n"
+        f"👤 Ota-ona: **{md(parent_name)}**\n"
+        f"🎓 O‘quvchi: **{md(st['fio'])}**\n"
         "Quyidagi tugmalar orqali so‘rovni ko‘rib chiqing.",
         reply_markup=request_keyboard
     )
