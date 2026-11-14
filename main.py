@@ -5725,8 +5725,20 @@ async def api_admin_audit(request):
         actor_id = int(r[1] or 0)
         actor_role = "Super Admin" if is_super(actor_id) else ("Yordamchi admin" if is_admin_member(actor_id) else ("O‘qituvchi" if teacher_name else "Foydalanuvchi"))
         action = str(r[2] or "")
+        if action.startswith("teacher"):
+            section = "O‘qituvchilar"
+        elif action.startswith("social"):
+            section = "Hamjamiyat"
+        elif action.startswith("admin") or "password" in action:
+            section = "Admin boshqaruvi"
+        elif "score" in action or "attendance" in action:
+            section = "Baholash va davomat"
+        else:
+            section = "Tizim"
+        severity = "important" if any(k in action for k in ("password","admin_","setting","hide","delete","reject","block","permission")) else "normal"
         items.append({"id":int(r[0]),"actor":actor_id,"actor_name":actor_name,"actor_role":actor_role,
                       "action":action,"action_label":labels.get(action,action.replace("_"," ").capitalize()),
+                      "section":section,"severity":severity,
                       "target":r[3] or "—","details":r[4] or "—","created_at":r[5] or ""})
     return web.json_response({"items":items})
 
