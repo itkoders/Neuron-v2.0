@@ -3308,6 +3308,13 @@ body.social-open #paxBuddy{display:none}
     loadParentOverview();
   }
   async function loadParentOverview() {
+    if (!state.parentChildren.length) {
+      $("parentChildSelect").innerHTML = "";
+      $("parentChildSelect").disabled = true;
+      $("parentContent").innerHTML = '<div class="card empty">Hozircha ulangan farzand yo‘q. Yangi farzand qo‘shish uchun yuqoridagi tugmani bosing.</div>';
+      return;
+    }
+    $("parentChildSelect").disabled = false;
     $("parentContent").innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
     try {
       const data = await api("/api/parent/overview");
