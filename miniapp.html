@@ -2743,8 +2743,28 @@ body.social-open #paxBuddy{display:none}
       if(d.stats.can_manage_admins) sections.push('<div class="card panel settings-card"><h3>🔑 Super Admin paroli</h3><input class="field" id="admPassword" type="password" placeholder="Yangi parol (8+ belgi)">'+adminBtn('Parolni almashtirish','save-password')+'</div>');
       host.innerHTML=sections.join("")||'<div class="card empty">Bu bo‘lim uchun ruxsat berilmagan.</div>';
     } else if(state.adminTab==="audit") {
-      host.innerHTML='<div class="loading">Audit yuklanmoqda…</div>';
-      api("/api/admin/audit").then(a=>{host.innerHTML=a.items.map(i=>adminCard(esc(i.action_label||i.action),'<p class="admin-muted">👤 '+esc(i.actor_name||"Foydalanuvchi")+' · '+esc(i.actor_role||"")+' · ID '+esc(i.actor||"—")+'<br>🕒 '+esc(i.created_at)+' · 🎯 '+esc(i.target||"—")+'</p><p>'+esc(i.details||"—")+'</p>')).join("")||'<div class="card empty">Yozuvlar yo‘q.</div>';}).catch(e=>host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>');
+      host.innerHTML='<div class="card panel"><h3>🔎 Audit jurnalini qidirish</h3><input class="field" id="auditSearch" placeholder="Ism, amal, bo‘lim yoki izoh…" aria-label="Audit qidiruvi"><div class="grid2" style="margin-top:8px"><label class="admin-muted">Boshlanish sanasi<input class="field" id="auditFrom" type="date"></label><label class="admin-muted">Tugash sanasi<input class="field" id="auditTo" type="date"></label></div><select class="field" id="auditSeverity" style="margin-top:8px"><option value="all">Barcha amallar</option><option value="important">Faqat muhim amallar</option><option value="normal">Oddiy amallar</option></select></div><div id="auditRows" class="admin-list"><div class="loading">Audit yuklanmoqda…</div></div>';
+      api("/api/admin/audit").then(a=>{
+        const items=a.items||[], rows=host.querySelector("#auditRows");
+        const render=()=>{
+          const q=(host.querySelector("#auditSearch").value||"").trim().toLowerCase();
+          const from=host.querySelector("#auditFrom").value, to=host.querySelector("#auditTo").value;
+          const sev=host.querySelector("#auditSeverity").value;
+          const filtered=items.filter(i=>{
+            const hay=[i.actor_name,i.actor_role,i.action_label,i.section,i.target,i.details,i.actor].join(" ").toLowerCase();
+            const d=String(i.created_at||"").split(" ")[0].split(".").reverse().join("-");
+            return (!q||hay.includes(q))&&(!from||d>=from)&&(!to||d<=to)&&(sev==="all"||i.severity===sev);
+          });
+          rows.innerHTML=filtered.map(i=>{
+            const mark=i.severity==="important"?"🚨 MUHIM":"📘 ODDIY";
+            return adminCard(mark+" · "+esc(i.action_label||i.action),
+              '<p class="admin-muted">👤 '+esc(i.actor_name||"Foydalanuvchi")+' · '+esc(i.actor_role||"")+' · ID '+esc(i.actor||"—")+
+              '<br>📂 '+esc(i.section||"Tizim")+' · 🕒 '+esc(i.created_at)+' · 🎯 '+esc(i.target||"—")+'</p><p>'+esc(i.details||"—")+'</p>');
+          }).join("")||'<div class="card empty">Bu filtr bo‘yicha yozuv topilmadi.</div>';
+        };
+        ["auditSearch","auditFrom","auditTo","auditSeverity"].forEach(id=>host.querySelector("#"+id).addEventListener(id==="auditSearch"?"input":"change",render));
+        render();
+      }).catch(e=>host.querySelector("#auditRows").innerHTML='<div class="card empty">'+esc(errText(e))+'</div>');
     }
     host.onclick=adminActionHandler;
     host.onchange=async e=>{const c=e.target;if(c.matches("[data-feature]")){try{await adminPost("/api/admin/plan",{action:"toggle_feature",key:c.dataset.key,feature:c.dataset.feature});await loadAdminOverview();state.adminTab="plans";renderAdminTab();}catch(err){toast(errText(err));}return;}if(c.matches('[data-field="badge_enabled"]')){const key=c.dataset.key;const sel=host.querySelector('[data-key="'+key+'"][data-field="badge"]');const badge=c.checked?((sel&&sel.value)||"verified"):"";c.disabled=true;try{await adminPost("/api/admin/plan",{action:"save",key,badge,badge_enabled:c.checked?"1":"0"});toast(c.checked?"Tarifga galichka ruxsati yoqildi.":"Tarifdan galichka ruxsati olib tashlandi.");await loadAdminOverview();state.adminTab="plans";renderAdminTab();}catch(err){c.checked=!c.checked;toast(errText(err));}finally{c.disabled=false;}return;}if(c.matches('[data-field="badge"]')){const key=c.dataset.key;const cb=host.querySelector('[data-key="'+key+'"][data-field="badge_enabled"]');if(cb&&cb.checked){try{await adminPost("/api/admin/plan",{action:"save",key,badge:c.value||"verified",badge_enabled:"1"});toast("Galichka turi saqlandi.");}catch(err){toast(errText(err));}}}};
