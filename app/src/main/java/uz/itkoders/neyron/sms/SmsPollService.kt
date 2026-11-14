@@ -73,8 +73,7 @@ class SmsPollService : Service() {
         val phone = task.optString("phone")
         val body = task.optString("body")
         try {
-            val manager = if (Build.VERSION.SDK_INT >= 31) getSystemService(SmsManager::class.java)
-                else @Suppress("DEPRECATION") SmsManager.getDefault()
+            val manager = smsManager()
             val parts = manager.divideMessage(body)
             if (parts.size > 1) manager.sendMultipartTextMessage(phone, null, parts, null, null)
             else manager.sendTextMessage(phone, null, body, null, null)
@@ -85,6 +84,12 @@ class SmsPollService : Service() {
                     JSONObject().put("status", "failed").put("error", e.message ?: "SMS yuborilmadi"), token)
             } catch (_: Exception) { }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun smsManager(): SmsManager {
+        return if (Build.VERSION.SDK_INT >= 31) getSystemService(SmsManager::class.java)
+        else SmsManager.getDefault()
     }
 
     private fun createChannel() {
