@@ -330,7 +330,7 @@ def init_db():
                 (canonical_id,member[0]))
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
         teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
-        reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 1,
+        reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 0,
         updated_at TEXT)""")
     run("""CREATE TABLE IF NOT EXISTS payment_reminder_log (
         student_id INTEGER NOT NULL, month TEXT NOT NULL, last_sent_date TEXT DEFAULT '',
@@ -5816,7 +5816,7 @@ def teacher_payment_schedule(teacher_id):
               (teacher_id,), fetch="one")
     return {"due_day":int(row[0]) if row else 5,
             "reminder_interval_days":int(row[1]) if row else 2,
-            "enabled":bool(row[2]) if row else True}
+            "enabled":bool(row[2]) if row else False}
 
 
 async def api_teacher_payment_schedule(request):
