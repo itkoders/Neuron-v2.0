@@ -999,7 +999,6 @@
   @media(max-width:700px){.card,.panel,.grid-wrap,.report-actions,.journal-toolbar,.stat,.att-item,.score-card,.fact,.profile,.note,.history-item,.admin-item,.admin-kpi,.settings-card,.social-sheet{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.social-overlay{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
-
 /* NEURON Social 2.0 — isolated views and Telegram-like full-screen chat */
 #socialDock.hidden{display:none!important}
 #socialDock{display:flex;flex-wrap:wrap}
@@ -1997,8 +1996,7 @@ body.social-open #paxBuddy{display:none}
   }
   function sparkleAt(el) {
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    for (let i = 0; i < 6; i++) {
+    const rect = el.getBoundingClientRect();    for (let i = 0; i < 6; i++) {
       const s = document.createElement("span");
       s.className = "sparkle";
       s.textContent = ["✨", "⭐", "💫"][i % 3];
@@ -2041,6 +2039,18 @@ body.social-open #paxBuddy{display:none}
       state.settingsLoaded = true;
       host.innerHTML = `
         <div class="card panel settings-card">
+          <h3>📲 Avtomatik SMS — o‘qituvchi SIM-kartasi</h3>
+          <p class="hint">Ball kiritilganda ota-onaga SMS sizning telefoningizdagi SIM-kartadan yuboriladi. Avval Android yordamchi ilovasini o‘rnating, so‘ng ulash kodini oling.</p>
+          <div class="settings-row">
+            <button type="button" class="btn" id="generateSmsPairCode">📱 Telefonni ulash kodini olish</button>
+            <button type="button" class="chip-btn danger" id="disableSmsDevice">SMSni o‘chirish</button>
+          </div>
+          <div class="card panel" style="margin-top:10px;background:var(--surface-2)">
+            <div id="smsPairCodeStatus" class="hint" aria-live="polite">Telefon ulanmagan bo‘lsa, kodni oling. Kod 10 daqiqa amal qiladi va bir marta ishlatiladi.</div>
+          </div>
+          <p class="hint">Eslatma: SMS narxi operator tarifingiz bo‘yicha SIM balansingizdan yechiladi. Telefon internetga ulangan va NEYRON SMS ilovasida xizmat yoqilgan bo‘lishi kerak.</p>
+        </div>
+        <div class="card panel settings-card">
           <h3>📢 Telegram kanalini ulash</h3>
           <p class="hint">Kanal username yoki ID sini kiriting. Bot kanalga administrator qilib qo‘shilgan bo‘lishi kerak.</p>
           <div class="settings-row"><input class="field" id="channelSettingInput" value="${esc(state.settingsChannel)}" placeholder="@kanal yoki -100..."><button class="btn" id="saveChannelSetting" ${state.settingsChannelEnabled?"":"disabled"}>Ulash</button></div>
@@ -2066,6 +2076,24 @@ body.social-open #paxBuddy{display:none}
           </div>
           <div id="studentCodesList" class="codes-list"></div>
         </div>`;
+      $("generateSmsPairCode").onclick = async () => {
+        const button = $("generateSmsPairCode"), status = $("smsPairCodeStatus");
+        button.disabled = true; button.textContent = "Kod yaratilmoqda…";
+        try {
+          const result = await api("/api/sms/pair-code", {method:"POST", body:"{}"});
+          status.innerHTML = '<b style="font-size:30px;letter-spacing:8px;color:var(--brand)">' + esc(result.code) + '</b><br>Kodni NEYRON SMS Android ilovasiga kiriting. 10 daqiqada tugaydi.';
+          toast("Ulash kodi tayyor.");
+        } catch(err) { status.textContent = errText(err); }
+        finally { button.disabled = false; button.textContent = "📱 Telefonni ulash kodini olish"; }
+      };
+      $("disableSmsDevice").onclick = async () => {
+        if (!confirm("Avtomatik SMS yuborish serverda o‘chirilsinmi?")) return;
+        try {
+          await api("/api/sms/device/disable", {method:"POST", body:"{}"});
+          $("smsPairCodeStatus").textContent = "SMS yuborish serverda o‘chirildi. Qayta ulash uchun yangi kod oling.";
+          toast("Avtomatik SMS o‘chirildi.");
+        } catch(err) { toast(errText(err)); }
+      };
       $("saveChannelSetting").onclick = async () => {
         const value = $("channelSettingInput").value.trim();
         const button = $("saveChannelSetting");
@@ -2997,8 +3025,7 @@ body.social-open #paxBuddy{display:none}
     const allList = visibleStudents();
     const pageSize = 25;
     const pageCount = Math.max(1, Math.ceil(allList.length / pageSize));
-    state.page = Math.min(state.page, pageCount - 1);
-    const list = allList.slice(state.page * pageSize, (state.page + 1) * pageSize);
+    state.page = Math.min(state.page, pageCount - 1);    const list = allList.slice(state.page * pageSize, (state.page + 1) * pageSize);
     const head = `<tr>
       <th class="name"><button class="sort-btn" id="sortFio">O‘quvchi${state.sort === "fio" ? " ▲" : ""}</button></th>
       ${labels.map(l => `<th>${esc(l)}</th>`).join("")}<th>Amal</th></tr>`;
@@ -3997,8 +4024,7 @@ body.social-open #paxBuddy{display:none}
     const enable = async () => {
       if (reduced) return;
       try {
-        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-          const permission = await DeviceOrientationEvent.requestPermission();
+        if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {          const permission = await DeviceOrientationEvent.requestPermission();
           if (permission !== "granted") throw new Error("permission denied");
         }
         enabled = true;

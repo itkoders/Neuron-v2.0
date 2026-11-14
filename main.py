@@ -27,6 +27,8 @@ from aiogram.types import (BufferedInputFile, InlineKeyboardButton, InlineKeyboa
                            KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from PIL import Image, ImageDraw, ImageFont
 from cryptography.fernet import Fernet, InvalidToken
+from sms_bridge import (init_sms_bridge, make_pair_code, pair_device, device_from_request,
+                        disable_device, enqueue_score_sms, claim_tasks, report_task)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -451,6 +453,7 @@ def init_db():
             features.add("mini_app")
             run("UPDATE plans SET features=? WHERE key=?",(",".join(sorted(features)),row[0]))
         db_set_setting("mini_app_all_plans_v1","1")
+    init_sms_bridge(run)
 
 
 def db_get_setting(key):
@@ -998,7 +1001,6 @@ def db_student_chat_ids_for_student(student_id):
 def db_log_student_login(s_id, fio):
     run("INSERT INTO student_logs (student_id, student_fio, login_time) VALUES (?, ?, ?)",
         (s_id, fio, datetime.now().strftime("%d.%m.%Y %H:%M:%S")))
-
 
 # ============================================================
 # 2. FSM HOLATLARI
@@ -1997,8 +1999,7 @@ async def tp_subject_menu(call: types.CallbackQuery):
         reply_markup=subject_menu_kb(sid, t), parse_mode="Markdown")
 
 
-@dp.callback_query(F.data.startswith("tp_subdel_"))
-async def tp_subdel(call: types.CallbackQuery):
+@dp.callback_query(F.data.startswith("tp_subdel_"))async def tp_subdel(call: types.CallbackQuery):
     await call.answer()
     sid = int(call.data.split("_")[2])
     subj = owned_subject(_me(call), sid)
@@ -2999,7 +3000,6 @@ def sa_ai_kb():
         [btn("🔙 Super panel", "sa_menu")],
     ])
 
-
 @dp.callback_query(F.data == "sa_ai")
 async def sa_ai(call: types.CallbackQuery):
     await call.answer()
@@ -3997,8 +3997,7 @@ async def _request_link(student, parent_chat_id, parent_name):
         (student["id"], parent_chat_id, parent_name), fetch="lastid"
     )
     request_keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        btn("✅ Tasdiqlash", f"tp_app_{request_id}"),
-        btn("❌ Rad etish", f"tp_rej_{request_id}")
+        btn("✅ Tasdiqlash", f"tp_app_{request_id}"),        btn("❌ Rad etish", f"tp_rej_{request_id}")
     ]])
     await notify_teacher(
         student["teacher_id"],
@@ -4741,6 +4740,62 @@ async def api_subject(request):
                               "today": local_now().strftime("%d.%m.%Y")})
 
 
+
+# --- O'qituvchining o'z SIM-kartasi orqali SMS yuborish ---
+_SMS_PAIR_ATTEMPTS = {}
+
+async def api_sms_pair_code(request):
+    teacher, err = miniapp_teacher(request)
+    if err:
+        return err
+    now = local_now().isoformat()
+    code = make_pair_code(run, teacher["id"], now)
+    audit(teacher["chat_id"], "sms_pair_code", str(teacher["id"]), "10 daqiqalik bir martalik kod")
+    return web.json_response({"ok": True, "code": code, "expires_in": 600})
+
+async def api_sms_disable(request):
+    teacher, err = miniapp_teacher(request)
+    if err:
+        return err
+    disable_device(run, teacher["id"])
+    audit(teacher["chat_id"], "sms_device_disabled", str(teacher["id"]), "O'qituvchi SMS yuborishni to'xtatdi")
+    return web.json_response({"ok": True})
+
+async def api_sms_device_pair(request):
+    ip = request.remote or "unknown"
+    now_ts = time.time()
+    attempts = [x for x in _SMS_PAIR_ATTEMPTS.get(ip, []) if now_ts - x < 600]
+    if len(attempts) >= 10:
+        return web.json_response({"error": "rate_limited"}, status=429)
+    body = await _read_json(request)
+    paired = pair_device(run, body.get("code"), body.get("device_name", "Android"),
+                         body.get("phone_hint", ""), local_now().isoformat())
+    if not paired:
+        attempts.append(now_ts)
+        _SMS_PAIR_ATTEMPTS[ip] = attempts
+        return web.json_response({"error": "invalid_or_expired_code"}, status=400)
+    _SMS_PAIR_ATTEMPTS.pop(ip, None)
+    return web.json_response({"ok": True, **paired})
+
+async def api_sms_tasks(request):
+    teacher_id = device_from_request(run, request, local_now().isoformat())
+    if not teacher_id:
+        return web.json_response({"error": "device_auth"}, status=401)
+    tasks = claim_tasks(run, teacher_id, local_now().isoformat(), 5)
+    return web.json_response({"ok": True, "tasks": tasks, "poll_after_seconds": 20})
+
+async def api_sms_task_report(request):
+    teacher_id = device_from_request(run, request, local_now().isoformat())
+    if not teacher_id:
+        return web.json_response({"error": "device_auth"}, status=401)
+    body = await _read_json(request)
+    ok = report_task(run, teacher_id, request.match_info["task_id"],
+                     str(body.get("status", "")), str(body.get("error", "")),
+                     local_now().isoformat())
+    if not ok:
+        return web.json_response({"error": "task_not_found_or_bad_status"}, status=404)
+    return web.json_response({"ok": True})
+
 async def api_score(request):
     t, err = miniapp_teacher(request)
     if err:
@@ -4768,6 +4823,13 @@ async def api_score(request):
         logging.info("Ball xabari: student_id=%s sent=%s failed=%s",
                      sid, result.get("sent", 0), len(result.get("failed", [])))
         notification = result
+        try:
+            sms_queued = enqueue_score_sms(run, t["id"], st, subj, label, val, local_now().isoformat())
+        except Exception:
+            logging.exception("SMS navbatiga yozishda xato: student_id=%s", sid)
+            sms_queued = False
+    else:
+        sms_queued = False
     today = local_now().strftime("%d.%m.%Y")
     students = list(db_students(t["id"], st["subject_id"]).values())
     all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
@@ -4776,7 +4838,8 @@ async def api_score(request):
         "last": db_student(sid)["last_score_date"],
         "today": today,
         "all_scored_today": all_scored,
-        "parent_notifications": notification
+        "parent_notifications": notification,
+        "sms_queued": sms_queued
     })
 
 
@@ -4997,8 +5060,7 @@ def _admin_overview_payload():
             "created_at": t.get("created_at") or ""
         })
     plans = []
-    for p in db_plans():
-        plans.append({"key": p["key"], "name": p["name"], "price": p["price"],
+    for p in db_plans():        plans.append({"key": p["key"], "name": p["name"], "price": p["price"],
             "student_limit": p["student_limit"], "subject_limit": p.get("subject_limit", 0),
             "duration_days": p["duration_days"], "active": bool(p["active"]),
             "features": sorted(p["features"]), "badge": p.get("badge", "")})
@@ -5997,8 +6059,7 @@ async def api_teacher_payments(request):
     charge_rows = run("""SELECT c.student_id,c.due_amount,
         COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
           WHERE p.student_id=c.student_id AND p.month=c.month),0)
-        FROM student_monthly_charges c WHERE c.teacher_id=? AND c.month=?""",
-        (teacher["id"], month), fetch="all")
+        FROM student_monthly_charges c WHERE c.teacher_id=? AND c.month=?""",        (teacher["id"], month), fetch="all")
     month_map = {int(r[0]): {"due":int(r[1] or 0),"paid":int(r[2] or 0)} for r in charge_rows}
     debt_rows = run("""SELECT c.student_id,
         SUM(c.due_amount-COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
@@ -6997,8 +7058,7 @@ async def api_parent_unlink_child(request):
             )""", (parent_id, identity[0]))
     else:
         run("DELETE FROM parent_children WHERE parent_chat_id=? AND student_id=?", (parent_id, sid))
-        run("DELETE FROM pending_requests WHERE parent_chat_id=? AND student_id=?", (parent_id, sid))
-    audit(parent_id, "miniapp_parent_unlink_child", str(sid), "Parent-child cabinet link removed by parent")
+        run("DELETE FROM pending_requests WHERE parent_chat_id=? AND student_id=?", (parent_id, sid))    audit(parent_id, "miniapp_parent_unlink_child", str(sid), "Parent-child cabinet link removed by parent")
     return web.json_response({"ok": True})
 
 
@@ -7223,6 +7283,11 @@ async def start_web_server():
     app.router.add_delete("/api/subject/{sid}", api_delete_subject)
     app.router.add_get("/api/subject/{sid}", api_subject)
     app.router.add_post("/api/score", api_score)
+    app.router.add_post("/api/sms/pair-code", api_sms_pair_code)
+    app.router.add_post("/api/sms/device/disable", api_sms_disable)
+    app.router.add_post("/api/sms/device/pair", api_sms_device_pair)
+    app.router.add_get("/api/sms/tasks", api_sms_tasks)
+    app.router.add_post("/api/sms/tasks/{task_id}/report", api_sms_task_report)
     app.router.add_post("/api/report/send", api_daily_report)
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/student/overview", api_student_overview)
