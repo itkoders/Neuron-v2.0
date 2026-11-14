@@ -2502,7 +2502,7 @@ body.social-open #paxBuddy{display:none}
       if (unlinkBtn) {
         unlinkBtn.classList.toggle("hidden", me.role !== "teacher");
         unlinkBtn.onclick = async () => {
-          if (!confirm("Faqat shu Telegram akkaunt NEURON V2 o‘qituvchi kabinetidan uziladi. Fanlar, o‘quvchilar, ballar va davomat o‘chirilmaydi. Davom etilsinmi?")) return;
+          // Tasdiqlash oynasisiz: bosilishi bilan faqat joriy Telegram akkaunti uziladi.
           unlinkBtn.disabled = true;
           try {
             await api("/api/teacher/unlink-account", {method:"POST", body:"{}"});
