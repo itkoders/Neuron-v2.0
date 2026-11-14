@@ -305,6 +305,9 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS student_identity_members (
         identity_id INTEGER NOT NULL, student_id INTEGER NOT NULL UNIQUE,
         PRIMARY KEY(identity_id,student_id))""")
+    run("""CREATE TABLE IF NOT EXISTS identity_attendance (
+        identity_id INTEGER NOT NULL, date_str TEXT NOT NULL, status TEXT NOT NULL,
+        updated_at TEXT, PRIMARY KEY(identity_id,date_str))""")
     # Eski fan qatorlarini bitta o‘quvchi profiliga bog‘laymiz; mavjud kodlar saqlanadi.
     for legacy in run("SELECT id,teacher_id,fio,group_name,code FROM students ORDER BY id", fetch="all"):
         sid, tid, fio, group_name, old_code = legacy
@@ -328,6 +331,14 @@ def init_db():
         for member in members:
             run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
                 (canonical_id,member[0]))
+    legacy_attendance = run("""SELECT m.identity_id,h.date_str,h.davomat,MAX(h.id)
+        FROM attendance_history h JOIN student_identity_members m ON m.student_id=h.student_id
+        WHERE h.davomat IS NOT NULL AND h.davomat <> ''
+        GROUP BY m.identity_id,h.date_str""",fetch="all")
+    for identity_id,date_str,status,_ in legacy_attendance:
+        run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
+            VALUES(?,?,?,?) ON CONFLICT(identity_id,date_str) DO NOTHING""",
+            (identity_id,date_str,status,local_now().isoformat()))
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
         teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
         reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 0,
