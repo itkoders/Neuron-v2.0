@@ -298,6 +298,34 @@ def init_db():
         run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_type TEXT DEFAULT 'card'")
     if "payment_details" not in payment_cols:
         run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_details TEXT DEFAULT ''")
+    run("""CREATE TABLE IF NOT EXISTS student_identities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
+        fio_key TEXT NOT NULL, group_name TEXT NOT NULL, code TEXT UNIQUE NOT NULL,
+        created_at TEXT, UNIQUE(teacher_id,fio_key,group_name))""")
+    run("""CREATE TABLE IF NOT EXISTS student_identity_members (
+        identity_id INTEGER NOT NULL, student_id INTEGER NOT NULL UNIQUE,
+        PRIMARY KEY(identity_id,student_id))""")
+    # Eski fan qatorlarini bitta o‘quvchi profiliga bog‘laymiz; mavjud kodlar saqlanadi.
+    for legacy in run("SELECT id,teacher_id,fio,group_name,code FROM students ORDER BY id", fetch="all"):
+        sid, tid, fio, group_name, old_code = legacy
+        fio_key = " ".join(str(fio or "").casefold().split())
+        group_key = str(group_name or "Guruhsiz").strip()
+        identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
+                       (tid,fio_key,group_key), fetch="one")
+        if not identity:
+            run("INSERT INTO student_identities (teacher_id,fio_key,group_name,code,created_at) VALUES (?,?,?,?,?)",
+                (tid,fio_key,group_key,old_code,local_now().isoformat()))
+            identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
+                           (tid,fio_key,group_key), fetch="one")
+        run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?) ON CONFLICT(student_id) DO NOTHING",
+            (identity[0],sid))
+    run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
+        teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
+        reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 1,
+        updated_at TEXT)""")
+    run("""CREATE TABLE IF NOT EXISTS payment_reminder_log (
+        student_id INTEGER NOT NULL, month TEXT NOT NULL, last_sent_date TEXT DEFAULT '',
+        send_count INTEGER DEFAULT 0, PRIMARY KEY(student_id,month))""")
     run("""CREATE TABLE IF NOT EXISTS student_monthly_charges (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         teacher_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
@@ -763,6 +791,11 @@ def db_student(s_id):
 
 
 def db_find_student_by_code(code):
+    identity = run("SELECT id FROM student_identities WHERE code=?", (str(code).strip(),), fetch="one")
+    if identity:
+        row = run(f"SELECT {STU_COLS} FROM students s JOIN student_identity_members m ON m.student_id=s.id WHERE m.identity_id=? ORDER BY s.id LIMIT 1",
+                  (identity[0],), fetch="one")
+        return (row[0], _student(row)) if row else None
     row = run(f"SELECT {STU_COLS} FROM students WHERE code = ?", (code,), fetch="one")
     return (row[0], _student(row)) if row else None
 
@@ -777,9 +810,25 @@ def new_student_code():
 
 
 def db_add_student(tid, subject_id, fio, group_name):
-    code = new_student_code()
+    fio_key = " ".join(str(fio or "").casefold().split())
+    group_key = str(group_name or "Guruhsiz").strip()
+    identity = run("SELECT id,code FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
+                   (tid,fio_key,group_key), fetch="one")
+    if not identity:
+        code = new_student_code()
+        # Identity kodi mavjud ichki kodlar bilan to‘qnashmasin.
+        while run("SELECT 1 FROM student_identities WHERE code=?", (code,), fetch="one"):
+            code = new_student_code()
+        identity_id = run("INSERT INTO student_identities (teacher_id,fio_key,group_name,code,created_at) VALUES (?,?,?,?,?)",
+                          (tid,fio_key,group_key,code,local_now().isoformat()), fetch="lastid")
+    else:
+        identity_id, code = identity[0], identity[1]
+    internal_code = new_student_code()
     run("INSERT INTO students (teacher_id, subject_id, fio, code, group_name, enrolled_month) VALUES (?, ?, ?, ?, ?, ?)",
-        (tid, subject_id, fio, code, group_name, local_now().strftime("%Y-%m")))
+        (tid, subject_id, fio, internal_code, group_key, local_now().strftime("%Y-%m")))
+    sid_row = run("SELECT id FROM students WHERE code=?", (internal_code,), fetch="one")
+    run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?)",
+        (identity_id,sid_row[0]))
     return code
 
 
@@ -865,9 +914,12 @@ def teacher_payment_method(teacher_id):
 
 def db_parent_student_ids(parent_chat_id):
     """Telegram ota-ona kabineti uchun tasdiqlangan o'qituvchiga bog'langan farzandlar."""
-    rows = run("""SELECT pc.student_id, t.active, t.verify_status, t.admin_approved
+    rows = run("""SELECT DISTINCT member.student_id, t.active, t.verify_status, t.admin_approved
         FROM parent_children pc
-        JOIN students s ON s.id = pc.student_id
+        JOIN students linked ON linked.id = pc.student_id
+        JOIN student_identity_members member ON member.identity_id =
+            (SELECT identity_id FROM student_identity_members WHERE student_id=linked.id LIMIT 1)
+        JOIN students s ON s.id = member.student_id
         JOIN teachers t ON t.id = s.teacher_id
         WHERE pc.parent_chat_id = ?""", (parent_chat_id,), fetch="all")
     return {sid for sid, active, verify_status, admin_approved in rows
