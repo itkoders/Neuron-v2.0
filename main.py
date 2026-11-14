@@ -1416,24 +1416,47 @@ class CallbackGuard(BaseMiddleware):
 # --- Majburiy obuna (kanalga obuna bo'lmagan foydalanuvchini bloklaydi) ---
 SUB_CACHE = {}  # uid -> (obuna_bormi, vaqt); 60 soniya keshlanadi
 
+def required_channels():
+    raw = db_get_setting("required_channels") or ""
+    try:
+        data = json.loads(raw) if raw else []
+        channels = [str(x).strip() for x in data] if isinstance(data, list) else []
+    except Exception:
+        channels = [x.strip() for x in raw.splitlines() if x.strip()]
+    old = (db_get_setting("required_channel") or "").strip()
+    if old and old not in channels:
+        channels.insert(0, old)
+    return list(dict.fromkeys(x for x in channels if x))
+
+def required_channel_links():
+    try:
+        data = json.loads(db_get_setting("required_channel_urls") or "{}")
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 async def is_subscribed(uid):
     if db_get_setting("mandatory_sub") != "1" or is_super(uid):
         return True
     if not bot:
         return False
-    channel = db_get_setting("required_channel")
-    if not channel:
+    channels = required_channels()
+    if not channels:
         return True
     cached = SUB_CACHE.get(uid)
     if cached and time.time() - cached[1] < 60:
         return cached[0]
-    try:
-        member = await bot.get_chat_member(channel, uid)
-        ok = member.status in ("member", "administrator", "creator")
-    except Exception:
-        logging.exception("Obunani tekshirishda xato")
-        ok = False  # tekshiruv xatosida obunani tasdiqlamaymiz
+    ok = True
+    for channel in channels:
+        try:
+            member = await bot.get_chat_member(channel, uid)
+            if member.status not in ("member", "administrator", "creator"):
+                ok = False
+                break
+        except Exception:
+            logging.exception("Majburiy obuna tekshiruvida xato: %s", channel)
+            ok = False
+            break
     SUB_CACHE[uid] = (ok, time.time())
     return ok
 
@@ -1451,14 +1474,16 @@ class SubGuard(BaseMiddleware):
             return await handler(event, data)
         if isinstance(event, types.CallbackQuery) and event.data == "check_sub":
             return await handler(event, data)
-        channel = db_get_setting("required_channel") or ""
+        channels = required_channels()
+        links = required_channel_links()
         rows = []
-        join_url = db_get_setting("required_channel_url") or ""
-        if not join_url and channel.startswith("@"):
-            join_url = f"https://t.me/{channel[1:]}"
-        if join_url:
-            rows.append([InlineKeyboardButton(text="📢 Kanalga obuna bo'lish", url=join_url)])
-        rows.append([btn("✅ Tekshirish", "check_sub")])
+        for index, channel in enumerate(channels, 1):
+            join_url = links.get(channel, "")
+            if not join_url and channel.startswith("@"):
+                join_url = f"https://t.me/{channel[1:]}"
+            if join_url:
+                rows.append([InlineKeyboardButton(text=f"📢 {index}-kanalga obuna bo‘lish", url=join_url)])
+        rows.append([btn("✅ Barcha kanallarni tekshirish", "check_sub")])
         text = "🔔 Botdan foydalanish uchun avval kanalimizga obuna bo'ling, so'ng \"✅ Tekshirish\" tugmasini bosing."
         if isinstance(event, types.CallbackQuery):
             await event.answer("Avval kanalga obuna bo'ling.", show_alert=True)
@@ -3422,16 +3447,16 @@ def support_url():
 def sa_sub_text():
     on = db_get_setting("mandatory_sub") == "1"
     status = "🟢 Yoqilgan" if on else "🔴 O'chirilgan"
-    ch = db_get_setting("required_channel") or "ulanmagan"
-    return (f"🔔 **Majburiy obuna**\n\nHolat: {status}\n📢 Kanal: `{ch}`\n\n"
-            "_Bot kanalda admin bo'lishi kerak. Obuna bo'lmagan foydalanuvchi botdan foydalana olmaydi._")
-
+    channels = required_channels()
+    listing = "\n".join(f"{i}. `{ch}`" for i, ch in enumerate(channels, 1)) or "Hali kanal qo‘shilmagan"
+    return (f"🔔 **Majburiy obuna**\n\nHolat: {status}\n📢 Kanallar ({len(channels)} ta):\n{listing}\n\n"
+            "_Foydalanuvchi barcha kanallarga obuna bo‘lishi shart. Bot har bir kanalda admin bo‘lishi kerak._")
 
 def sa_sub_kb():
     on = db_get_setting("mandatory_sub") == "1"
     return kb([
         [btn("🔴 O'chirish" if on else "🟢 Yoqish", "sa_subtog")],
-        [btn("✏️ Kanalni belgilash", "sa_subset")],
+        [btn("➕ Kanal qo‘shish", "sa_subset")],
         [btn("🔙 Super panel", "sa_menu")],
     ])
 
@@ -3446,7 +3471,7 @@ async def sa_sub(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "sa_subtog")
 async def sa_sub_toggle(call: types.CallbackQuery):
     on = db_get_setting("mandatory_sub") == "1"
-    if not on and not db_get_setting("required_channel"):
+    if not on and not required_channels():
         await call.answer("Avval kanalni belgilang.", show_alert=True)
         return
     db_set_setting("mandatory_sub", "0" if on else "1")
@@ -3460,7 +3485,7 @@ async def sa_sub_toggle(call: types.CallbackQuery):
 async def sa_sub_channel_start(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.set_state(SuperStates.sub_channel)
-    await call.message.edit_text("📢 Kanal username (`@kanalim`) yoki ID (`-100...`) kiriting:\n\n_Bot kanalda admin bo'lishi shart._",
+    await call.message.edit_text("📢 Yangi kanal username (`@kanalim`) yoki ID (`-100...`) kiriting:\n\n_Bot kanalda administrator bo‘lishi shart. Har safar bittadan yuboring; avvalgi kanallar saqlanadi._",
                                  reply_markup=kb([[btn("❌ Bekor qilish", "sa_sub")]]), parse_mode="Markdown")
 
 
@@ -3484,10 +3509,18 @@ async def sa_sub_channel_save(message: types.Message, state: FSMContext):
     except Exception:
         await send_and_clean_both(message, "❌ Kanal topilmadi yoki bot kanalga kira olmaydi. Botni kanalga admin qilib, qayta urinib ko'ring.", delay=30)
         return
-    db_set_setting("required_channel", raw)
-    db_set_setting("required_channel_url", join_url)
+    channels = required_channels()
+    if raw not in channels:
+        channels.append(raw)
+    db_set_setting("required_channels", json.dumps(channels, ensure_ascii=False))
+    db_set_setting("required_channel", channels[0] if channels else "")
+    links = required_channel_links()
+    links[raw] = join_url
+    db_set_setting("required_channel_urls", json.dumps(links, ensure_ascii=False))
+    if not db_get_setting("required_channel_url"):
+        db_set_setting("required_channel_url", join_url)
     SUB_CACHE.clear()
-    audit(message.chat.id, "required_channel", "", raw)
+    audit(message.chat.id, "required_channels_add", "", raw)
     await state.clear()
     await message.answer(sa_sub_text(), reply_markup=sa_sub_kb(), parse_mode="Markdown")
 
@@ -5105,6 +5138,7 @@ def _admin_overview_payload():
     settings = {
         "mandatory_sub": db_get_setting("mandatory_sub") == "1",
         "required_channel": db_get_setting("required_channel") or "",
+        "required_channels": "\n".join(required_channels()),
         "required_channels": "\\n".join(required_channels()),
         "support_contact": db_get_setting("support_contact") or "",
         "support_label": db_get_setting("support_label") or "Yordam",
@@ -5333,7 +5367,7 @@ async def api_admin_settings(request):
             values = [value]
         if len(values) > 30:
             return web.json_response({"error":"too_many_channels","limit":30},status=400)
-        if any(not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}",v) or re.fullmatch(r"-?\\d{6,}",v)) for v in values):
+        if any(not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}",v) or re.fullmatch(r"-?\d{6,}",v)) for v in values):
             return web.json_response({"error":"bad_channel"},status=400)
         if values and not bot:
             return web.json_response({"error":"bot_unavailable"},status=503)
