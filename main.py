@@ -269,6 +269,12 @@ def init_db():
         run("ALTER TABLE teachers ADD COLUMN admin_approved INTEGER DEFAULT 0")
     if "code_encrypted" not in teacher_columns:
         run("ALTER TABLE teachers ADD COLUMN code_encrypted TEXT")
+    # Eski telefon tasdig‘idan o‘tgan arizalarni yangi qoidaga mos ravishda faollashtiramiz.
+    # Admin tomonidan aniq rad etilgan yoki bloklangan akkauntlarga tegmaymiz.
+    run("""UPDATE teachers SET verify_status='approved', admin_approved=1, verify_note=NULL
+        WHERE active=1 AND verify_status IN ('admin_pending','doc_pending')""")
+    run("""UPDATE teachers SET admin_approved=1
+        WHERE active=1 AND verify_status='approved' AND COALESCE(admin_approved,0)=0""")
     run("""CREATE TABLE IF NOT EXISTS teacher_access (
         teacher_id INTEGER NOT NULL, chat_id BIGINT UNIQUE NOT NULL,
         created_at TEXT, PRIMARY KEY(teacher_id, chat_id))""")
@@ -721,9 +727,9 @@ def create_teacher(chat_id, data, status, doc_file_id=None):
     run("UPDATE teachers SET chat_id = NULL WHERE chat_id = ?", (chat_id,))
     created_at = datetime.now().strftime("%d.%m.%Y %H:%M")
     run("INSERT INTO teachers (chat_id, first_name, last_name, phone, code_lookup, code_encrypted, plan_key, plan_expires, active, "
-        "created_at, verify_status, doc_file_id, admin_approved) VALUES (?, ?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?, 0)",
+        "created_at, verify_status, doc_file_id, admin_approved) VALUES (?, ?, ?, ?, ?, ?, 'free', NULL, 1, ?, ?, ?, ?)",
         (chat_id, data["first_name"], data["last_name"], data["phone"], teacher_lookup(code), encrypt_teacher_code(code),
-         created_at, status, doc_file_id))
+         created_at, status, doc_file_id, 1 if status == "approved" else 0))
     teacher_id_row = run("SELECT id FROM teachers WHERE chat_id=?", (chat_id,), fetch="one")
     if teacher_id_row:
         run("INSERT INTO teacher_access (teacher_id, chat_id, created_at) VALUES (?, ?, ?) ON CONFLICT(chat_id) DO NOTHING",
@@ -1917,13 +1923,13 @@ async def miniapp_teacher_contact(message: types.Message):
         await message.answer("ℹ️ O‘qituvchi hisobingiz avvaldan mavjud.")
         return
     try:
-        teacher, code = create_teacher(uid, data, "admin_pending")
-        await notify_super_admins_registration(teacher)
+        teacher, code = create_teacher(uid, data, "approved")
         db_set_setting(key, "")
-        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram contact confirmed; admin approval pending")
+        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; account activated")
         await message.answer(
-            f"✅ Ro‘yxatdan o‘tish yakunlandi.\n6 xonali kirish kodingiz: {code}\n"
-            "Hisob Super Admin tasdig‘ini kutmoqda. Kodni xavfsiz saqlang."
+            f"✅ Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.\n"
+            f"🔑 6 xonali kirish kodingiz: {code}\n"
+            "Kodni xavfsiz saqlang. Endi NEURON ilovasiga qaytib, o‘qituvchi kabinetini oching."
         )
     except Exception:
         logging.exception("Mini App teacher registration failed")
@@ -1932,16 +1938,10 @@ async def miniapp_teacher_contact(message: types.Message):
 
 async def _finish_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if verify_mode() == "manual":
-        await state.set_state(TeacherStates.reg_doc)
-        await message.answer("✅ Raqam tasdiqlandi.\n\n🪪 Endi pasport yoki ID kartangizning aniq rasmini yuboring.\n"
-                             "_Ma'lumotlar faqat tekshirish uchun ishlatiladi._",
-                             reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown")
-        return
     await state.clear()
-    t, code = create_teacher(message.chat.id, data, "admin_pending")
-    await notify_super_admins_registration(t)
-    await message.answer("✅ Raqam tasdiqlandi.", reply_markup=ReplyKeyboardRemove())
+    t, code = create_teacher(message.chat.id, data, "approved")
+    await message.answer("✅ Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.",
+                         reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
 
@@ -6457,8 +6457,6 @@ async def api_onboard_teacher_register(request):
     if err: return err
     if teacher_by_chat(uid):
         return web.json_response({"error": "teacher_exists"}, status=409)
-    if verify_mode() == "manual":
-        return web.json_response({"error": "manual_verification_required"}, status=409)
     body = await _read_json(request)
     data = {
         "first_name": str(body.get("first_name", "")).strip(),
