@@ -6873,9 +6873,10 @@ async def api_parent_overview(request):
         ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
         rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == sid), None)
         teacher = db_teacher(st["teacher_id"])
-        card = teacher_payment_method(st["teacher_id"])
+        payments_enabled = bool(teacher and has_feature(teacher, "payments"))
+        card = teacher_payment_method(st["teacher_id"]) if payments_enabled else None
         payment_request = run("SELECT status, method, reference, created_at FROM payment_requests WHERE student_id=? AND parent_chat_id=? ORDER BY id DESC LIMIT 1",
-                              (sid, parent_id), fetch="one")
+                              (sid, parent_id), fetch="one") if payments_enabled else None
         children.append({
             "id": sid, "fio": st["fio"], "group_name": st["group_name"],
             "teacher_name": teacher_name(teacher), "subject": subj["name"] if subj else "-",
@@ -6884,8 +6885,8 @@ async def api_parent_overview(request):
             "score_scored": [bool(st.get(f"s{i}_scored", int(st.get(f"s{i}", 0) or 0) > 0)) for i in (1, 2, 3)],
             "overall_score": score_average(st), "davomat": st["davomat"],
             "card": card, "payment_request": ({"status": payment_request[0], "method": payment_request[1], "reference": payment_request[2], "created_at": payment_request[3]} if payment_request else None),
-            "payment_status": st["payment_status"], "payment_amount": st["payment_amount"],
-            "payment_date": st["payment_date"], "phone": st["phone"],
+            "payment_status": st["payment_status"] if payments_enabled else UNPAID, "payment_amount": st["payment_amount"] if payments_enabled else 0,
+            "payment_date": st["payment_date"] if payments_enabled else "", "phone": st["phone"],
             "teacher_note": st["teacher_note"], "last_score_date": st["last_score_date"],
             "rank": rank, "class_size": len(classmates),
             "history": [{"date": r[0], "attendance": r[1], "scores": [r[2], r[3], r[4]]}
