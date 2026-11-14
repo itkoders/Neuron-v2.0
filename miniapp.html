@@ -3275,7 +3275,7 @@ body.social-open #paxBuddy{display:none}
       const submit = $("parentAddChildSubmit");
       const message = $("parentAddChildMessage");
       const code = String(codeInput.value || "").trim();
-      if (!/^\\d{4}$/.test(code)) {
+      if (!/^\d{4}$/.test(code)) {
         message.textContent = "O‘quvchi kodi aynan 4 ta raqamdan iborat bo‘lishi kerak.";
         return;
       }
