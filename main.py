@@ -876,6 +876,10 @@ def db_add_student(tid, subject_id, fio, group_name):
     sid_row = run("SELECT id FROM students WHERE code=?", (internal_code,), fetch="one")
     run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?)",
         (identity_id,sid_row[0]))
+    today=local_now().strftime("%d.%m.%Y")
+    current_attendance=run("SELECT status FROM identity_attendance WHERE identity_id=? AND date_str=?",(identity_id,today),fetch="one")
+    if current_attendance:
+        run("UPDATE students SET davomat=? WHERE id=?",(current_attendance[0],sid_row[0]))
     return code
 
 
@@ -901,16 +905,41 @@ def delete_teacher(tid):
     run("DELETE FROM teachers WHERE id = ?", (tid,))
 
 
+def student_identity_id(s_id):
+    row = run("SELECT identity_id FROM student_identity_members WHERE student_id=? LIMIT 1",(s_id,),fetch="one")
+    return row[0] if row else None
+
+
+def db_identity_members(s_id):
+    identity_id=student_identity_id(s_id)
+    if identity_id is None:
+        st=db_student(s_id)
+        return [st] if st else []
+    rows=run(f"SELECT {STU_COLS} FROM students s JOIN student_identity_members m ON m.student_id=s.id WHERE m.identity_id=? ORDER BY s.id",(identity_id,),fetch="all")
+    return [_student(row) for row in rows]
+
+
+def db_identity_attendance(s_id,date_str=None):
+    identity_id=student_identity_id(s_id)
+    if identity_id is None:
+        st=db_student(s_id)
+        return st.get("davomat","Kutilmoqda") if st else "Kutilmoqda"
+    day=date_str or local_now().strftime("%d.%m.%Y")
+    row=run("SELECT status FROM identity_attendance WHERE identity_id=? AND date_str=?",(identity_id,day),fetch="one")
+    if row: return row[0]
+    rows=run("SELECT davomat FROM students WHERE id IN (SELECT student_id FROM student_identity_members WHERE identity_id=?) ORDER BY id",(identity_id,),fetch="all")
+    return next((r[0] for r in rows if r[0] and r[0]!="Kutilmoqda"),"Kutilmoqda")
+
+
 def db_save_daily_history(s_id, st, date_str=None):
-    now = local_now()
-    # Jurnal kuni O‘zbekiston vaqti bilan 00:00 dan 00:00 gacha hisoblanadi.
-    today = date_str or now.strftime("%d.%m.%Y")
-    row = run("SELECT id FROM attendance_history WHERE student_id = ? AND date_str = ?", (s_id, today), fetch="one")
-    vals = (st["davomat"], st["s1"], st["s2"], st["s3"])
+    today=date_str or local_now().strftime("%d.%m.%Y")
+    attendance=db_identity_attendance(s_id,today)
+    row=run("SELECT id FROM attendance_history WHERE student_id=? AND date_str=?",(s_id,today),fetch="one")
+    vals=(attendance,st["s1"],st["s2"],st["s3"])
     if row:
-        run("UPDATE attendance_history SET davomat=?, s1=?, s2=?, s3=? WHERE id=?", (*vals, row[0]))
+        run("UPDATE attendance_history SET davomat=?,s1=?,s2=?,s3=? WHERE id=?",(*vals,row[0]))
     else:
-        run("INSERT INTO attendance_history (student_id, date_str, davomat, s1, s2, s3) VALUES (?, ?, ?, ?, ?, ?)", (s_id, today, *vals))
+        run("INSERT INTO attendance_history (student_id,date_str,davomat,s1,s2,s3) VALUES (?,?,?,?,?,?)",(s_id,today,*vals))
 
 
 def db_get_student_history(s_id):
@@ -932,11 +961,21 @@ def db_set_score(s_id, idx, value):
         db_save_daily_history(s_id, st)
 
 
-def db_update_attendance(s_id, status):
-    run("UPDATE students SET davomat = ? WHERE id = ?", (status, s_id))
-    st = db_student(s_id)
-    if st:
-        db_save_daily_history(s_id, st)
+def db_update_attendance(s_id,status):
+    identity_id=student_identity_id(s_id)
+    today=local_now().strftime("%d.%m.%Y")
+    if identity_id is not None:
+        run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
+            VALUES(?,?,?,?) ON CONFLICT(identity_id,date_str) DO UPDATE SET
+            status=excluded.status,updated_at=excluded.updated_at""",
+            (identity_id,today,status,local_now().isoformat()))
+        member_ids=[r[0] for r in run("SELECT student_id FROM student_identity_members WHERE identity_id=?",(identity_id,),fetch="all")]
+    else:
+        member_ids=[s_id]
+    for member_id in member_ids:
+        run("UPDATE students SET davomat=? WHERE id=?",(status,member_id))
+        member=db_student(member_id)
+        if member: db_save_daily_history(member_id,member,today)
 
 
 def db_set_payment_status(s_id, status):
