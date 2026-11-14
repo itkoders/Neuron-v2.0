@@ -117,12 +117,11 @@ def enqueue_score_sms(run, teacher_id, student, subject, label, value, now_iso):
     value = int(value)
     date_text = datetime.fromisoformat(now_iso).strftime("%d.%m.%Y")
     if value < 60:
-        body = (f"NEYRON — JIDDIY OGOHLANTIRISH. {student.get('fio','O‘quvchi')}: "
-                f"{subject.get('name','Fan')} fanidan {label}: {value}/100 ball. "
-                "Farzandingizning o‘qishiga e’tibor qaratishingizni so‘raymiz. Sana: " + date_text)
+        body = (f"NEYRON OGOHLANTIRISH: {student.get('fio','O‘quvchi')}, "
+                f"{subject.get('name','Fan')} {label}: {value}/100. 60 dan past. Sana: {date_text}")
     else:
-        body = (f"NEYRON — YANGI NATIJA. {student.get('fio','O‘quvchi')}: "
-                f"{subject.get('name','Fan')} fanidan {label}: {value}/100 ball. Sana: " + date_text)
+        body = (f"NEYRON: {student.get('fio','O‘quvchi')}, "
+                f"{subject.get('name','Fan')} {label}: {value}/100. Sana: {date_text}")
     idx_key = f"{int(student['id'])}:{str(label)[:40]}:{date_text}:{value}"
     run("""INSERT INTO sms_queue
         (id,teacher_id,student_id,phone,body,status,idempotency_key,created_at)
