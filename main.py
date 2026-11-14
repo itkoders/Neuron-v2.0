@@ -1267,6 +1267,29 @@ async def notify_parents_of(student_id, text):
             failed.append({"chat_id": p_id, "error": str(exc)[:240]})
     return {"total": len(parent_ids), "sent": len(sent), "failed": failed}
 
+async def notify_score_to_parents(st, subj, label, value):
+    """Ball va 60 dan past natija ogohlantirishi: doimiy Telegram xabari."""
+    value = int(value)
+    if value < 60:
+        text = (
+            "🚨 **JIDDIY OGOHLANTIRISH — PAST NATIJA**\n\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+            f"📚 Fan: **{md(subj['name'])}**\n"
+            f"📝 {md(label)}: **{value}/100 ball**\n\n"
+            "⚠️ Farzandingiz 60 balldan past natija oldi. "
+            "Uning o‘qishiga e’tibor qaratishingizni va o‘qituvchi bilan bog‘lanishingizni so‘raymiz.\n"
+            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
+        )
+    else:
+        text = (
+            "📚 **NEYRON — YANGI NATIJA**\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+            f"📖 Fan: **{md(subj['name'])}**\n"
+            f"📝 {md(label)}: **{value}/100 ball**\n"
+            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
+        )
+    return await notify_parents_of(st["id"], text)
+
 
 # ============================================================
 # 4. RUXSAT VA TARIF MIDDLEWARE
@@ -2162,6 +2185,8 @@ async def tp_score_set(call: types.CallbackQuery):
         return
     await call.answer()
     db_set_score(st["id"], int(idx), int(val))
+    subj = db_subject(st["subject_id"])
+    await notify_score_to_parents(st, subj, subj["labels"][int(idx) - 1], int(val))
     await _after_score(call, st["id"], int(idx), int(val))
 
 
@@ -2200,6 +2225,7 @@ async def tp_score_manual_value(message: types.Message, state: FSMContext):
     idx = data["score_idx"]
     db_set_score(st["id"], idx, int(raw))
     subj = db_subject(st["subject_id"])
+    await notify_score_to_parents(st, subj, subj["labels"][idx - 1], int(raw))
     await message.answer(f"✅ **{md(st['fio'])}** uchun {subj['labels'][idx - 1]} **{raw}%** saqlandi.",
                          reply_markup=kb([[btn("📝 Ballarga qaytish", f"tp_sc_{st['id']}")], [btn("🏠 Panel", "tp_menu")]]),
                          parse_mode="Markdown")
@@ -2228,8 +2254,18 @@ async def tp_att_set(call: types.CallbackQuery):
         await call.answer("Xatolik", show_alert=True)
         return
     await call.answer()
-    db_update_attendance(st["id"], status)
-    await notify_parents_of(st["id"], f"📌 **Farzandingiz ({md(st['fio'])}) davomati:** {status}")
+    previous_status = st.get("davomat")
+    if previous_status != status:
+        db_update_attendance(st["id"], status)
+        subj = db_subject(st["subject_id"])
+        await notify_parents_of(
+            st["id"],
+            f"📌 **DAVOMAT YANGILANDI**\\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
+            f"📚 Fan: **{md(subj['name'])}**\\n"
+            f"📍 Holati: **{status}**\\n"
+            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
+        )
     await tp_att_menu(call)
 
 
@@ -4728,19 +4764,10 @@ async def api_score(request):
     notification = {"total": 0, "sent": 0, "failed": []}
     if previous_value != val or not bool(st.get(f"s{idx}_scored", previous_value > 0)):
         label = subj["labels"][idx - 1]
-        message_text = (
-            "📚 **NEYRON — YANGI NATIJA**\n"
-            f"👤 O‘quvchi: {md(st['fio'])}\n"
-            f"📖 Fan: {md(subj['name'])}\n"
-            f"📝 {md(label)}: **{val}/100 ball**\n"
-            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
-        )
-        async def send_score_notification():
-            result = await notify_parents_of(sid, message_text)
-            logging.info("Ball xabari: student_id=%s sent=%s failed=%s",
-                         sid, result.get("sent", 0), len(result.get("failed", [])))
-        asyncio.create_task(send_score_notification())
-        notification = {"queued": True}
+        result = await notify_score_to_parents(st, subj, label, val)
+        logging.info("Ball xabari: student_id=%s sent=%s failed=%s",
+                     sid, result.get("sent", 0), len(result.get("failed", [])))
+        notification = result
     today = local_now().strftime("%d.%m.%Y")
     students = list(db_students(t["id"], st["subject_id"]).values())
     all_scored = bool(students) and all(x["last_score_date"] == today for x in students)
@@ -4848,9 +4875,24 @@ async def api_attendance(request):
         return web.json_response({"error": "bad"}, status=400)
     if not owned_student(t, sid):
         return web.json_response({"error": "not_found"}, status=404)
-    db_update_attendance(sid, status)
+    st = owned_student(t, sid)
+    if not st:
+        return web.json_response({"error": "not_found"}, status=404)
+    previous_status = st.get("davomat")
+    if previous_status != status:
+        db_update_attendance(sid, status)
+        result = await notify_parents_of(
+            sid,
+            f"📌 **DAVOMAT YANGILANDI**\\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
+            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\\n"
+            f"📍 Holati: **{status}**\\n"
+            f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
+        )
+    else:
+        result = {"total": 0, "sent": 0, "failed": []}
     audit(t["chat_id"], "miniapp_attendance", str(sid), status)
-    return web.json_response({"ok": True})
+    return web.json_response({"ok": True, "parent_notifications": result})
 
 
 # --- Mini ilova: o'quvchi rejimi va AI mashq ---
@@ -5272,14 +5314,25 @@ async def api_teacher_student_settings(request):
     if amount < 0 or amount > 1000000000:
         return web.json_response({"error":"bad_amount"}, status=400)
     note = str(body.get("teacher_note", "")).strip()[:500]
+    previous_note = str(st.get("teacher_note", "") or "").strip()
     if has_feature(t, "payments"):
         run("UPDATE students SET payment_amount=?, teacher_note=? WHERE id=? AND teacher_id=?",
             (amount, note or "Izoh mavjud emas", sid, t["id"]))
     else:
         run("UPDATE students SET teacher_note=? WHERE id=? AND teacher_id=?",
             (note or "Izoh mavjud emas", sid, t["id"]))
+    if note and note != previous_note:
+        result = await notify_parents_of(
+            sid,
+            f"💬 **O‘QITUVCHIDAN YANGI IZO H**\\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
+            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\\n\n"
+            f"🗒 **Izoh:**\\n{md(note)}"
+        )
+    else:
+        result = {"total": 0, "sent": 0, "failed": []}
     audit(t["chat_id"], "miniapp_student_settings", str(sid), f"payment_amount={amount}")
-    return web.json_response({"ok":True})
+    return web.json_response({"ok":True, "parent_notifications": result})
 
 
 
