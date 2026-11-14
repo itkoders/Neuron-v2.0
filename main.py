@@ -7077,59 +7077,90 @@ async def api_student_overview(request):
     kind, st, err = miniapp_identity(request)
     if err or kind != "student":
         return err or web.json_response({"error": "forbidden"}, status=403)
-    subj = db_subject(st["subject_id"])
-    classmates = list(db_students(st["teacher_id"], st["subject_id"]).values())
-    avg = []
-    for i in range(1, 4):
-        vals = [int(c.get(f"s{i}", 0) or 0) for c in classmates
-                if bool(c.get(f"s{i}_scored", int(c.get(f"s{i}", 0) or 0) > 0))]
-        avg.append(round(sum(vals) / len(vals)) if vals else None)
-    ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
-    rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == st["id"]), None)
-    return web.json_response({
-        "fio": st["fio"], "group_name": st["group_name"], "subject": subj["name"] if subj else "-",
-        "labels": subj["labels"][:3] if subj else ["", "", ""],
-        "scores": [st["s1"], st["s2"], st["s3"]],
-        "score_scored": [bool(st.get(f"s{i}_scored", int(st.get(f"s{i}", 0) or 0) > 0)) for i in (1, 2, 3)],
-        "class_avg": avg,
-        "davomat": st["davomat"], "payment_status": st["payment_status"],
-        "teacher_note": st["teacher_note"], "rank": rank, "class_size": len(classmates),
-        "last_score_date": st["last_score_date"],
-    })
+    subject_rows=[]
+    for member in db_identity_members(st["id"]):
+        subj=db_subject(member["subject_id"])
+        if not subj:
+            continue
+        classmates=list(db_students(member["teacher_id"],member["subject_id"]).values())
+        avg=[]
+        for i in range(1,4):
+            vals=[int(c.get(f"s{i}",0) or 0) for c in classmates if bool(c.get(f"s{i}_scored",int(c.get(f"s{i}",0) or 0)>0))]
+            avg.append(round(sum(vals)/len(vals)) if vals else None)
+        ranked=sorted(classmates,key=lambda c:c["s1"]+c["s2"]+c["s3"],reverse=True)
+        rank=next((i+1 for i,c in enumerate(ranked) if c["id"]==member["id"]),None)
+        subject_rows.append({"subject":subj["name"],"group_name":member["group_name"],
+            "labels":subj["labels"][:3],"scores":[member["s1"],member["s2"],member["s3"]],
+            "score_scored":[bool(member.get(f"s{i}_scored",int(member.get(f"s{i}",0) or 0)>0)) for i in (1,2,3)],
+            "class_avg":avg,"teacher_note":member["teacher_note"],"rank":rank,"class_size":len(classmates),
+            "last_score_date":member["last_score_date"],"teacher_name":teacher_name(db_teacher(member["teacher_id"]))})
+    subj=db_subject(st["subject_id"])
+    classmates=list(db_students(st["teacher_id"],st["subject_id"]).values())
+    avg=[]
+    for i in range(1,4):
+        vals=[int(c.get(f"s{i}",0) or 0) for c in classmates if bool(c.get(f"s{i}_scored",int(c.get(f"s{i}",0) or 0)>0))]
+        avg.append(round(sum(vals)/len(vals)) if vals else None)
+    ranked=sorted(classmates,key=lambda c:c["s1"]+c["s2"]+c["s3"],reverse=True)
+    rank=next((i+1 for i,c in enumerate(ranked) if c["id"]==st["id"]),None)
+    return web.json_response({"fio":st["fio"],"group_name":st["group_name"],
+        "subject":subj["name"] if subj else "-","subjects":subject_rows,
+        "labels":subj["labels"][:3] if subj else ["","",""],"scores":[st["s1"],st["s2"],st["s3"]],
+        "score_scored":[bool(st.get(f"s{i}_scored",int(st.get(f"s{i}",0) or 0)>0)) for i in (1,2,3)],
+        "class_avg":avg,"davomat":db_identity_attendance(st["id"]),"payment_status":st["payment_status"],
+        "teacher_note":st["teacher_note"],"rank":rank,"class_size":len(classmates),"last_score_date":st["last_score_date"]})
 
 
 async def api_parent_overview(request):
-    kind, parent_id, err = miniapp_identity(request)
-    if err or kind != "parent":
-        return err or web.json_response({"error": "forbidden"}, status=403)
-    children = []
-    for sid, st in db_parent_miniapp_children(parent_id):
-        subj = db_subject(st["subject_id"])
-        classmates = list(db_students(st["teacher_id"], st["subject_id"]).values())
-        ranked = sorted(classmates, key=lambda c: c["s1"] + c["s2"] + c["s3"], reverse=True)
-        rank = next((i + 1 for i, c in enumerate(ranked) if c["id"] == sid), None)
-        teacher = db_teacher(st["teacher_id"])
-        payments_enabled = bool(teacher and has_feature(teacher, "payments"))
-        card = teacher_payment_method(st["teacher_id"]) if payments_enabled else None
-        payment_request = run("SELECT status, method, reference, created_at FROM payment_requests WHERE student_id=? AND parent_chat_id=? ORDER BY id DESC LIMIT 1",
-                              (sid, parent_id), fetch="one") if payments_enabled else None
-        children.append({
-            "id": sid, "fio": st["fio"], "group_name": st["group_name"],
-            "teacher_name": teacher_name(teacher), "subject": subj["name"] if subj else "-",
-            "labels": subj["labels"][:3] if subj else ["Test", "Qo'shimcha", "Uy vazifasi"],
-            "scores": [st["s1"], st["s2"], st["s3"]],
-            "score_scored": [bool(st.get(f"s{i}_scored", int(st.get(f"s{i}", 0) or 0) > 0)) for i in (1, 2, 3)],
-            "overall_score": score_average(st), "davomat": st["davomat"],
-            "card": card, "payment_request": ({"status": payment_request[0], "method": payment_request[1], "reference": payment_request[2], "created_at": payment_request[3]} if payment_request else None),
-            "payment_status": st["payment_status"] if payments_enabled else UNPAID, "payment_amount": st["payment_amount"] if payments_enabled else 0,
-            "payment_date": st["payment_date"] if payments_enabled else "", "phone": st["phone"],
-            "teacher_note": st["teacher_note"], "last_score_date": st["last_score_date"],
-            "rank": rank, "class_size": len(classmates),
-            "history": [{"date": r[0], "attendance": r[1], "scores": [r[2], r[3], r[4]]}
-                        for r in db_get_student_history(sid)]
-        })
-    return web.json_response({"children": children})
-
+    kind,parent_id,err=miniapp_identity(request)
+    if err or kind!="parent":
+        return err or web.json_response({"error":"forbidden"},status=403)
+    allowed_ids=db_parent_miniapp_student_ids(parent_id)
+    groups={}
+    for sid,st in db_parent_miniapp_children(parent_id):
+        identity_id=student_identity_id(sid)
+        key=identity_id if identity_id is not None else ("student",sid)
+        groups[key]=True
+    children=[]
+    for key in groups:
+        if isinstance(key,int):
+            rows=run(f"SELECT {STU_COLS} FROM students s JOIN student_identity_members m ON m.student_id=s.id WHERE m.identity_id=? ORDER BY s.id",(key,),fetch="all")
+            members=[_student(row) for row in rows if row[0] in allowed_ids]
+        else:
+            one=db_student(key[1])
+            members=[one] if one and one["id"] in allowed_ids else []
+        if not members:
+            continue
+        st=members[0]
+        sid=st["id"]
+        subjects=[]
+        for member in members:
+            subj=db_subject(member["subject_id"])
+            teacher=db_teacher(member["teacher_id"])
+            classmates=list(db_students(member["teacher_id"],member["subject_id"]).values())
+            ranked=sorted(classmates,key=lambda c:c["s1"]+c["s2"]+c["s3"],reverse=True)
+            rank=next((i+1 for i,c in enumerate(ranked) if c["id"]==member["id"]),None)
+            subjects.append({"subject":subj["name"] if subj else "-","teacher_name":teacher_name(teacher),
+                "group_name":member["group_name"],"labels":subj["labels"][:3] if subj else [],
+                "scores":[member["s1"],member["s2"],member["s3"]],
+                "score_scored":[bool(member.get(f"s{i}_scored",int(member.get(f"s{i}",0) or 0)>0)) for i in (1,2,3)],
+                "overall_score":score_average(member),"teacher_note":member["teacher_note"],
+                "last_score_date":member["last_score_date"],"rank":rank,"class_size":len(classmates),
+                "history":[{"date":r[0],"attendance":r[1],"scores":[r[2],r[3],r[4]]} for r in db_get_student_history(member["id"])]})
+        teacher=db_teacher(st["teacher_id"])
+        payments_enabled=bool(teacher and has_feature(teacher,"payments"))
+        card=teacher_payment_method(st["teacher_id"]) if payments_enabled else None
+        payment_request=run("SELECT status,method,reference,created_at FROM payment_requests WHERE student_id=? AND parent_chat_id=? ORDER BY id DESC LIMIT 1",(sid,parent_id),fetch="one") if payments_enabled else None
+        primary=subjects[0]
+        children.append({"id":sid,"fio":st["fio"],"group_name":st["group_name"],"teacher_name":primary["teacher_name"],
+            "subject":primary["subject"],"subjects":subjects,"labels":primary["labels"],"scores":primary["scores"],
+            "score_scored":primary["score_scored"],"overall_score":primary["overall_score"],
+            "davomat":db_identity_attendance(sid),"card":card,
+            "payment_request":({"status":payment_request[0],"method":payment_request[1],"reference":payment_request[2],"created_at":payment_request[3]} if payment_request else None),
+            "payment_status":st["payment_status"] if payments_enabled else UNPAID,
+            "payment_amount":st["payment_amount"] if payments_enabled else 0,"payment_date":st["payment_date"] if payments_enabled else "",
+            "phone":st["phone"],"teacher_note":primary["teacher_note"],"last_score_date":primary["last_score_date"],
+            "rank":primary["rank"],"class_size":primary["class_size"],"history":primary["history"]})
+    return web.json_response({"children":children})
 
 
 async def api_parent_unlink_child(request):
