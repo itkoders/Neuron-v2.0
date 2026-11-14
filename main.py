@@ -2260,10 +2260,10 @@ async def tp_att_set(call: types.CallbackQuery):
         subj = db_subject(st["subject_id"])
         await notify_parents_of(
             st["id"],
-            f"📌 **DAVOMAT YANGILANDI**\\n"
-            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
-            f"📚 Fan: **{md(subj['name'])}**\\n"
-            f"📍 Holati: **{status}**\\n"
+            f"📌 **DAVOMAT YANGILANDI**\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+            f"📚 Fan: **{md(subj['name'])}**\n"
+            f"📍 Holati: **{status}**\n"
             f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
         )
     await tp_att_menu(call)
@@ -4883,10 +4883,10 @@ async def api_attendance(request):
         db_update_attendance(sid, status)
         result = await notify_parents_of(
             sid,
-            f"📌 **DAVOMAT YANGILANDI**\\n"
-            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
-            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\\n"
-            f"📍 Holati: **{status}**\\n"
+            f"📌 **DAVOMAT YANGILANDI**\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\n"
+            f"📍 Holati: **{status}**\n"
             f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
         )
     else:
@@ -5324,10 +5324,10 @@ async def api_teacher_student_settings(request):
     if note and note != previous_note:
         result = await notify_parents_of(
             sid,
-            f"💬 **O‘QITUVCHIDAN YANGI IZO H**\\n"
-            f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
-            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\\n\n"
-            f"🗒 **Izoh:**\\n{md(note)}"
+            f"💬 **O‘QITUVCHIDAN YANGI IZO H**\n"
+            f"👤 O‘quvchi: **{md(st['fio'])}**\n"
+            f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\n\n"
+            f"🗒 **Izoh:**\n{md(note)}"
         )
     else:
         result = {"total": 0, "sent": 0, "failed": []}
