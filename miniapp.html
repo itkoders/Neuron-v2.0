@@ -2738,6 +2738,31 @@ body.social-open #paxBuddy{display:none}
     else $("grid").innerHTML = '<div class="card empty">Hali fan yo‘q. Botda fan qo‘shing.</div>';
   }
 
+  let lastJournalDayCheck = "";
+  function tashkentJournalDate() {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric"
+    }).formatToParts(new Date());
+    const get = type => parts.find(part => part.type === type)?.value || "";
+    return get("day") + "." + get("month") + "." + get("year");
+  }
+  function startJournalDayWatcher() {
+    const check = async () => {
+      if (document.hidden || state.role !== "teacher" || !state.subject) return;
+      const today = tashkentJournalDate();
+      if (today === state.today || today === lastJournalDayCheck) return;
+      lastJournalDayCheck = today;
+      if (state.pendingScores.size) {
+        // Saqlanmagan ballarni yo‘qotmaslik uchun yangilashni keyingi tekshiruvga qoldiramiz.
+        lastJournalDayCheck = "";
+        return;
+      }
+      await loadSubject(state.subject.id);
+    };
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+    setInterval(check, 15000);
+  }
+
   async function loadSubject(sid) {
     // Fan almashtirishdan oldin eski fandagi kechiktirilgan ballarni serverga yuboramiz.
     const flushed = await flushPendingScores();
@@ -3997,6 +4022,7 @@ body.social-open #paxBuddy{display:none}
     setInterval(tick, 1000);
   })();
 
+  startJournalDayWatcher();
   init();
 })();
 </script>
