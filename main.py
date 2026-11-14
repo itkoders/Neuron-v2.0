@@ -919,6 +919,14 @@ def teacher_payment_method(teacher_id):
             "payment_type": row[3] or "card", "payment_details": row[4] or ""} if row else None
 
 
+def db_parent_identity_count(parent_chat_id):
+    row = run("""SELECT COUNT(DISTINCT m.identity_id)
+        FROM parent_children pc
+        JOIN student_identity_members m ON m.student_id=pc.student_id
+        WHERE pc.parent_chat_id=?""",(parent_chat_id,),fetch="one")
+    return int(row[0] or 0) if row else 0
+
+
 def db_parent_student_ids(parent_chat_id):
     """Telegram ota-ona kabineti uchun tasdiqlangan o'qituvchiga bog'langan farzandlar."""
     rows = run("""SELECT DISTINCT member.student_id, t.active, t.verify_status, t.admin_approved
@@ -5712,7 +5720,7 @@ async def api_onboard_parent(request):
     current = db_parent_student_ids(uid)
     if sid in current:
         return web.json_response({"error": "already_linked"}, status=409)
-    if len(current) >= MAX_CHILDREN:
+    if db_parent_identity_count(uid) >= MAX_CHILDREN:
         return web.json_response({"error": "max_children"}, status=409)
     exists = run("SELECT id FROM pending_requests WHERE student_id=? AND parent_chat_id=?",
                  (sid, uid), fetch="one")
@@ -6617,7 +6625,7 @@ async def api_teacher_request_action(request):
             return web.json_response({"error": "not_found"}, status=404)
         sid, parent_id, parent_name, student_name = req
         if action == "approve":
-            if len(db_parent_student_ids(parent_id)) >= MAX_CHILDREN and sid not in db_parent_student_ids(parent_id):
+            if db_parent_identity_count(parent_id) >= MAX_CHILDREN and sid not in db_parent_student_ids(parent_id):
                 return web.json_response({"error": "max_children"}, status=409)
             run("INSERT INTO parent_children (parent_chat_id, student_id) VALUES (?, ?) ON CONFLICT(parent_chat_id, student_id) DO NOTHING",
                 (parent_id, sid))
