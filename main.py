@@ -6089,8 +6089,6 @@ def _social_subject_ids(uid, kind, obj):
     student_ids = set()
     if kind == "student":
         student_ids.add(int(obj["id"]))
-    elif kind == "parent":
-        student_ids.update(int(x) for x in db_parent_miniapp_student_ids(uid))
     if not student_ids:
         return []
     placeholders = ",".join("?" for _ in student_ids)
@@ -6116,7 +6114,7 @@ async def api_social_chat_scopes(request):
     uid,p,kind,err = _social_auth(request)
     if err: return err
     items=[{"scope":"general","subject_id":None,"name":"🌍 Umumiy chat"}]
-    ids = _social_subject_ids(uid,kind,p) if kind in {"teacher","student","parent"} else []
+    ids = _social_subject_ids(uid,kind,p) if kind in {"teacher","student"} else []
     if ids:
         placeholders=",".join("?" for _ in ids)
         rows=run(f"SELECT id,name FROM subjects WHERE id IN ({placeholders}) ORDER BY name",tuple(ids),fetch="all")
