@@ -3251,14 +3251,16 @@ body.social-open #paxBuddy{display:none}
     $("roleLabel").textContent = "Ota-ona";
     state.parentChildren = parent.children || [];
     $("parentView").classList.remove("hidden");
-    if (!state.parentChildren.length) {
-      $("parentContent").innerHTML = '<div class="card empty">Farzand ulanmagan. Avval botdagi ota-ona kabinetidan farzand kodini tasdiqlang.</div>';
-      return;
-    }
     const sel = $("parentChildSelect");
     sel.innerHTML = state.parentChildren.map(c => '<option value="' + c.id + '">' + esc(c.fio) + '</option>').join("");
-    state.parentSelected = state.parentChildren.some(c => c.id === state.parentSelected) ? state.parentSelected : state.parentChildren[0].id;
-    sel.value = String(state.parentSelected);
+    sel.disabled = !state.parentChildren.length;
+    if (state.parentChildren.length) {
+      state.parentSelected = state.parentChildren.some(c => c.id === state.parentSelected) ? state.parentSelected : state.parentChildren[0].id;
+      sel.value = String(state.parentSelected);
+    } else {
+      state.parentSelected = null;
+      $("parentContent").innerHTML = '<div class="card empty">Hozircha ulangan farzand yo‘q. Yangi farzand qo‘shish uchun yuqoridagi tugmani bosing.</div>';
+    }
     sel.addEventListener("change", () => { state.parentSelected = Number(sel.value); renderParentSelected(); });
     const addToggle = $("parentAddChildToggle");
     const addForm = $("parentAddChildForm");
@@ -3344,6 +3346,7 @@ body.social-open #paxBuddy{display:none}
     $("parentContent").innerHTML =
       '<div class="card profile"><div class="avatar">' + initials + '</div><div style="min-width:0"><div class="nm">' + esc(c.fio) +
       '</div><div class="hint">🏫 ' + esc(c.group_name) + ' · 📚 ' + esc(c.subject) + '</div><div class="hint">👩‍🏫 ' + esc(c.teacher_name) + '</div></div></div>' +
+      '<button class="chip-btn" id="parentUnlinkChild" type="button" style="width:100%;color:var(--bad);border-color:var(--bad)">🔗 Kabinetni uzish</button>' +
       '<button class="parent-pay-quick" id="parentPayJump" type="button">💳 To‘lov qilish ↓</button>' +
       '<div class="section-title">📊 Baholar</div><div class="score-cards">' + scoreCards + '</div>' +
       '<div class="section-title">📌 Umumiy holat</div><div class="facts">' +
@@ -3382,6 +3385,32 @@ body.social-open #paxBuddy{display:none}
     if (payBtn) payBtn.addEventListener("click", submitParentPayment);
     const jump = $("parentPayJump");
     if (jump) jump.addEventListener("click", () => $("parentPaymentSection").scrollIntoView({behavior:"smooth", block:"start"}));
+    const unlink = $("parentUnlinkChild");
+    if (unlink) unlink.addEventListener("click", unlinkParentChild);
+  }
+  async function unlinkParentChild() {
+    const child = state.parentChildren.find(x => x.id === state.parentSelected);
+    if (!child) return;
+    if (!window.confirm("“" + child.fio + "” farzandining kabinetini ota-ona kabinetingizdan uzmoqchimisiz? Bu amal faqat sizning ulanishlaringizga ta’sir qiladi.")) return;
+    const button = $("parentUnlinkChild");
+    if (button) { button.disabled = true; button.textContent = "Uzilmoqda…"; }
+    try {
+      await api("/api/parent/child/" + encodeURIComponent(child.id), {method:"DELETE"});
+      state.parentChildren = state.parentChildren.filter(x => x.id !== child.id);
+      if (state.parentChildren.length) {
+        state.parentSelected = state.parentChildren[0].id;
+        await loadParentOverview();
+      } else {
+        state.parentSelected = null;
+        $("parentChildSelect").innerHTML = "";
+        $("parentChildSelect").disabled = true;
+        $("parentContent").innerHTML = '<div class="card empty">Kabinet aloqasi uzildi. Yangi farzand qo‘shish uchun yuqoridagi tugmadan foydalaning.</div>';
+      }
+      toast("✅ Farzand kabineti uzildi.");
+    } catch (err) {
+      toast(errText(err));
+      if (button) { button.disabled = false; button.textContent = "🔗 Kabinetni uzish"; }
+    }
   }
   async function submitParentPayment() {
     const c = state.parentChildren.find(x => x.id === state.parentSelected);
