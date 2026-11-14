@@ -331,13 +331,13 @@ def init_db():
         for member in members:
             run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
                 (canonical_id,member[0]))
-    legacy_attendance = run("""SELECT m.identity_id,h.date_str,h.davomat,MAX(h.id)
+    legacy_attendance = run("""SELECT m.identity_id,h.date_str,h.davomat,h.id
         FROM attendance_history h JOIN student_identity_members m ON m.student_id=h.student_id
-        WHERE h.davomat IS NOT NULL AND h.davomat <> ''
-        GROUP BY m.identity_id,h.date_str""",fetch="all")
+        WHERE h.davomat IS NOT NULL AND h.davomat <> '' ORDER BY h.id""",fetch="all")
     for identity_id,date_str,status,_ in legacy_attendance:
         run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
-            VALUES(?,?,?,?) ON CONFLICT(identity_id,date_str) DO NOTHING""",
+            VALUES(?,?,?,?) ON CONFLICT(identity_id,date_str) DO UPDATE SET
+            status=excluded.status,updated_at=excluded.updated_at""",
             (identity_id,date_str,status,local_now().isoformat()))
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
         teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
