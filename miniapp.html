@@ -3287,7 +3287,7 @@ body.social-open #paxBuddy{display:none}
       try {
         await api("/api/onboard/parent", {method:"POST", body:JSON.stringify({
           code, name:String(nameInput.value || "").trim()
-        })});
+        }), headers:{"X-App-Role":"entry"}});
         addForm.reset();
         message.textContent = "✅ So‘rov o‘qituvchiga yuborildi. Tasdiqlangach, farzandingiz ro‘yxatda ko‘rinadi.";
         toast("📨 Farzandni ulash so‘rovi yuborildi.");
