@@ -2078,6 +2078,11 @@ body.social-open #paxBuddy{display:none}
         try { await api("/api/settings/channel", {method:"POST",body:JSON.stringify({channel_id:""})}); state.settingsLoaded = false; toast("Kanal uzildi."); await loadTeacherSettings(); }
         catch(err) { toast(errText(err)); }
       };
+      if (!state.features.has("payments")) {
+        const paymentHeading = [...host.querySelectorAll("h3")].find(el => el.textContent.includes("To‘lov usuli"));
+        paymentHeading?.closest(".settings-card")?.remove();
+      }
+      if (state.features.has("payments")) {
       const pay = state.settingsPayment || {};
       $("teacherPaymentType").value = pay.payment_type || "card";
       $("teacherCardNumber").value = pay.card_number || "";
@@ -2103,6 +2108,7 @@ body.social-open #paxBuddy{display:none}
         } catch(err) { $("teacherPaymentStatus").textContent=err.data?.error==="bad_card"?"Karta raqami yoki egasini tekshiring.":err.data?.error==="bad_details"?"To‘lov ma’lumotini kiriting.":errText(err); }
         finally { b.disabled=false; b.textContent="To‘lov sozlamasini saqlash"; }
       };
+      }
       $("codeSearchInput").addEventListener("input", renderStudentCodes);
       $("codeSubjectFilter").addEventListener("change", renderStudentCodes);
       renderStudentCodes();
@@ -2126,14 +2132,14 @@ body.social-open #paxBuddy{display:none}
           <code>${esc(s.code)}</code><button type="button" class="chip-btn" data-copy-code="${esc(s.code)}">Nusxa</button>
         </div>
         <div class="settings-row">
-          <input class="field" type="number" min="0" step="1000" data-student-payment="${s.id}" value="${Number(s.payment_amount||0)}" placeholder="Oylik to‘lov (so‘m)">
+          ${state.features.has("payments") ? `<input class="field" type="number" min="0" step="1000" data-student-payment="${s.id}" value="${Number(s.payment_amount||0)}" placeholder="Oylik to‘lov (so‘m)">` : ""}
           <input class="field" type="text" maxlength="500" data-student-note="${s.id}" value="${esc(s.teacher_note||"")}" placeholder="O‘qituvchi izohi">
           <button type="button" class="chip-btn primary" data-save-student="${s.id}">Saqlash</button>
         </div>
       </div>`).join("");
     host.querySelectorAll("[data-save-student]").forEach(b => b.addEventListener("click", async () => {
       const card=b.closest(".card"), sid=Number(b.dataset.saveStudent);
-      const amount=card.querySelector("[data-student-payment]").value;
+      const amount=card.querySelector("[data-student-payment]")?.value ?? "0";
       const note=card.querySelector("[data-student-note]").value;
       b.disabled=true;b.textContent="Saqlanmoqda…";
       try {
