@@ -28,6 +28,8 @@ jobs:
           gradle-version: "8.9"
       - name: Check Python syntax
         run: python -m py_compile main.py sms_bridge.py
+      - name: Test SMS queue
+        run: python -m unittest discover -s tests -v
       - name: Build debug APK
         run: gradle :app:assembleDebug
       - uses: actions/upload-artifact@v4
