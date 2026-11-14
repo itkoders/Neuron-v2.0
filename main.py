@@ -4867,7 +4867,7 @@ async def sync_bot_clock_name():
                 current_name = (getattr(current, "name", "") or "").strip()
                 # Oldingi ishga tushishdan qolgan | HH:MM qo'shimchasini olib tashlaymiz.
                 PROFILE_NAME_BASE = re.sub(
-                    r"\\s*\\|\\s*\\d{2}:\\d{2}$", "", current_name
+                    r"\s*\|\s*\d{2}:\d{2}$", "", current_name
                 ).strip() or "NEURON V2"
 
             clock = local_now().strftime("%H:%M")
