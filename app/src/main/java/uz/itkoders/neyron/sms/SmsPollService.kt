@@ -111,6 +111,14 @@ class SmsPollService : Service() {
             .build()
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // Android 15+ dataSync foreground service uchun belgilangan vaqt tugasa,
+        // xizmatni tizim talab qilganidek xavfsiz to‘xtatamiz.
+        running = false
+        worker?.interrupt()
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         running = false
         worker?.interrupt()
