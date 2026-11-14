@@ -309,16 +309,25 @@ def init_db():
     for legacy in run("SELECT id,teacher_id,fio,group_name,code FROM students ORDER BY id", fetch="all"):
         sid, tid, fio, group_name, old_code = legacy
         fio_key = " ".join(str(fio or "").casefold().split())
-        group_key = str(group_name or "Guruhsiz").strip()
-        identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
-                       (tid,fio_key,group_key), fetch="one")
+        identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? ORDER BY id LIMIT 1",
+                       (tid,fio_key), fetch="one")
         if not identity:
+            group_key = str(group_name or "Guruhsiz").strip()
             run("INSERT INTO student_identities (teacher_id,fio_key,group_name,code,created_at) VALUES (?,?,?,?,?)",
                 (tid,fio_key,group_key,old_code,local_now().isoformat()))
-            identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
-                           (tid,fio_key,group_key), fetch="one")
+            identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? ORDER BY id LIMIT 1",
+                           (tid,fio_key), fetch="one")
         run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?) ON CONFLICT(student_id) DO NOTHING",
             (identity[0],sid))
+    # Bir xil ism-familiyali o‘quvchining turli guruh/fan yozuvlarini bitta kodga birlashtiramiz.
+    for tid, fio_key, canonical_id in run(
+        "SELECT teacher_id,fio_key,MIN(id) FROM student_identities GROUP BY teacher_id,fio_key",fetch="all"):
+        members = run("""SELECT m.student_id FROM student_identity_members m
+            JOIN student_identities i ON i.id=m.identity_id
+            WHERE i.teacher_id=? AND i.fio_key=?""",(tid,fio_key),fetch="all")
+        for member in members:
+            run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
+                (canonical_id,member[0]))
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
         teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
         reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 1,
@@ -819,8 +828,8 @@ def new_student_code():
 def db_add_student(tid, subject_id, fio, group_name):
     fio_key = " ".join(str(fio or "").casefold().split())
     group_key = str(group_name or "Guruhsiz").strip()
-    identity = run("SELECT id,code FROM student_identities WHERE teacher_id=? AND fio_key=? AND group_name=?",
-                   (tid,fio_key,group_key), fetch="one")
+    identity = run("SELECT id,code FROM student_identities WHERE teacher_id=? AND fio_key=? ORDER BY id LIMIT 1",
+                   (tid,fio_key), fetch="one")
     if not identity:
         code = new_student_code()
         # Identity kodi mavjud ichki kodlar bilan to‘qnashmasin.
