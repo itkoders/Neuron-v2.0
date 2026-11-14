@@ -5946,6 +5946,15 @@ async def api_teacher_payment_record(request):
         (teacher_id,student_id,month,amount,paid_date,note,created_at)
         VALUES (?,?,?,?,?,?,?)""",
         (teacher["id"],sid,month,amount,paid_date,note,local_now().strftime("%Y-%m-%d %H:%M:%S")))
+    totals = run("""SELECT c.due_amount,COALESCE(SUM(p.amount),0)
+        FROM student_monthly_charges c LEFT JOIN student_payment_entries p
+        ON p.student_id=c.student_id AND p.month=c.month
+        WHERE c.teacher_id=? AND c.student_id=? AND c.month=? GROUP BY c.due_amount""",
+        (teacher["id"],sid,month),fetch="one")
+    if totals and int(totals[1] or 0) >= int(totals[0] or 0):
+        db_set_payment_status(sid,PAID)
+    else:
+        db_set_payment_status(sid,UNPAID)
     audit(teacher["chat_id"],"monthly_payment_recorded",str(sid),f"{month}; amount={amount}; date={paid_date}")
     return web.json_response({"ok":True})
 
@@ -6635,6 +6644,20 @@ async def api_teacher_request_action(request):
         (new_status, now, req_id))
     if action == "approve":
         db_set_payment_status(sid, PAID)
+        approved_month = local_now().strftime("%Y-%m")
+        approved_date = local_now().strftime("%Y-%m-%d")
+        existing_charge = run("SELECT id FROM student_monthly_charges WHERE teacher_id=? AND student_id=? AND month=?",
+                              (teacher["id"],sid,approved_month),fetch="one")
+        if not existing_charge:
+            run("""INSERT INTO student_monthly_charges
+                (teacher_id,student_id,month,due_amount,created_at,updated_at)
+                VALUES (?,?,?,?,?,?)""",
+                (teacher["id"],sid,approved_month,int(amount or 0),local_now().isoformat(),local_now().isoformat()))
+        run("""INSERT INTO student_payment_entries
+            (teacher_id,student_id,month,amount,paid_date,note,created_at)
+            VALUES (?,?,?,?,?,?,?)""",
+            (teacher["id"],sid,approved_month,int(amount or 0),approved_date,
+             "Ota-ona yuborgan to‘lov tasdiqlandi",local_now().isoformat()))
     audit(teacher["chat_id"], "miniapp_payment_" + action, str(req_id), student_name)
     try:
         await bot.send_message(parent_id,
