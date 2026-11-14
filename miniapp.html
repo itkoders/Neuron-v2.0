@@ -1762,6 +1762,7 @@ body.social-open #paxBuddy{display:none}
         <button type="button" data-theme-choice="system">Auto</button>
       </div>
       <button type="button" id="switchCabinetBtn" class="chip-btn hidden" style="min-height:38px;padding:0 11px;font-size:12px">↩ Chiqish</button>
+      <button type="button" id="unlinkTeacherBtn" class="chip-btn danger hidden" style="min-height:38px;padding:0 11px;font-size:12px">🔌 Kabinetni uzish</button>
       <span id="status" class="status">Tayyor</span>
     </div>
   </div>
@@ -2497,6 +2498,26 @@ body.social-open #paxBuddy{display:none}
       }
       state.role = me.role;
       updateSocialDock();
+      const unlinkBtn = $("unlinkTeacherBtn");
+      if (unlinkBtn) {
+        unlinkBtn.classList.toggle("hidden", me.role !== "teacher");
+        unlinkBtn.onclick = async () => {
+          if (!confirm("Faqat shu Telegram akkaunt NEURON V2 o‘qituvchi kabinetidan uziladi. Fanlar, o‘quvchilar, ballar va davomat o‘chirilmaydi. Davom etilsinmi?")) return;
+          unlinkBtn.disabled = true;
+          try {
+            await api("/api/teacher/unlink-account", {method:"POST", body:"{}"});
+            try { localStorage.removeItem("neuron-last-role"); sessionStorage.setItem("neuron-force-role-picker","1"); } catch (_) {}
+            const u = new URL(location.href);
+            u.searchParams.set("role","entry");
+            history.replaceState({}, "", u.pathname + u.search);
+            toast("Telegram akkaunt kabinetdan uzildi. Ma’lumotlar saqlandi.");
+            setTimeout(() => location.reload(), 500);
+          } catch (err) {
+            toast(errText(err));
+            unlinkBtn.disabled = false;
+          }
+        };
+      }
       const switcher = $("switchCabinetBtn");
       if (switcher) {
         switcher.classList.toggle("hidden", me.role === "entry");
