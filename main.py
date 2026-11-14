@@ -6896,6 +6896,34 @@ async def api_parent_overview(request):
 
 
 
+async def api_parent_unlink_child(request):
+    kind, parent_id, err = miniapp_identity(request)
+    if err or kind != "parent":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    try:
+        sid = int(request.match_info.get("sid", ""))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "bad_student"}, status=400)
+    if sid not in db_parent_miniapp_student_ids(parent_id):
+        return web.json_response({"error": "child_not_linked"}, status=404)
+    identity = run("SELECT identity_id FROM student_identity_members WHERE student_id=? LIMIT 1",
+                   (sid,), fetch="one")
+    if identity and identity[0] is not None:
+        run("""DELETE FROM parent_children
+            WHERE parent_chat_id=? AND student_id IN (
+                SELECT student_id FROM student_identity_members WHERE identity_id=?
+            )""", (parent_id, identity[0]))
+        run("""DELETE FROM pending_requests
+            WHERE parent_chat_id=? AND student_id IN (
+                SELECT student_id FROM student_identity_members WHERE identity_id=?
+            )""", (parent_id, identity[0]))
+    else:
+        run("DELETE FROM parent_children WHERE parent_chat_id=? AND student_id=?", (parent_id, sid))
+        run("DELETE FROM pending_requests WHERE parent_chat_id=? AND student_id=?", (parent_id, sid))
+    audit(parent_id, "miniapp_parent_unlink_child", str(sid), "Parent-child cabinet link removed by parent")
+    return web.json_response({"ok": True})
+
+
 async def api_parent_payment(request):
     kind, parent_id, err = miniapp_identity(request)
     if err or kind != "parent":
@@ -7121,6 +7149,7 @@ async def start_web_server():
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/student/overview", api_student_overview)
     app.router.add_get("/api/parent/overview", api_parent_overview)
+    app.router.add_delete("/api/parent/child/{sid}", api_parent_unlink_child)
     app.router.add_post("/api/parent/payment", api_parent_payment)
     app.router.add_post("/api/ai/start", api_ai_start)
     app.router.add_post("/api/ai/answer", api_ai_answer)
