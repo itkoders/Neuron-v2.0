@@ -46,6 +46,7 @@ def init_sms_bridge(run):
 
 def make_pair_code(run, teacher_id, now_iso):
     run("DELETE FROM sms_pair_codes WHERE expires_at < ?", (now_iso,))
+    run("DELETE FROM sms_pair_codes WHERE teacher_id=?", (int(teacher_id),))
     for _ in range(8):
         code = f"{secrets.randbelow(1000000):06d}"
         digest = _hash(code)
@@ -98,6 +99,8 @@ def device_from_request(run, request, now_iso):
 
 def disable_device(run, teacher_id):
     run("UPDATE sms_devices SET enabled=0 WHERE teacher_id=?", (int(teacher_id),))
+    run("""UPDATE sms_queue SET status='cancelled'
+        WHERE teacher_id=? AND status IN ('pending','sending')""", (int(teacher_id),))
 
 
 def enqueue_score_sms(run, teacher_id, student, subject, label, value, now_iso):
@@ -108,6 +111,8 @@ def enqueue_score_sms(run, teacher_id, student, subject, label, value, now_iso):
     digits = "".join(ch for ch in phone if ch.isdigit())
     if len(digits) < 9 or phone.lower() in {"kiritilmagan", "yo'q", "yoq", "-"}:
         return False
+    if digits.startswith("00"):
+        digits = digits[2:]
     if digits.startswith("998"):
         phone = "+" + digits
     elif len(digits) == 9:
@@ -122,7 +127,7 @@ def enqueue_score_sms(run, teacher_id, student, subject, label, value, now_iso):
     else:
         body = (f"NEYRON: {student.get('fio','O‘quvchi')}, "
                 f"{subject.get('name','Fan')} {label}: {value}/100. Sana: {date_text}")
-    idx_key = f"{int(student['id'])}:{str(label)[:40]}:{date_text}:{value}"
+    idx_key = f"{int(student['id'])}:{int(student.get('subject_id', 0))}:{str(label)[:40]}:{date_text}:{value}"
     run("""INSERT INTO sms_queue
         (id,teacher_id,student_id,phone,body,status,idempotency_key,created_at)
         VALUES (?,?,?,?,?,'pending',?,?)
