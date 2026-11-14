@@ -665,26 +665,34 @@ def local_now():
 
 
 def check_and_reset_daily_data():
+    """Jurnalni O‘zbekiston vaqti bilan yangi kalendar kuni boshlanganida bir marta yangilaydi."""
     now = local_now()
     today = now.strftime("%d.%m.%Y")
-    # Eski versiya kunni 00:00 da almashtirgan. Yangi jadval 12:00 ga o'tadi.
-    # Birinchi ishga tushishda shu kungi eski resetni takrorlab, ertalabki ballarni o'chirmaymiz.
-    last_noon_reset = db_get_setting("last_noon_reset")
-    if last_noon_reset is None:
-        old_reset = db_get_setting("last_daily_reset")
-        if old_reset == today:
-            db_set_setting("last_noon_reset", today)
-            last_noon_reset = today
-    if now.hour >= 12 and last_noon_reset != today:
+    previous_day = (now - timedelta(days=1)).strftime("%d.%m.%Y")
+
+    # Eski 12:00 rejimidagi belgi bilan moslik: mavjud kundagi ballarni
+    # server qayta ishga tushganda kutilmaganda o‘chirib yubormaymiz.
+    last_reset = db_get_setting("last_daily_reset")
+    if last_reset is None:
+        last_reset = db_get_setting("last_noon_reset")
+    if last_reset is None:
+        # Yangi o‘rnatishda birinchi ishga tushishdagi ma’lumotlarga tegmaymiz.
+        db_set_setting("last_daily_reset", today)
+        last_reset = today
+
+    if last_reset != today:
+        # Kechagi jurnalni arxivga yozamiz; mavjud yozuv bo‘lsa yangilanadi.
         rows = run(f"SELECT {STU_COLS} FROM students ORDER BY id", fetch="all")
-        previous_day = (now - timedelta(days=1)).strftime("%d.%m.%Y")
         for row in rows:
             student = _student(row)
             db_save_daily_history(student["id"], student, previous_day)
+        # Faqat kunlik ball/davomat maydonlari tozalanadi. O‘quvchi,
+        # to‘lov, oylik va boshqa yozuvlar saqlanib qoladi.
         run("UPDATE students SET s1 = 0, s2 = 0, s3 = 0, davomat = ?, last_score_date = ''",
             ("Kutilmoqda",))
-        db_set_setting("last_noon_reset", today)
         db_set_setting("last_daily_reset", today)
+        db_set_setting("last_noon_reset", today)
+
     month = now.strftime("%m.%Y")
     last_month = db_get_setting("last_payment_reset")
     if last_month is None:
@@ -799,8 +807,8 @@ def delete_teacher(tid):
 
 def db_save_daily_history(s_id, st, date_str=None):
     now = local_now()
-    # Jurnal kuni 12:00 dan 12:00 gacha hisoblanadi.
-    today = date_str or (now if now.hour >= 12 else now - timedelta(days=1)).strftime("%d.%m.%Y")
+    # Jurnal kuni O‘zbekiston vaqti bilan 00:00 dan 00:00 gacha hisoblanadi.
+    today = date_str or now.strftime("%d.%m.%Y")
     row = run("SELECT id FROM attendance_history WHERE student_id = ? AND date_str = ?", (s_id, today), fetch="one")
     vals = (st["davomat"], st["s1"], st["s2"], st["s3"])
     if row:
@@ -4048,6 +4056,8 @@ def local_now():
 
 async def auto_notify_once():
     """Kuniga bir marta, AUTO_NOTIFY_HOUR dan keyin: kelmagan va past ballli o'quvchilar ota-onasiga xabar."""
+    if not bot:
+        return
     now = local_now()
     today = now.strftime("%d.%m.%Y")
     if now.hour < AUTO_NOTIFY_HOUR or db_get_setting("last_auto_notify") == today:
@@ -4071,6 +4081,8 @@ async def auto_notify_once():
 
 
 async def scheduled_broadcast_once():
+    if not bot:
+        return
     now_s = local_now().strftime("%Y-%m-%d %H:%M")
     due = run("SELECT id, teacher_id, text FROM scheduled_broadcasts WHERE sent = 0 AND send_at <= ?", (now_s,), fetch="all")
     for bid, tid, body in due:
@@ -6758,8 +6770,9 @@ async def start_web_server():
 async def main():
     init_db()
     runner = await start_web_server()
+    # Kundalik jurnal yangilanishi bot tokenidan mustaqil ishlashi kerak.
+    asyncio.create_task(background_loop())
     if bot:
-        asyncio.create_task(background_loop())
         try:
             await dp.start_polling(bot)
         finally:
