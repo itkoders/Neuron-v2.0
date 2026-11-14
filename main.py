@@ -6404,14 +6404,17 @@ async def api_teacher_export(request):
             for i in (1, 2, 3):
                 value = st.get(f"s{i}")
                 has_score = bool(st.get(f"s{i}_scored", int(value or 0) > 0))
+                numeric = None
                 if has_score:
                     try:
                         numeric = float(value or 0)
-                        score_values.append(numeric)
-                        score_cells.append(numeric)
                     except (TypeError, ValueError):
                         has_score = False
-                score_cells.append(value if has_score else "Kiritilmagan")
+                if has_score:
+                    score_values.append(numeric)
+                    score_cells.append(numeric)
+                else:
+                    score_cells.append("Kiritilmagan")
             total_score = round(sum(score_values), 1) if score_values else ""
             average_score = round(sum(score_values) / len(score_values), 1) if score_values else ""
             due_total, paid_total = payment_totals.get(st["id"], (0, 0))
