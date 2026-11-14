@@ -47,6 +47,17 @@ MAX_LOGIN_FAILS = 5
 BLOCK_SECONDS = 600
 MAX_CHILDREN = 3
 MAX_ADMIN_USERS = 3
+
+ADMIN_PERMISSION_LABELS = {
+    "dashboard": "Umumiy ko‘rsatkichlar",
+    "teachers": "O‘qituvchilarni ko‘rish va boshqarish",
+    "approvals": "O‘qituvchilarni tasdiqlash",
+    "plans": "Tariflar va tarif berish",
+    "channels": "Majburiy obuna kanallari",
+    "settings": "Tizim sozlamalari",
+    "audit": "Audit jurnali",
+    "social": "Ijtimoiy tarmoq moderatsiyasi",
+}
 MAX_TEACHER_DEVICES = 3
 PAID = "To'langan"
 UNPAID = "To'lanmagan"
@@ -370,6 +381,11 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
     run("CREATE TABLE IF NOT EXISTS super_admins (chat_id BIGINT PRIMARY KEY)")
+    run("""CREATE TABLE IF NOT EXISTS admin_permission_profiles (
+        chat_id BIGINT PRIMARY KEY, updated_at TEXT)""")
+    run("""CREATE TABLE IF NOT EXISTS admin_permissions (
+        chat_id BIGINT NOT NULL, permission TEXT NOT NULL,
+        PRIMARY KEY(chat_id, permission))""")
     if OWNER_TELEGRAM_ID > 0:
         run("INSERT INTO super_admins (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING", (OWNER_TELEGRAM_ID,))
     run("""CREATE TABLE IF NOT EXISTS pending_requests (
@@ -554,6 +570,31 @@ def is_admin_member(chat_id):
     if is_super(chat_id):
         return True
     return bool(run("SELECT 1 FROM super_admins WHERE chat_id=?", (int(chat_id or 0),), fetch="one"))
+
+
+def admin_permissions_for(chat_id):
+    uid = int(chat_id or 0)
+    if is_super(uid):
+        return set(ADMIN_PERMISSION_LABELS)
+    if not is_admin_member(uid):
+        return set()
+    profile = run("SELECT 1 FROM admin_permission_profiles WHERE chat_id=?", (uid,), fetch="one")
+    if not profile:
+        # Eski yordamchi adminlar uchun avvalgi imkoniyatlar saqlanadi;
+        # egasi yangi ruxsatlar belgilaganidan keyin shu ro‘yxat cheklanadi.
+        return set(ADMIN_PERMISSION_LABELS)
+    rows = run("SELECT permission FROM admin_permissions WHERE chat_id=?", (uid,), fetch="all") or []
+    return {str(row[0]) for row in rows if row[0] in ADMIN_PERMISSION_LABELS}
+
+
+def admin_has_permission(chat_id, permission):
+    return is_super(chat_id) or permission in admin_permissions_for(chat_id)
+
+
+def admin_permission_error(chat_id, permission):
+    if admin_has_permission(chat_id, permission):
+        return None
+    return web.json_response({"error": "permission_denied", "permission": permission}, status=403)
 
 
 def admin_member_count():
@@ -5151,8 +5192,29 @@ def _admin_overview_payload():
 async def api_admin_overview(request):
     uid, err = miniapp_admin(request)
     if err: return err
+    permissions = admin_permissions_for(uid)
+    if not permissions and not is_super(uid):
+        return web.json_response({"error": "no_permissions"}, status=403)
     payload = _admin_overview_payload()
     payload["stats"]["can_manage_admins"] = is_super(uid)
+    payload["permissions"] = sorted(permissions)
+    payload["permission_labels"] = ADMIN_PERMISSION_LABELS
+    if "teachers" not in permissions:
+        payload["teachers"] = []
+    if "plans" not in permissions:
+        payload["plans"] = []
+    if "approvals" not in permissions:
+        payload["queue"] = []
+    if "channels" not in permissions:
+        payload["settings"]["required_channel"] = ""
+        payload["settings"]["required_channels"] = ""
+        payload["settings"]["mandatory_sub"] = False
+    if "settings" not in permissions:
+        payload["settings"]["support_contact"] = ""
+        payload["settings"]["support_label"] = ""
+        payload["settings"]["support_enabled"] = False
+        payload["settings"]["verify_mode"] = ""
+        payload["settings"]["ai_primary"] = ""
     if is_super(uid):
         rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
         payload["admins"] = [
@@ -5172,9 +5234,13 @@ async def api_admin_admins(request):
 
     if request.method == "GET":
         rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
+        admins = []
+        for row in rows:
+            target = int(row[0])
+            admins.append({"chat_id": target, "is_owner": target == OWNER_TELEGRAM_ID,
+                           "permissions": sorted(admin_permissions_for(target))})
         return web.json_response({
-            "admins": [{"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID}
-                       for row in rows],
+            "admins": admins, "permission_labels": ADMIN_PERMISSION_LABELS,
             "count": admin_member_count(), "limit": MAX_ADMIN_USERS
         })
 
@@ -5194,8 +5260,19 @@ async def api_admin_admins(request):
             return web.json_response({"error": "already_admin"}, status=409)
         if admin_member_count() >= MAX_ADMIN_USERS:
             return web.json_response({"error": "admin_limit", "limit": MAX_ADMIN_USERS}, status=409)
+        raw_permissions = body.get("permissions", ["dashboard", "teachers", "approvals"])
+        if not isinstance(raw_permissions, list):
+            return web.json_response({"error": "bad_permissions"}, status=400)
+        permissions = {str(x) for x in raw_permissions}
+        if not permissions.issubset(set(ADMIN_PERMISSION_LABELS)):
+            return web.json_response({"error": "bad_permissions"}, status=400)
         run("INSERT INTO super_admins (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING", (target_id,))
-        audit(uid, "admin_add", str(target_id), "Super Admin panelidan qo‘shildi")
+        run("INSERT INTO admin_permission_profiles (chat_id,updated_at) VALUES (?,?) ON CONFLICT(chat_id) DO NOTHING",
+            (target_id, local_now().isoformat()))
+        for permission in sorted(permissions):
+            run("INSERT INTO admin_permissions (chat_id,permission) VALUES (?,?) ON CONFLICT(chat_id,permission) DO NOTHING",
+                (target_id, permission))
+        audit(uid, "admin_add", str(target_id), "Ruxsatlar: " + ",".join(sorted(permissions)))
         notified = False
         if bot:
             try:
@@ -5206,6 +5283,27 @@ async def api_admin_admins(request):
             except Exception:
                 logging.info("Yangi admin hali botni boshlamagan yoki xabar qabul qilmaydi: %s", target_id)
         return web.json_response({"ok": True, "chat_id": target_id, "notification_sent": notified})
+
+    if action == "update_permissions":
+        if target_id == OWNER_TELEGRAM_ID:
+            return web.json_response({"error": "owner_protected"}, status=403)
+        if not run("SELECT 1 FROM super_admins WHERE chat_id=?", (target_id,), fetch="one"):
+            return web.json_response({"error": "not_found"}, status=404)
+        raw_permissions = body.get("permissions", [])
+        if not isinstance(raw_permissions, list):
+            return web.json_response({"error": "bad_permissions"}, status=400)
+        permissions = {str(x) for x in raw_permissions}
+        if not permissions.issubset(set(ADMIN_PERMISSION_LABELS)):
+            return web.json_response({"error": "bad_permissions"}, status=400)
+        run("INSERT INTO admin_permission_profiles (chat_id,updated_at) VALUES (?,?) ON CONFLICT(chat_id) DO NOTHING",
+            (target_id, local_now().isoformat()))
+        run("DELETE FROM admin_permissions WHERE chat_id=?", (target_id,))
+        for permission in sorted(permissions):
+            run("INSERT INTO admin_permissions (chat_id,permission) VALUES (?,?) ON CONFLICT(chat_id,permission) DO NOTHING",
+                (target_id, permission))
+        run("UPDATE admin_permission_profiles SET updated_at=? WHERE chat_id=?", (local_now().isoformat(), target_id))
+        audit(uid, "admin_permissions", str(target_id), ",".join(sorted(permissions)))
+        return web.json_response({"ok": True, "permissions": sorted(permissions)})
 
     if action == "remove":
         if target_id == OWNER_TELEGRAM_ID:
@@ -5226,6 +5324,11 @@ async def api_admin_teacher_action(request):
     except (ValueError, KeyError): return web.json_response({"error":"bad_id"}, status=400)
     body = await _read_json(request)
     action = str(body.get("action", "")).strip()
+    required_permission = ("approvals" if action in {"approve", "reject"} else
+                           "plans" if action in {"assign_plan", "extend"} else "teachers")
+    denied = admin_permission_error(uid, required_permission)
+    if denied:
+        return denied
     t = db_teacher(tid)
     if not t: return web.json_response({"error":"not_found"}, status=404)
     if action == "approve":
@@ -5298,6 +5401,8 @@ async def api_admin_teacher_action(request):
 async def api_admin_plan_action(request):
     uid, err = miniapp_admin(request)
     if err: return err
+    denied = admin_permission_error(uid, "plans")
+    if denied: return denied
     body = await _read_json(request)
     action = str(body.get("action", "save"))
     key = str(body.get("key", "")).strip().lower()
@@ -5359,6 +5464,9 @@ async def api_admin_settings(request):
     if err: return err
     body = await _read_json(request)
     key = str(body.get("key",""))
+    required_permission = "channels" if key in {"required_channel", "required_channels", "mandatory_sub"} else "settings"
+    denied = admin_permission_error(uid, required_permission)
+    if denied: return denied
     value = str(body.get("value","")).strip()
     if key in {"required_channel", "required_channels"}:
         values = [x.strip() for x in value.splitlines() if x.strip()]
@@ -5423,6 +5531,8 @@ async def api_admin_settings(request):
 async def api_admin_password(request):
     uid, err = miniapp_admin(request)
     if err: return err
+    if not is_super(uid):
+        return web.json_response({"error": "owner_only"}, status=403)
     body = await _read_json(request)
     password = str(body.get("password",""))
     if len(password)<8 or len(password)>128: return web.json_response({"error":"bad_password"},status=400)
@@ -5434,6 +5544,8 @@ async def api_admin_password(request):
 async def api_admin_audit(request):
     uid, err = miniapp_admin(request)
     if err: return err
+    denied = admin_permission_error(uid, "audit")
+    if denied: return denied
     rows = run("SELECT created_at, action, target, details FROM audit_log ORDER BY id DESC LIMIT 100",fetch="all")
     return web.json_response({"items":[{"created_at":r[0],"action":r[1],"target":r[2],"details":r[3]} for r in rows]})
 
@@ -5901,6 +6013,8 @@ async def api_social_report(request):
 async def api_admin_badges(request):
     uid,err=miniapp_admin(request)
     if err: return err
+    denied=admin_permission_error(uid,"social")
+    if denied: return denied
     rows=run("SELECT chat_id,username,display_name,bio,badge_request FROM user_profiles WHERE badge_status='pending' ORDER BY updated_at DESC LIMIT 100",fetch="all")
     return web.json_response({"requests":[{"chat_id":int(r[0]),"username":r[1] or "","display_name":r[2] or "Foydalanuvchi","bio":r[3] or "","badge_request":r[4] or "verified"} for r in rows]})
 
@@ -5908,6 +6022,8 @@ async def api_admin_badges(request):
 async def api_admin_badge_action(request):
     uid,err=miniapp_admin(request)
     if err: return err
+    denied=admin_permission_error(uid,"social")
+    if denied: return denied
     try: target=int(request.match_info["chat_id"])
     except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
     body=await _read_json(request); action=str(body.get("action") or "")
@@ -5927,6 +6043,8 @@ async def api_admin_badge_action(request):
 async def api_admin_chat_moderate(request):
     uid,err=miniapp_admin(request)
     if err: return err
+    denied=admin_permission_error(uid,"social")
+    if denied: return denied
     try: mid=int(request.match_info["mid"])
     except (ValueError,KeyError): return web.json_response({"error":"bad_id"},status=400)
     run("UPDATE community_messages SET hidden=1 WHERE id=?",(mid,))
