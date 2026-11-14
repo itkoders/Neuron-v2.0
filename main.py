@@ -3333,21 +3333,24 @@ async def show_telegram_id(message: types.Message):
 
 @dp.message(Command("superadmin"), F.chat.type == "private")
 async def superadmin_cmd(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     uid = message.from_user.id
-    if is_admin_member(uid):
+    if is_super(uid):
         await message.answer(sa_menu_text(), reply_markup=sa_menu_kb(), parse_mode="Markdown")
         return
-    if admin_member_count() >= MAX_ADMIN_USERS:
-        await message.answer("⛔ Admin kabineti 3 ta akkaunt bilan cheklangan.")
-        return
-    await state.set_state(SuperStates.login)
-    await send_and_clean_both(message, "⚙️ **Super Admin parolini kiriting:**", delay=60)
+    if is_admin_member(uid):
+        await message.answer("🛡 Yordamchi admin kabineti uchun NEURON Mini App ichidan «Super Admin» rolini tanlang.")
+    else:
+        await message.answer("⛔ Admin huquqi yo‘q. Kirish huquqini loyiha egasi beradi.")
 
 
 @dp.callback_query(F.data == "super_admin_login_prompt")
 async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext):
-    if not is_admin_member(call.from_user.id) and admin_member_count() >= MAX_ADMIN_USERS:
-        await call.answer("Admin kabineti 3 ta akkaunt bilan cheklangan.", show_alert=True)
+    if not is_super(call.from_user.id):
+        await call.answer("Yordamchi adminlar Mini App kabinetidan foydalanadi.", show_alert=True)
         return
     await call.answer()
     await state.set_state(SuperStates.login)
@@ -3358,6 +3361,10 @@ async def super_admin_login_prompt(call: types.CallbackQuery, state: FSMContext)
 @dp.message(SuperStates.login, F.chat.type == "private")
 async def check_super_password(message: types.Message, state: FSMContext):
     cid = message.chat.id
+    if not is_super(cid):
+        await state.clear()
+        await message.answer("⛔ Yordamchi adminlar umumiy parol bilan ro‘yxatdan o‘ta olmaydi. Egasi sizga Telegram ID orqali kirish huquqini berishi kerak.")
+        return
     if not is_admin_member(cid) and admin_member_count() >= MAX_ADMIN_USERS:
         await state.clear()
         await message.answer("⛔ Admin kabineti 3 ta akkaunt bilan cheklangan.")
@@ -3400,6 +3407,9 @@ def sa_menu_kb():
 
 @dp.callback_query(F.data == "sa_menu")
 async def sa_menu(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.clear()
     await call.message.edit_text(sa_menu_text(), reply_markup=sa_menu_kb(), parse_mode="Markdown")
@@ -3416,6 +3426,9 @@ def _plan_text(p):
 
 @dp.callback_query(F.data == "sa_plans")
 async def sa_plans(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     rows = [[btn(f"{'🟢' if p['active'] else '🔴'} {p['name']} — {p['price']:,} so'm", f"sa_plan_{p['key']}")] for p in db_plans()]
     rows.append([btn("🧩 Imkoniyatlar matritsasi", "sa_matrix")])
@@ -3443,12 +3456,18 @@ async def render_plan(call, key):
 
 @dp.callback_query(F.data.startswith("sa_plan_"))
 async def sa_plan_detail(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await render_plan(call, call.data[len("sa_plan_"):])
 
 
 @dp.callback_query(F.data.startswith("sa_ftog_"))
 async def sa_feature_toggle(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     key, feat = call.data[len("sa_ftog_"):].split("_", 1)
     note = "Xatolik"
     if feat in FEATURES and db_plan(key):
@@ -3463,6 +3482,9 @@ async def sa_feature_toggle(call: types.CallbackQuery):
 # --- Tariflar matritsasi, majburiy obuna, yordam kontakti ---
 @dp.callback_query(F.data == "sa_matrix")
 async def sa_matrix(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     plans = [p for p in db_plans() if p["active"]]
     lines = ["🧩 **Imkoniyatlar matritsasi**\n"]
@@ -3504,6 +3526,9 @@ def sa_sub_kb():
 
 @dp.callback_query(F.data == "sa_sub")
 async def sa_sub(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.clear()
     await call.message.edit_text(sa_sub_text(), reply_markup=sa_sub_kb(), parse_mode="Markdown")
@@ -3511,6 +3536,9 @@ async def sa_sub(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "sa_subtog")
 async def sa_sub_toggle(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     on = db_get_setting("mandatory_sub") == "1"
     if not on and not required_channels():
         await call.answer("Avval kanalni belgilang.", show_alert=True)
@@ -3524,6 +3552,9 @@ async def sa_sub_toggle(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "sa_subset")
 async def sa_sub_channel_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.sub_channel)
     await call.message.edit_text("📢 Yangi kanal username (`@kanalim`) yoki ID (`-100...`) kiriting:\n\n_Bot kanalda administrator bo‘lishi shart. Har safar bittadan yuboring; avvalgi kanallar saqlanadi._",
@@ -3532,6 +3563,10 @@ async def sa_sub_channel_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.sub_channel, F.chat.type == "private")
 async def sa_sub_channel_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     raw = (message.text or "").strip()
     if not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}", raw) or re.fullmatch(r"-?\d{6,}", raw)):
         await send_and_clean_both(message, "❌ Noto'g'ri format. Masalan: @kanalim yoki -1001234567890", delay=20)
@@ -3589,6 +3624,9 @@ def sa_support_kb():
 
 @dp.callback_query(F.data == "sa_support")
 async def sa_support(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.clear()
     await call.message.edit_text(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
@@ -3596,6 +3634,9 @@ async def sa_support(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "sa_supset")
 async def sa_support_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.support_value)
     await call.message.edit_text("🆘 Yordam beradigan odamning @username yoki Telegram ID sini kiriting:",
@@ -3604,6 +3645,10 @@ async def sa_support_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.support_value, F.chat.type == "private")
 async def sa_support_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     raw = (message.text or "").strip()
     if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}", raw):
         value = "@" + raw.lstrip("@")
@@ -3621,6 +3666,9 @@ async def sa_support_save(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "sa_suplabel")
 async def sa_support_label_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.support_label)
     await call.message.edit_text("✏️ Ilovadagi tugma nomini kiriting (masalan: Yordam, Administrator bilan bog‘lanish):",
@@ -3629,6 +3677,10 @@ async def sa_support_label_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.support_label, F.chat.type == "private")
 async def sa_support_label_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     label = " ".join((message.text or "").split())[:32]
     if len(label) < 2:
         await send_and_clean_both(message, "❌ Tugma nomi kamida 2 ta belgidan iborat bo‘lsin.", delay=20)
@@ -3641,6 +3693,9 @@ async def sa_support_label_save(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "sa_suptoggle")
 async def sa_support_toggle(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     enabled = db_get_setting("support_enabled") == "1"
     if not enabled and not support_url():
         await call.answer("Avval Telegram manzilini kiriting.", show_alert=True)
@@ -3653,6 +3708,9 @@ async def sa_support_toggle(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "sa_supdel")
 async def sa_support_delete(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     db_set_setting("support_contact", "")
     db_set_setting("support_enabled", "0")
@@ -3662,6 +3720,9 @@ async def sa_support_delete(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_ptog_"))
 async def sa_plan_active_toggle(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     key = call.data[len("sa_ptog_"):]
     p = db_plan(key)
     if not p or key == "free":
@@ -3684,6 +3745,9 @@ FIELD_PROMPTS = {
 
 @dp.callback_query(F.data.startswith("sa_pf_"))
 async def sa_plan_field_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     rest = call.data[len("sa_pf_"):]
     key, field = None, None
     for f in FIELD_PROMPTS:
@@ -3702,6 +3766,10 @@ async def sa_plan_field_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.plan_value, F.chat.type == "private")
 async def sa_plan_field_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     data = await state.get_data()
     key, field = data.get("plan_key"), data.get("plan_field")
     raw = (message.text or "").strip()
@@ -3723,6 +3791,9 @@ async def sa_plan_field_save(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "sa_plannew")
 async def sa_plan_new(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.plan_new_name)
     await call.message.edit_text("➕ **Yangi tarif nomi:**", reply_markup=kb([[btn("❌ Bekor qilish", "sa_plans")]]), parse_mode="Markdown")
@@ -3730,6 +3801,10 @@ async def sa_plan_new(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.plan_new_name, F.chat.type == "private")
 async def sa_plan_new_name(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     name = (message.text or "").strip()
     if not name or len(name) > 30:
         await send_and_clean_both(message, "❌ Nomi 1–30 belgi bo'lsin.", delay=20)
@@ -3741,6 +3816,10 @@ async def sa_plan_new_name(message: types.Message, state: FSMContext):
 
 @dp.message(SuperStates.plan_new_price, F.chat.type == "private")
 async def sa_plan_new_price(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     raw = (message.text or "").strip()
     if not raw.isdigit():
         await send_and_clean_both(message, "❌ Faqat raqam kiriting.", delay=20)
@@ -3752,6 +3831,10 @@ async def sa_plan_new_price(message: types.Message, state: FSMContext):
 
 @dp.message(SuperStates.plan_new_limit, F.chat.type == "private")
 async def sa_plan_new_limit(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     raw = (message.text or "").strip()
     if not raw.isdigit():
         await send_and_clean_both(message, "❌ Faqat raqam kiriting.", delay=20)
@@ -3763,6 +3846,10 @@ async def sa_plan_new_limit(message: types.Message, state: FSMContext):
 
 @dp.message(SuperStates.plan_new_days, F.chat.type == "private")
 async def sa_plan_new_days(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     raw = (message.text or "").strip()
     if not raw.isdigit():
         await send_and_clean_both(message, "❌ Faqat raqam kiriting.", delay=20)
@@ -3780,6 +3867,9 @@ async def sa_plan_new_days(message: types.Message, state: FSMContext):
 # --- O'qituvchilar ---
 @dp.callback_query(F.data == "sa_list")
 async def sa_list(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     teachers = db_all_teachers()
     rows = []
@@ -3819,6 +3909,9 @@ def _sa_teacher_kb(t):
 
 @dp.callback_query(F.data.startswith("sa_t_"))
 async def sa_teacher_detail(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     t = db_teacher(int(call.data.split("_")[2]))
     if not t:
@@ -3828,6 +3921,9 @@ async def sa_teacher_detail(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_assign_"))
 async def sa_assign_menu(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     tid = int(call.data.split("_")[2])
     rows = [[btn(f"{p['name']} — {p['price']:,} so'm · {p['duration_days'] or '∞'} kun", f"sa_setplan_{tid}_{p['key']}")]
@@ -3839,6 +3935,9 @@ async def sa_assign_menu(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_setplan_"))
 async def sa_set_plan(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     _, _, tid, key = call.data.split("_")
     tid = int(tid)
     p = db_plan(key)
@@ -3856,6 +3955,9 @@ async def sa_set_plan(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_extend_"))
 async def sa_extend(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     tid = int(call.data.split("_")[2])
     t = db_teacher(tid)
     if not t:
@@ -3876,6 +3978,9 @@ async def sa_extend(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_code_"))
 async def sa_regen_code(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     tid = int(call.data.split("_")[2])
     t = db_teacher(tid)
     if not t:
@@ -3892,6 +3997,9 @@ async def sa_regen_code(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_block_"))
 async def sa_block(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     tid = int(call.data.split("_")[2])
     t = db_teacher(tid)
     if not t:
@@ -3906,6 +4014,9 @@ async def sa_block(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_tdel_"))
 async def sa_tdel(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     tid = int(call.data.split("_")[2])
     t = db_teacher(tid)
@@ -3918,6 +4029,9 @@ async def sa_tdel(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_tdelok_"))
 async def sa_tdelok(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     tid = int(call.data.split("_")[2])
     audit(call.from_user.id, "teacher_delete", str(tid))
@@ -3928,6 +4042,9 @@ async def sa_tdelok(call: types.CallbackQuery):
 # --- Tasdiqlash (hujjat) ---
 @dp.callback_query(F.data == "sa_vmode")
 async def sa_verify_mode_toggle(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     new_mode = "phone" if verify_mode() == "manual" else "manual"
     db_set_setting("verify_mode", new_mode)
     audit(call.from_user.id, "verify_mode", new_mode)
@@ -3937,6 +4054,9 @@ async def sa_verify_mode_toggle(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "sa_vqueue")
 async def sa_verify_queue(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     if not is_admin_member(call.from_user.id):
         await call.answer("Ruxsat yo‘q.", show_alert=True)
         return
@@ -3950,6 +4070,9 @@ async def sa_verify_queue(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vt_"))
 async def sa_verify_view(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     if not is_admin_member(call.from_user.id):
         await call.answer("Ruxsat yo‘q.", show_alert=True)
         return
@@ -3968,6 +4091,9 @@ async def sa_verify_view(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vapp_"))
 async def sa_verify_approve(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     if not is_admin_member(call.from_user.id):
         await call.answer("Ruxsat yo‘q.", show_alert=True)
         return
@@ -3985,6 +4111,9 @@ async def sa_verify_approve(call: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("sa_vrej_"))
 async def sa_verify_reject_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     if not is_admin_member(call.from_user.id):
         await call.answer("Ruxsat yo‘q.", show_alert=True)
         return
@@ -3997,6 +4126,10 @@ async def sa_verify_reject_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.verify_reason, F.chat.type == "private")
 async def sa_verify_reject_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     if not is_admin_member(message.from_user.id):
         await state.clear()
         await message.answer("⛔ Bu amal uchun ruxsat yo‘q.")
@@ -4017,6 +4150,9 @@ async def sa_verify_reject_save(message: types.Message, state: FSMContext):
 # --- Audit jurnali ---
 @dp.callback_query(F.data == "sa_audit")
 async def sa_audit_view(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     rows = run("SELECT created_at, action, target, details FROM audit_log ORDER BY id DESC LIMIT 20", fetch="all")
     text = "📜 **Audit jurnali (oxirgi 20):**\n\n"
@@ -4026,6 +4162,9 @@ async def sa_audit_view(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "sa_pass")
 async def sa_pass_start(call: types.CallbackQuery, state: FSMContext):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq. Yordamchi admin Mini App kabinetidan foydalanadi.", show_alert=True)
+        return
     await call.answer()
     await state.set_state(SuperStates.new_pass)
     await call.message.edit_text("🔑 Super Admin uchun yangi parolni kiriting (kamida 8 belgi):",
@@ -4034,6 +4173,10 @@ async def sa_pass_start(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message(SuperStates.new_pass, F.chat.type == "private")
 async def sa_pass_save(message: types.Message, state: FSMContext):
+    if not is_super(message.from_user.id):
+        await state.clear()
+        await message.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.")
+        return
     new_pass = (message.text or "").strip()
     if len(new_pass) < 8:
         await send_and_clean_both(message, "❌ Parol kamida 8 belgi bo'lsin. Qaytadan kiriting:", delay=20)
