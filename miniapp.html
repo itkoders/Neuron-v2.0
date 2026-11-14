@@ -2721,7 +2721,7 @@ body.social-open #paxBuddy{display:none}
     try {
       if(a==="refresh"){await loadAdminOverview();return;}
       if(a==="go-queue"){state.adminTab="queue";renderAdminTab();return;}
-      if(a==="add-admin"){const chatId=($("adminChatId")?.value||"").trim();if(!/^\\d{5,20}$/.test(chatId)){toast("To‘g‘ri Telegram ID kiriting.");return;}const z=await adminPost("/api/admin/admins",{action:"add",chat_id:chatId});toast(z.notification_sent?"Admin qo‘shildi va unga xabar yuborildi.":"Admin qo‘shildi. U botga /start yuborishi kerak.");}
+      if(a==="add-admin"){const chatId=($("adminChatId")?.value||"").trim();if(!/^\d{5,20}$/.test(chatId)){toast("To‘g‘ri Telegram ID kiriting.");return;}const z=await adminPost("/api/admin/admins",{action:"add",chat_id:chatId});toast(z.notification_sent?"Admin qo‘shildi va unga xabar yuborildi.":"Admin qo‘shildi. U botga /start yuborishi kerak.");}
       else if(a==="remove-admin"){if(!confirm("Ushbu administrator olib tashlansinmi?"))return;await adminPost("/api/admin/admins",{action:"remove",chat_id:id});toast("Admin olib tashlandi.");}
       if(a==="assign"){await adminPost("/api/admin/teacher/"+id,{action:"assign_plan",plan_key:document.querySelector('[data-plan-for="'+id+'"]').value});}
       else if(["extend","toggle_active","toggle_ai","approve"].includes(a)){await adminPost("/api/admin/teacher/"+id,{action:a});}
