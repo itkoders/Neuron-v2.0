@@ -3345,34 +3345,38 @@ body.social-open #paxBuddy{display:none}
     const c = state.parentChildren.find(x => x.id === state.parentSelected);
     if (!c) return;
     const initials = esc((c.fio || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase());
-    const scoreCards = c.labels.map((label, i) => {
-      const scored = !!(c.score_scored && c.score_scored[i]);
-      const v = Number(c.scores[i] || 0), color = barColor(v);
-      return '<div class="card score-card" style="--i:' + i + '"><div class="row"><span class="name">' + esc(label) +
-        '</span><span class="val ' + (scored ? '' : 'muted') + '" style="' + (scored ? 'color:' + color : '') + '">' + (scored ? v + '%' : '—') +
-        '</span></div><div class="meter"><i style="width:' + (scored ? v : 0) + '%;background:' + color + '"></i></div></div>';
+    const subjectRows = c.subjects && c.subjects.length ? c.subjects : [c];
+    const scoreCards = subjectRows.map(subject => {
+      const cards = (subject.labels || []).map((label,i) => {
+        const scored = !!(subject.score_scored && subject.score_scored[i]);
+        const v = Number((subject.scores || [])[i] || 0), color = barColor(v);
+        return '<div class="card score-card"><div class="row"><span class="name">' + esc(label) +
+          '</span><span class="val ' + (scored ? '' : 'muted') + '" style="' + (scored ? 'color:' + color : '') + '">' + (scored ? v + '%' : '—') +
+          '</span></div><div class="meter"><i style="width:' + (scored ? v : 0) + '%;background:' + color + '"></i></div></div>';
+      }).join("");
+      return '<div class="card panel" style="display:grid;gap:9px"><b>📚 ' + esc(subject.subject || c.subject) +
+        '</b><div class="hint">👩‍🏫 ' + esc(subject.teacher_name || c.teacher_name || '') + ' · 🏫 ' +
+        esc(subject.group_name || c.group_name || '') + '</div><div class="score-cards">' + cards +
+        '</div><div class="hint">🏅 Guruhdagi o‘rni: ' + (subject.rank ? subject.rank + ' / ' + subject.class_size : '—') +
+        '</div><div class="hint">📝 ' + esc(subject.teacher_note || 'Izoh mavjud emas') + '</div></div>';
     }).join("");
     const attendance = {Keldi:"✅ Keldi",Kelmadi:"❌ Kelmadi",Sababli:"📝 Sababli",Kutilmoqda:"⏳ Kutilmoqda"}[c.davomat] || esc(c.davomat);
     const payment = c.payment_status === "To'langan" ? "✅ To‘langan" : "⚠️ To‘lanmagan";
-    const history = (c.history || []).map(x => '<div class="card history-item"><b>📅 ' + esc(x.date) +
-      '</b><div class="hint">Davomat: ' + esc(x.attendance) +
-      ' · ' + c.labels.map((l,i) => esc(l) + ': ' + (x.scores[i] || 0)).join(' · ') + '</div></div>').join('');
+    const history = subjectRows.flatMap(subject => (subject.history || []).map(x =>
+      '<div class="card history-item"><b>📅 ' + esc(x.date) + ' · ' + esc(subject.subject || c.subject) +
+      '</b><div class="hint">Davomat: ' + esc(x.attendance) + ' · ' +
+      (subject.labels || []).map((l,i) => esc(l) + ': ' + (x.scores[i] || 0)).join(' · ') + '</div></div>')).join('');
     $("parentContent").innerHTML =
       '<div class="card profile"><div class="avatar">' + initials + '</div><div style="min-width:0"><div class="nm">' + esc(c.fio) +
-      '</div><div class="hint">🏫 ' + esc(c.group_name) + ' · 📚 ' + esc(c.subject) + '</div><div class="hint">👩‍🏫 ' + esc(c.teacher_name) + '</div></div></div>' +
+      '</div><div class="hint">📚 ' + subjectRows.length + ' ta fan bitta profilda</div></div></div>' +
       '<button class="chip-btn" id="parentUnlinkChild" type="button" style="width:100%;color:var(--bad);border-color:var(--bad)">🔗 Kabinetni uzish</button>' +
       '<button class="parent-pay-quick" id="parentPayJump" type="button">💳 To‘lov qilish ↓</button>' +
-      '<div class="section-title">📊 Baholar</div><div class="score-cards">' + scoreCards + '</div>' +
+      '<div class="section-title">📊 Barcha fanlar baholari</div><div style="display:grid;gap:10px">' + scoreCards + '</div>' +
       '<div class="section-title">📌 Umumiy holat</div><div class="facts">' +
-      '<div class="card fact"><small>🏅 Guruhdagi o‘rni</small><b>' + (c.rank ? c.rank + ' / ' + c.class_size : '—') + '</b></div>' +
-      '<div class="card fact"><small>📅 Davomat</small><b>' + attendance + '</b></div>' +
+      '<div class="card fact"><small>📅 Barcha fanlar uchun yagona davomat</small><b>' + attendance + '</b></div>' +
       '<div class="card fact"><small>💳 To‘lov</small><b>' + payment + '</b></div>' +
       '<div class="card fact"><small>💰 Summa</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div>' +
-      '<div class="card fact"><small>📞 Telefon</small><b>' + esc(c.phone || 'Kiritilmagan') + '</b></div>' +
-      '<div class="card fact"><small>🗓 Oxirgi baho</small><b>' + esc(c.last_score_date || '—') + '</b></div></div>' +
-      '<div class="section-title">🎯 Umumiy natija</div><div class="card panel"><div class="bar-row" style="grid-template-columns:1fr;margin:0 0 8px"><b style="font-size:22px">' + (c.overall_score == null ? 'Hali baho yo‘q' : c.overall_score + '%') + '</b></div>' +
-      '<div class="bar"><i style="width:' + (c.overall_score || 0) + '%;background:' + barColor(c.overall_score || 0) + '"></i></div></div>' +
-      '<div class="section-title">📝 O‘qituvchi izohi</div><div class="card note">' + esc(c.teacher_note || 'Izoh mavjud emas') + '</div>' +
+      '<div class="card fact"><small>📞 Telefon</small><b>' + esc(c.phone || 'Kiritilmagan') + '</b></div></div>' +
       '<div class="section-title" id="parentPaymentSection">💳 Oylik to‘lov</div><div class="card panel parent-pay-box">' +
       '<div class="facts"><div class="fact"><small>To‘lov summasi</small><b>' + Number(c.payment_amount || 0).toLocaleString('uz-UZ') + ' so‘m</b></div><div class="fact"><small>Holati</small><b>' + payment + '</b></div></div>' +
       (c.card ? '<div class="parent-card-info"><span>To‘lov turi</span><strong>' + esc(({card:'Bank kartasi',cash:'Naqd pul',click:'Click',payme:'Payme',bank_transfer:'Bank o‘tkazmasi'})[c.card.payment_type || 'card']) + '</strong>' +
@@ -3382,25 +3386,19 @@ body.social-open #paxBuddy{display:none}
        c.payment_request && c.payment_request.status === 'pending' ? '<div class="hint">⏳ To‘lov so‘rovi ko‘rib chiqilmoqda (' + esc(c.payment_request.method) + ')</div>' :
        (c.payment_request && c.payment_request.status === 'rejected' ? '<div class="hint">❌ Oxirgi so‘rov rad etilgan. Qayta yuborishingiz mumkin.</div>' : '') +
        '<label for="parentPayMethod">To‘lov usuli</label><select id="parentPayMethod" style="width:100%">' + (c.card ? '<option value="' + ({card:'Karta orqali',cash:'Naqd pul',click:'Click',payme:'Payme',bank_transfer:'Bank o‘tkazmasi'}[c.card.payment_type || 'card']) + '">' + ({card:'Bank kartasi',cash:'Naqd pul',click:'Click',payme:'Payme',bank_transfer:'Bank o‘tkazmasi'}[c.card.payment_type || 'card']) + '</option>' : '') + '</select>' +
-       '<label for="parentPayReceipt">📸 To‘lov chekining skrinshoti</label><input id="parentPayReceipt" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" style="width:100%">' +
-       '<div class="hint" style="margin-top:6px">JPG, PNG yoki WEBP, 5 MB gacha.</div>' +
-       '<div id="parentReceiptPreview" class="hint"></div>' +
+       '<label for="parentPayReceipt">📸 To‘lov chekini yuklang</label><input id="parentPayReceipt" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" style="width:100%">' +
+       '<div class="hint" style="margin-top:6px">JPG, PNG yoki WEBP, 5 MB gacha.</div><div id="parentReceiptPreview" class="hint"></div>' +
        '<button class="btn btn-wide" id="parentPaySubmit" style="margin-top:8px" ' + (Number(c.payment_amount || 0) <= 0 ? 'disabled' : '') + '>📤 To‘lovni yuborish</button>' +
        '<div class="hint" style="margin:8px 0 0">To‘lov o‘qituvchi tasdiqlagandan keyin qabul qilingan hisoblanadi.</div>') + '</div>' +
-      '<div class="section-title">📚 Kunlik tarix</div><div style="display:grid;gap:10px">' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>') + '</div>';
+      '<div class="section-title">📚 Fanlar bo‘yicha kunlik tarix</div><div style="display:grid;gap:10px">' + (history || '<div class="card empty">Hozircha tarix mavjud emas.</div>') + '</div>';
     const receiptInput = $("parentPayReceipt");
     if (receiptInput) receiptInput.addEventListener("change", () => {
-      const file = receiptInput.files && receiptInput.files[0];
-      const preview = $("parentReceiptPreview");
-      if (!preview) return;
-      preview.textContent = file ? "📎 " + file.name + " (" + (file.size / 1024 / 1024).toFixed(2) + " MB)" : "";
+      const file = receiptInput.files && receiptInput.files[0], preview = $("parentReceiptPreview");
+      if (preview) preview.textContent = file ? "📎 " + file.name + " (" + (file.size / 1024 / 1024).toFixed(2) + " MB)" : "";
     });
-    const payBtn = $("parentPaySubmit");
-    if (payBtn) payBtn.addEventListener("click", submitParentPayment);
-    const jump = $("parentPayJump");
-    if (jump) jump.addEventListener("click", () => $("parentPaymentSection").scrollIntoView({behavior:"smooth", block:"start"}));
-    const unlink = $("parentUnlinkChild");
-    if (unlink) unlink.addEventListener("click", unlinkParentChild);
+    const payBtn = $("parentPaySubmit"); if (payBtn) payBtn.addEventListener("click", submitParentPayment);
+    const jump = $("parentPayJump"); if (jump) jump.addEventListener("click", () => $("parentPaymentSection").scrollIntoView({behavior:"smooth",block:"start"}));
+    const unlink = $("parentUnlinkChild"); if (unlink) unlink.addEventListener("click", unlinkParentChild);
   }
   async function unlinkParentChild() {
     const child = state.parentChildren.find(x => x.id === state.parentSelected);
@@ -3479,40 +3477,31 @@ body.social-open #paxBuddy{display:none}
   }
 
   function renderOverview(o) {
-    const scores = o.labels.map((l, i) => {
-      const scored = !!(o.score_scored && o.score_scored[i]);
-      const v = Number(o.scores[i] || 0), avg = o.class_avg[i];
-      const color = barColor(v);
-      const star = scored && v >= 85 ? ' <span title="A’lo natija">⭐</span>' : "";
-      return `<div class="card score-card" style="--i:${i}">
-        <div class="row"><span class="name">${esc(l)}</span>
-          <span class="val ${scored ? "" : "muted"}" style="${scored ? "color:" + color : ""}">${scored ? v + "%" : "—"}</span></div>
-        <div class="meter"><i style="width:${scored ? v : 0}%;background:${color}"></i></div>
-        <div class="meta"><span>Sinf o‘rtachasi: ${avg == null ? "—" : avg + "%"}</span>
-          <span>${v && avg != null ? (v >= avg ? "▲ o‘rtachadan yuqori" : "▼ o‘rtachadan past") : ""}</span></div>
-      </div>`;
-    }).join("");
-    const totalScore = o.scores.reduce((a, b) => a + (b || 0), 0);
-    const davomat = { Keldi: "✅ Keldi", Kelmadi: "❌ Kelmadi", Sababli: "📝 Sababli" }[o.davomat] || "⏳ Kutilmoqda";
-    const paid = o.payment_status === "To'langan" ? "✅ To‘langan" : "❗ To‘lanmagan";
-    const initials = esc((o.fio || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase());
-    $("mine").innerHTML = `
-      <div class="card profile" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0"><div class="avatar">${initials}</div>
-          <div style="min-width:0"><div class="nm">${esc(o.subject)}</div><div class="hint">${esc(o.group_name)}</div></div></div>
-        <div class="big-total"><b>${totalScore}</b><span>jami ball</span></div>
-      </div>
-      <div class="section-title">Ballar</div>
-      <div class="score-cards">${scores}</div>
-      <div class="section-title">Holat</div>
-      <div class="facts">
-        <div class="card fact"><small>Sinf ichidagi o‘rin</small><b>${o.rank ? o.rank + " / " + o.class_size : "—"}</b></div>
-        <div class="card fact"><small>Bugungi davomat</small><b>${davomat}</b></div>
-        <div class="card fact"><small>To‘lov</small><b>${paid}</b></div>
-        <div class="card fact"><small>Oxirgi ball sanasi</small><b>${esc(o.last_score_date || "—")}</b></div>
-      </div>
-      <div class="section-title">O‘qituvchi izohi</div>
-      <div class="card note">${esc(o.teacher_note)}</div>`;
+    const subjects = o.subjects && o.subjects.length ? o.subjects : [o];
+    const totalScore = subjects.reduce((sum, subject) => sum + (subject.scores || []).reduce((a,b) => a + (Number(b) || 0), 0), 0);
+    const scorePanels = subjects.map(subject => {
+      const cards = (subject.labels || []).map((label,i) => {
+        const scored = !!(subject.score_scored && subject.score_scored[i]);
+        const v = Number((subject.scores || [])[i] || 0), avg = (subject.class_avg || [])[i], color = barColor(v);
+        return '<div class="card score-card"><div class="row"><span class="name">' + esc(label) +
+          '</span><span class="val ' + (scored ? '' : 'muted') + '" style="' + (scored ? 'color:' + color : '') + '">' + (scored ? v + '%' : '—') +
+          '</span></div><div class="meter"><i style="width:' + (scored ? v : 0) + '%;background:' + color + '"></i></div>' +
+          '<div class="meta"><span>Sinf o‘rtachasi: ' + (avg == null ? '—' : avg + '%') + '</span></div></div>';
+      }).join('');
+      return '<div class="card panel" style="display:grid;gap:10px"><b>📚 ' + esc(subject.subject || o.subject) +
+        '</b><div class="hint">👩‍🏫 ' + esc(subject.teacher_name || '') + ' · 🏫 ' + esc(subject.group_name || o.group_name) +
+        '</div><div class="score-cards">' + cards + '</div><div class="hint">🏅 Guruhdagi o‘rni: ' +
+        (subject.rank ? subject.rank + ' / ' + subject.class_size : '—') + '</div><div class="card note">' +
+        esc(subject.teacher_note || 'Izoh mavjud emas') + '</div></div>';
+    }).join('');
+    const davomat = {Keldi:"✅ Keldi",Kelmadi:"❌ Kelmadi",Sababli:"📝 Sababli"}[o.davomat] || "⏳ Kutilmoqda";
+    const initials = esc((o.fio || "?").trim().split(/\s+/).slice(0,2).map(w => w[0]).join("").toUpperCase());
+    $("mine").innerHTML = '<div class="card profile" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:12px;min-width:0"><div class="avatar">' +
+      initials + '</div><div style="min-width:0"><div class="nm">' + esc(o.fio) + '</div><div class="hint">' + subjects.length +
+      ' ta fan bitta profilda</div></div></div><div class="big-total"><b>' + totalScore + '</b><span>jami ball</span></div></div>' +
+      '<div class="section-title">📚 Barcha fanlar</div><div style="display:grid;gap:12px">' + scorePanels + '</div>' +
+      '<div class="section-title">📌 Umumiy davomat</div><div class="card fact"><small>Barcha fanlar uchun yagona davomat</small><b>' +
+      davomat + '</b></div>';
   }
 
   function addBubble(kind, html, tag) {
