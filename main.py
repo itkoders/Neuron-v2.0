@@ -6516,6 +6516,21 @@ def teacher_payment_schedule(teacher_id):
             "enabled":bool(row[2]) if row else False}
 
 
+async def api_teacher_unlink_account(request):
+    """Faqat so‘rov yuborgan Telegram akkauntini kabinetdan uzadi; o‘qituvchi ma’lumotlari saqlanadi."""
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error": "forbidden"}, status=403)
+    uid = int(verify_init_data(request.headers.get("X-Init-Data", "")) or 0)
+    if not uid:
+        return web.json_response({"error": "auth"}, status=401)
+    # Asosiy chat_id va qo‘shimcha qurilma bog‘lanishi faqat joriy Telegram ID uchun uziladi.
+    run("DELETE FROM teacher_access WHERE teacher_id=? AND chat_id=?", (teacher["id"], uid))
+    run("UPDATE teachers SET chat_id=NULL WHERE id=? AND chat_id=?", (teacher["id"], uid))
+    audit(uid, "teacher_account_unlink", str(teacher["id"]), "Faqat joriy Telegram akkaunti uzildi; o‘qituvchi ma’lumotlari saqlandi")
+    return web.json_response({"ok": True})
+
+
 async def api_teacher_payment_schedule(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
@@ -7816,6 +7831,7 @@ async def start_web_server():
     app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
+    app.router.add_post("/api/teacher/unlink-account", api_teacher_unlink_account)
     app.router.add_get("/api/teacher/payment/{rid}/receipt", api_teacher_payment_receipt)
     app.router.add_get("/api/teacher/payment-schedule", api_teacher_payment_schedule)
     app.router.add_post("/api/teacher/payment-schedule", api_teacher_payment_schedule)
