@@ -679,10 +679,10 @@ async def notify_super_admins_registration(t):
     if not bot or not t:
         return
     text = (
-        "🆕 YANGI O‘QITUVCHI TASDIQLASHI\\n\\n"
-        f"👤 Ism: {md(teacher_name(t))}\\n"
-        f"📞 Telefon: {md(t.get('phone') or '—')}\\n"
-        f"🆔 ID: {t['id']}\\n"
+        "🆕 YANGI O‘QITUVCHI TASDIQLASHI\n\n"
+        f"👤 Ism: {md(teacher_name(t))}\n"
+        f"📞 Telefon: {md(t.get('phone') or '—')}\n"
+        f"🆔 ID: {t['id']}\n"
         "🪪 Holat: Tasdiqlash kutilmoqda"
     )
     markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"),
@@ -698,7 +698,7 @@ async def notify_super_admins_doc(t, file_id):
     for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
         try:
             await bot.send_photo(cid, file_id,
-                                 caption=f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\\n📞 `{t['phone']}`",
+                                 caption=f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\n📞 `{t['phone']}`",
                                  reply_markup=kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]]),
                                  parse_mode="Markdown")
         except Exception:
