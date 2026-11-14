@@ -408,7 +408,14 @@ def init_db():
         badge_status TEXT DEFAULT '', badge_request TEXT DEFAULT '', updated_at TEXT)""")
     run("""CREATE TABLE IF NOT EXISTS community_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id BIGINT NOT NULL,
-        body TEXT NOT NULL, created_at TEXT NOT NULL, hidden INTEGER DEFAULT 0)""")
+        body TEXT NOT NULL, created_at TEXT NOT NULL, hidden INTEGER DEFAULT 0,
+        scope TEXT DEFAULT 'general', subject_id INTEGER)""")
+    community_cols = {r[1] for r in run("PRAGMA table_info(community_messages)", fetch="all")}
+    if "scope" not in community_cols:
+        run("ALTER TABLE community_messages ADD COLUMN scope TEXT DEFAULT 'general'")
+    if "subject_id" not in community_cols:
+        run("ALTER TABLE community_messages ADD COLUMN subject_id INTEGER")
+    run("CREATE INDEX IF NOT EXISTS idx_community_scope_subject ON community_messages(scope,subject_id,id)")
     run("""CREATE TABLE IF NOT EXISTS community_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
         reporter_chat_id BIGINT NOT NULL, reason TEXT DEFAULT '', created_at TEXT,
@@ -5690,8 +5697,38 @@ async def api_admin_audit(request):
     if err: return err
     denied = admin_permission_error(uid, "audit")
     if denied: return denied
-    rows = run("SELECT created_at, action, target, details FROM audit_log ORDER BY id DESC LIMIT 100",fetch="all")
-    return web.json_response({"items":[{"created_at":r[0],"action":r[1],"target":r[2],"details":r[3]} for r in rows]})
+    rows = run("""SELECT a.id,a.actor,a.action,a.target,a.details,a.created_at,
+                  p.display_name,p.username,t.first_name,t.last_name
+                  FROM audit_log a
+                  LEFT JOIN user_profiles p ON p.chat_id=a.actor
+                  LEFT JOIN teachers t ON t.chat_id=a.actor
+                  ORDER BY a.id DESC LIMIT 200""",fetch="all")
+    labels = {
+        "teacher_register":"O‘qituvchi ro‘yxatdan o‘tdi",
+        "admin_setting":"Tizim sozlamasi o‘zgartirildi",
+        "super_password_change":"Super Admin paroli almashtirildi",
+        "social_profile_update":"Profil yangilandi",
+        "social_ad_create":"Reklama joylandi",
+        "social_chat_hide":"Chat xabari yashirildi",
+        "teacher_approve":"O‘qituvchi tasdiqlandi",
+        "teacher_reject":"O‘qituvchi rad etildi",
+        "admin_add":"Yordamchi admin qo‘shildi",
+        "admin_remove":"Yordamchi admin o‘chirildi",
+        "admin_permissions_update":"Admin ruxsatlari o‘zgartirildi",
+        "score_update":"O‘quvchi bali o‘zgartirildi",
+        "attendance_update":"Davomat yangilandi",
+    }
+    items=[]
+    for r in rows:
+        teacher_name = " ".join(str(x or "").strip() for x in (r[8],r[9])).strip()
+        actor_name = str(r[6] or "").strip() or teacher_name or (("@"+str(r[7])) if r[7] else "Foydalanuvchi")
+        actor_id = int(r[1] or 0)
+        actor_role = "Super Admin" if is_super(actor_id) else ("Yordamchi admin" if is_admin_member(actor_id) else ("O‘qituvchi" if teacher_name else "Foydalanuvchi"))
+        action = str(r[2] or "")
+        items.append({"id":int(r[0]),"actor":actor_id,"actor_name":actor_name,"actor_role":actor_role,
+                      "action":action,"action_label":labels.get(action,action.replace("_"," ").capitalize()),
+                      "target":r[3] or "—","details":r[4] or "—","created_at":r[5] or ""})
+    return web.json_response({"items":items})
 
 
 async def api_teacher_payment_settings(request):
@@ -6034,14 +6071,68 @@ async def api_social_users(request):
         "bio":r[3] or "","avatar":_social_avatar_thumb(r[4]),"badge":r[5] or ""} for r in rows]})
 
 
+def _social_subject_ids(uid, kind, obj):
+    if kind == "teacher":
+        return [int(r[0]) for r in run("SELECT id FROM subjects WHERE teacher_id=? ORDER BY name",(obj["id"],),fetch="all")]
+    student_ids = set()
+    if kind == "student":
+        student_ids.add(int(obj["id"]))
+    elif kind == "parent":
+        student_ids.update(int(x) for x in db_parent_miniapp_student_ids(uid))
+    if not student_ids:
+        return []
+    placeholders = ",".join("?" for _ in student_ids)
+    rows = run(f"""SELECT DISTINCT linked.subject_id FROM student_identity_members m1
+                   JOIN student_identity_members m2 ON m2.identity_id=m1.identity_id
+                   JOIN students linked ON linked.id=m2.student_id
+                   WHERE m1.student_id IN ({placeholders}) ORDER BY linked.subject_id""",
+               tuple(sorted(student_ids)),fetch="all")
+    found = {int(r[0]) for r in rows}
+    if not found:
+        rows = run(f"SELECT DISTINCT subject_id FROM students WHERE id IN ({placeholders})",tuple(sorted(student_ids)),fetch="all")
+        found = {int(r[0]) for r in rows}
+    return sorted(found)
+
+
+def _social_subject_allowed(uid, kind, obj, subject_id):
+    if kind == "teacher":
+        return bool(run("SELECT 1 FROM subjects WHERE id=? AND teacher_id=?",(subject_id,obj["id"]),fetch="one"))
+    return subject_id in set(_social_subject_ids(uid,kind,obj))
+
+
+async def api_social_chat_scopes(request):
+    uid,p,kind,err = _social_auth(request)
+    if err: return err
+    items=[{"scope":"general","subject_id":None,"name":"🌍 Umumiy chat"}]
+    ids = _social_subject_ids(uid,kind,p) if kind in {"teacher","student","parent"} else []
+    if ids:
+        placeholders=",".join("?" for _ in ids)
+        rows=run(f"SELECT id,name FROM subjects WHERE id IN ({placeholders}) ORDER BY name",tuple(ids),fetch="all")
+        items.extend([{"scope":"subject","subject_id":int(r[0]),"name":"📚 "+str(r[1])} for r in rows])
+    return web.json_response({"items":items})
+
+
 async def api_social_chat_get(request):
     uid,p,kind,err = _social_auth(request)
     if err: return err
+    scope = str(request.query.get("scope","general")).strip().lower()
+    if scope not in {"general","subject"}: return web.json_response({"error":"bad_scope"},status=400)
+    subject_id = None
+    if scope == "subject":
+        try: subject_id=int(request.query.get("subject_id",""))
+        except ValueError: return web.json_response({"error":"bad_subject"},status=400)
+        if not _social_subject_allowed(uid,kind,p,subject_id):
+            return web.json_response({"error":"subject_forbidden"},status=403)
     try: after=max(0,int(request.query.get("after","0")))
     except ValueError: after=0
-    rows = run("SELECT m.id,m.chat_id,m.body,m.created_at,p.username,p.display_name,p.avatar_data,p.badge "
-               "FROM community_messages m LEFT JOIN user_profiles p ON p.chat_id=m.chat_id "
-               "WHERE m.hidden=0 AND m.id>? ORDER BY m.id DESC LIMIT 50",(after,),fetch="all")
+    if scope == "general":
+        rows = run("SELECT m.id,m.chat_id,m.body,m.created_at,p.username,p.display_name,p.avatar_data,p.badge "
+                   "FROM community_messages m LEFT JOIN user_profiles p ON p.chat_id=m.chat_id "
+                   "WHERE m.hidden=0 AND COALESCE(m.scope,'general')='general' AND m.id>? ORDER BY m.id DESC LIMIT 50",(after,),fetch="all")
+    else:
+        rows = run("SELECT m.id,m.chat_id,m.body,m.created_at,p.username,p.display_name,p.avatar_data,p.badge "
+                   "FROM community_messages m LEFT JOIN user_profiles p ON p.chat_id=m.chat_id "
+                   "WHERE m.hidden=0 AND m.scope='subject' AND m.subject_id=? AND m.id>? ORDER BY m.id DESC LIMIT 50",(subject_id,after),fetch="all")
     rows.reverse()
     return web.json_response({"messages":[{"id":int(r[0]),"chat_id":int(r[1]),"body":r[2],"created_at":r[3],
         "username":r[4] or "","display_name":r[5] or "Foydalanuvchi","avatar":_social_avatar_thumb(r[6]),"badge":r[7] or ""} for r in rows]})
@@ -6050,16 +6141,26 @@ async def api_social_chat_get(request):
 async def api_social_chat_send(request):
     uid,p,kind,err = _social_auth(request)
     if err: return err
-    message = str((await _read_json(request)).get("message") or "").strip()
+    body=await _read_json(request)
+    scope=str(body.get("scope","general")).strip().lower()
+    if scope not in {"general","subject"}: return web.json_response({"error":"bad_scope"},status=400)
+    subject_id=None
+    if scope=="subject":
+        try: subject_id=int(body.get("subject_id"))
+        except (TypeError,ValueError): return web.json_response({"error":"bad_subject"},status=400)
+        if not _social_subject_allowed(uid,kind,p,subject_id):
+            return web.json_response({"error":"subject_forbidden"},status=403)
+    message = str(body.get("message") or "").strip()
     if not message or len(message)>800: return web.json_response({"error":"bad_message"},status=400)
-    recent = run("SELECT created_at FROM community_messages WHERE chat_id=? ORDER BY id DESC LIMIT 1",(uid,),fetch="one")
+    recent = run("SELECT created_at FROM community_messages WHERE chat_id=? AND COALESCE(scope,'general')=? AND COALESCE(subject_id,0)=? ORDER BY id DESC LIMIT 1",(uid,scope,subject_id or 0),fetch="one")
     if recent:
         try:
             if (datetime.now()-datetime.fromisoformat(recent[0])).total_seconds()<2:
                 return web.json_response({"error":"chat_slow_down"},status=429)
         except ValueError: pass
-    mid = run("INSERT INTO community_messages (chat_id,body,created_at,hidden) VALUES (?,?,?,0)",
-              (uid,message,datetime.now().isoformat(timespec="seconds")),fetch="lastid")
+    mid = run("INSERT INTO community_messages (chat_id,body,created_at,hidden,scope,subject_id) VALUES (?,?,?,0,?,?)",
+              (uid,message,datetime.now().isoformat(timespec="seconds"),scope,subject_id),fetch="lastid")
+    audit(uid,"social_chat_send",str(subject_id or "general"),message[:120])
     return web.json_response({"ok":True,"id":mid})
 
 
@@ -7692,6 +7793,7 @@ async def start_web_server():
     app.router.add_post("/api/social/ads", api_social_ad_create)
     app.router.add_get("/api/social/direct/{chat_id}", api_social_direct_get)
     app.router.add_post("/api/social/direct/{chat_id}", api_social_direct_send)
+    app.router.add_get("/api/social/chat/scopes", api_social_chat_scopes)
     app.router.add_get("/api/social/chat", api_social_chat_get)
     app.router.add_post("/api/social/chat", api_social_chat_send)
     app.router.add_post("/api/social/report", api_social_report)
