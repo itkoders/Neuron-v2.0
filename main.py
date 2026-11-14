@@ -5324,7 +5324,7 @@ async def api_teacher_student_settings(request):
     if note and note != previous_note:
         result = await notify_parents_of(
             sid,
-            f"💬 **O‘QITUVCHIDAN YANGI IZO H**\n"
+            f"💬 **O‘QITUVCHIDAN YANGI IZOH**\n"
             f"👤 O‘quvchi: **{md(st['fio'])}**\n"
             f"📚 Fan: **{md(db_subject(st['subject_id'])['name'])}**\n\n"
             f"🗒 **Izoh:**\n{md(note)}"
