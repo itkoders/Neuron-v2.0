@@ -5783,14 +5783,27 @@ async def api_onboard_parent(request):
         return web.json_response({"error": "max_children"}, status=409)
     exists = run("SELECT id FROM pending_requests WHERE student_id=? AND parent_chat_id=?",
                  (sid, uid), fetch="one")
-    if not exists:
-        run("INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
-            (sid, uid, parent_name))
+    if exists:
+        request_id = exists[0]
+    else:
+        request_id = run(
+            "INSERT INTO pending_requests (student_id, parent_chat_id, parent_name) VALUES (?, ?, ?)",
+            (sid, uid, parent_name), fetch="lastid"
+        )
     audit(uid, "miniapp_parent_link_request", str(sid), parent_name)
+    # O‘qituvchiga doimiy Telegram xabari yuboramiz: send_auto_clean_message ishlatilmaydi,
+    # shuning uchun botning 120 soniyalik avtomatik tozalash taymeri bu xabarni o‘chirmaydi.
+    request_keyboard = kb([[
+        btn("✅ Tasdiqlash", f"tp_app_{request_id}"),
+        btn("❌ Rad etish", f"tp_rej_{request_id}")
+    ]])
     await notify_teacher(
         st["teacher_id"],
-        f"📨 **Yangi ota-ona so‘rovi**\\nO‘quvchi: **{md(st['fio'])}**\\n"
-        "Tasdiqlash yoki rad etish uchun NEYRON ilovasidagi **So‘rovlar** bo‘limini oching."
+        f"📨 **Yangi ota-ona ulanish so‘rovi**\\n"
+        f"👤 Ota-ona: **{md(parent_name)}**\\n"
+        f"🎓 O‘quvchi: **{md(st['fio'])}**\\n"
+        "Quyidagi tugmalar orqali so‘rovni ko‘rib chiqing.",
+        reply_markup=request_keyboard
     )
     return web.json_response({"ok": True, "pending": True})
 
