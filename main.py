@@ -4453,9 +4453,55 @@ async def new_year_broadcast_once():
     db_set_setting("new_year_2027_failed_count", failed_count[0] if failed_count else 0)
 
 
+# ============================================================
+# TELEGRAM PROFIL: ITKODERS jonli soati va NEURON V2 bio
+# ============================================================
+PROFILE_LAST_NAME = ""
+PROFILE_NAME_RETRY_AT = 0.0
+PROFILE_BIO_CONFIGURED = False
+PROFILE_BIO_RETRY_AT = 0.0
+
+async def sync_bot_profile():
+    """Bot nomidagi Toshkent vaqtini va profil bio matnini xavfsiz yangilaydi."""
+    global PROFILE_LAST_NAME, PROFILE_NAME_RETRY_AT
+    global PROFILE_BIO_CONFIGURED, PROFILE_BIO_RETRY_AT
+
+    if not bot:
+        return
+
+    now = local_now()
+    minute_name = f"ITKODERS | {now.strftime('%H:%M')}"
+    monotonic_now = time.monotonic()
+
+    # Nomni faqat minut o'zgarganda yangilaymiz; xatoda 5 daqiqa kutamiz.
+    if minute_name != PROFILE_LAST_NAME and monotonic_now >= PROFILE_NAME_RETRY_AT:
+        try:
+            await bot.set_my_name(name=minute_name)
+            PROFILE_LAST_NAME = minute_name
+            logging.info("Telegram profil nomi yangilandi: %s", minute_name)
+        except Exception:
+            PROFILE_NAME_RETRY_AT = monotonic_now + 300
+            logging.exception("Telegram profil nomini yangilashda xato")
+
+    # Bio statik matn: Telegram bio maydoni jonli animatsiyani qo'llamaydi.
+    if not PROFILE_BIO_CONFIGURED and monotonic_now >= PROFILE_BIO_RETRY_AT:
+        short_bio = (
+            "◉ NEURON V2 • DIGITAL RADAR • SYSTEM ACTIVE • "
+            "AI • EDUCATION • TECHNOLOGY"
+        )
+        try:
+            await bot.set_my_short_description(short_description=short_bio)
+            PROFILE_BIO_CONFIGURED = True
+            logging.info("Telegram profil bio matni yangilandi")
+        except Exception:
+            PROFILE_BIO_RETRY_AT = monotonic_now + 300
+            logging.exception("Telegram profil bio matnini yangilashda xato")
+
+
 async def background_loop():
     while True:
         try:
+            await sync_bot_profile()
             # Yangi kun kirganda jurnalni bir daqiqa ichida avtomatik yangilash.
             check_and_reset_daily_data()
             await auto_notify_once()
