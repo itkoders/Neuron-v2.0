@@ -5105,6 +5105,7 @@ def _admin_overview_payload():
     settings = {
         "mandatory_sub": db_get_setting("mandatory_sub") == "1",
         "required_channel": db_get_setting("required_channel") or "",
+        "required_channels": "\\n".join(required_channels()),
         "support_contact": db_get_setting("support_contact") or "",
         "support_label": db_get_setting("support_label") or "Yordam",
         "support_enabled": db_get_setting("support_enabled") == "1",
@@ -5326,23 +5327,37 @@ async def api_admin_settings(request):
     body = await _read_json(request)
     key = str(body.get("key",""))
     value = str(body.get("value","")).strip()
-    if key == "required_channel":
-        if not value:
-            db_set_setting("required_channel",""); db_set_setting("required_channel_url","")
-        else:
-            if not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"-?\\d{6,}",value)):
-                return web.json_response({"error":"bad_channel"},status=400)
-            if not bot: return web.json_response({"error":"bot_unavailable"},status=503)
-            try:
-                chat = await bot.get_chat(value); me = await bot.get_me()
-                member = await bot.get_chat_member(chat.id,me.id)
+    if key in {"required_channel", "required_channels"}:
+        values = [x.strip() for x in value.splitlines() if x.strip()]
+        if key == "required_channel" and value:
+            values = [value]
+        if len(values) > 30:
+            return web.json_response({"error":"too_many_channels","limit":30},status=400)
+        if any(not (re.fullmatch(r"@[A-Za-z][A-Za-z0-9_]{4,31}",v) or re.fullmatch(r"-?\\d{6,}",v)) for v in values):
+            return web.json_response({"error":"bad_channel"},status=400)
+        if values and not bot:
+            return web.json_response({"error":"bot_unavailable"},status=503)
+        verified, links = [], {}
+        try:
+            me = await bot.get_me() if values else None
+            for raw in values:
+                chat = await bot.get_chat(raw)
+                member = await bot.get_chat_member(chat.id, me.id)
                 if chat.type not in ("channel","supergroup") or member.status not in ("administrator","creator"):
-                    return web.json_response({"error":"bot_not_admin"},status=400)
+                    return web.json_response({"error":"bot_not_admin","channel":raw},status=400)
                 url = f"https://t.me/{chat.username}" if chat.username else (chat.invite_link or "")
-                if not url: url = (await bot.create_chat_invite_link(chat.id)).invite_link
-                db_set_setting("required_channel",value); db_set_setting("required_channel_url",url)
-            except Exception:
-                return web.json_response({"error":"channel_check_failed"},status=400)
+                if not url:
+                    url = (await bot.create_chat_invite_link(chat.id)).invite_link
+                channel_id = str(chat.id)
+                verified.append(channel_id)
+                links[channel_id] = url
+        except Exception:
+            logging.exception("Majburiy obuna kanallarini tekshirishda xato")
+            return web.json_response({"error":"channel_check_failed"},status=400)
+        db_set_setting("required_channels", json.dumps(verified, ensure_ascii=False))
+        db_set_setting("required_channel", verified[0] if verified else "")
+        db_set_setting("required_channel_urls", json.dumps(links, ensure_ascii=False))
+        db_set_setting("required_channel_url", links.get(verified[0], "") if verified else "")
         SUB_CACHE.clear()
     elif key == "mandatory_sub":
         if value == "1" and not db_get_setting("required_channel"):
