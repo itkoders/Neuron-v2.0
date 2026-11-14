@@ -5361,7 +5361,8 @@ async def api_admin_overview(request):
     if is_super(uid):
         rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
         payload["admins"] = [
-            {"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID}
+            {"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID,
+             "permissions": sorted(admin_permissions_for(int(row[0])))}
             for row in rows
         ]
     return web.json_response(payload)
