@@ -6365,6 +6365,100 @@ async def api_teacher_export(request):
     for col, width in enumerate([28,16,20,10,10,10,12,14,18,14,16,14,18,18,18,16,18], 1):
         roster.column_dimensions[get_column_letter(col)].width = width
 
+    # Har bir fan uchun alohida, o‘qituvchi belgilagan ustun nomlari bilan tushunarli jadval.
+    # Bu varaqda bir o‘quvchi bir nechta fanga qatnashsa, har bir fan alohida qatorda ko‘rinadi.
+    for subject_id, subj in subjects.items():
+        subject_students = [st for st in students if st.get("subject_id") == subject_id]
+        if not subject_students:
+            continue
+        raw_labels = list(subj.get("labels") or [])
+        labels = [(str(raw_labels[i]).strip() if i < len(raw_labels) and str(raw_labels[i]).strip()
+                   else f"{i+1}-ustun") for i in range(3)]
+        subject_title = re.sub(r"[\\/*?:\\[\\]]+", " ", str(subj.get("name") or "Fan")).strip()
+        subject_title = subject_title[:25] or "Fan"
+        sheet_name = subject_title
+        suffix = 2
+        while sheet_name in wb.sheetnames:
+            tail = f" ({suffix})"
+            sheet_name = subject_title[:31-len(tail)] + tail
+            suffix += 1
+        sws = wb.create_sheet(sheet_name)
+        sh = ["№", "O‘QUVCHI ISM-FAMILIYASI", "GURUH",
+              f"{labels[0]} — BALL", f"{labels[1]} — BALL", f"{labels[2]} — BALL",
+              "JAMI BALL", "O‘RTACHA", "DAVOMAT", "TO‘LOV HOLATI", "OYLIK TO‘LOV", "QARZ"]
+        title_block(sws, f"{str(subj.get('name') or 'FAN').upper()} — O‘QUVCHILAR JADVALI",
+                    f"Bu varaq faqat {subj.get('name') or 'shu fan'} uchun. Har bir ustun nomi o‘qituvchi belgilagan baholash nomidan olingan.",
+                    len(sh))
+        sws["A4"] = "QANDAY O‘QILADI?"
+        sws["A4"].font = Font(bold=True, color=navy)
+        sws.merge_cells(start_row=4, start_column=2, end_row=4, end_column=len(sh))
+        sws["B4"] = "Yashil = yaxshi (80–100)  |  Sariq = o‘rtacha (50–79)  |  Qizil = past (0–49)  |  “Kiritilmagan” = hali baho yo‘q"
+        sws["B4"].font = Font(bold=True, color="334155")
+        sws["B4"].fill = PatternFill("solid", fgColor="FFF2CC")
+        sws["B4"].alignment = Alignment(wrap_text=True, vertical="center")
+        sws.row_dimensions[4].height = 32
+        header_row(sws, 6, sh)
+        for ridx, st in enumerate(subject_students, 7):
+            score_values = []
+            score_cells = []
+            for i in (1, 2, 3):
+                value = st.get(f"s{i}")
+                has_score = bool(st.get(f"s{i}_scored", int(value or 0) > 0))
+                if has_score:
+                    try:
+                        numeric = float(value or 0)
+                        score_values.append(numeric)
+                        score_cells.append(numeric)
+                    except (TypeError, ValueError):
+                        has_score = False
+                score_cells.append(value if has_score else "Kiritilmagan")
+            total_score = round(sum(score_values), 1) if score_values else ""
+            average_score = round(sum(score_values) / len(score_values), 1) if score_values else ""
+            due_total, paid_total = payment_totals.get(st["id"], (0, 0))
+            debt = max(0, due_total - paid_total)
+            values = [ridx-6, st.get("fio",""), st.get("group_name",""),
+                      *score_cells, total_score, average_score,
+                      st.get("davomat","Kutilmoqda"), st.get("payment_status",""),
+                      st.get("payment_amount",0), debt]
+            for cidx, value in enumerate(values, 1):
+                cell = sws.cell(ridx, cidx, value)
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                cell.border = Border(bottom=thin)
+                if ridx % 2 == 0:
+                    cell.fill = PatternFill("solid", fgColor="F7FAFD")
+            # Baholash kataklarini ballga qarab ranglaymiz.
+            for cidx, numeric in zip((4,5,6), score_cells):
+                cell = sws.cell(ridx, cidx)
+                if isinstance(numeric, (int,float)):
+                    color = green if numeric >= 80 else (gold if numeric >= 50 else red)
+                    cell.fill = PatternFill("solid", fgColor=color)
+                    cell.font = Font(bold=True, color="243447")
+                else:
+                    cell.fill = PatternFill("solid", fgColor="E9EEF5")
+                    cell.font = Font(italic=True, color="64748B")
+            att_cell = sws.cell(ridx, 9)
+            att_text = str(att_cell.value or "").lower()
+            if "kelgan" in att_text or "bor" in att_text:
+                att_cell.fill = PatternFill("solid", fgColor=green)
+            elif "kelmagan" in att_text or "yo‘q" in att_text or "yo'q" in att_text:
+                att_cell.fill = PatternFill("solid", fgColor=red)
+            else:
+                att_cell.fill = PatternFill("solid", fgColor=gold)
+            pay_cell = sws.cell(ridx, 10)
+            pay_cell.fill = PatternFill("solid", fgColor=green if debt <= 0 else red)
+            sws.row_dimensions[ridx].height = 28
+        last_row = 6 + len(subject_students)
+        sws.auto_filter.ref = f"A6:L{last_row}"
+        sws.freeze_panes = "D7"
+        for col, width in enumerate([7,30,18,22,22,22,14,14,18,18,18,16],1):
+            sws.column_dimensions[get_column_letter(col)].width = width
+        sws.sheet_view.showGridLines = False
+        sws.sheet_properties.pageSetUpPr.fitToPage = True
+        sws.page_setup.orientation = "landscape"
+        sws.page_setup.fitToWidth = 1
+        sws.page_setup.fitToHeight = 0
+        sws.print_title_rows = "1:6"
+
     # Har bir sana uchun alohida varaq: baholar, davomat, to'lov va izoh.
     day = start_date
     while day <= today:
