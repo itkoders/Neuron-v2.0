@@ -4819,72 +4819,31 @@ async def new_year_broadcast_once():
 
 
 # ============================================================
-# TELEGRAM PROFIL: NEURON V2 nomidagi jonli soat
-# Vaqt Render serverida O'zbekiston (UTC+5) bo'yicha olinadi.
-# Telegram API cheklov qo'ysa, retry_after bo'yicha kutib qayta urinadi.
+# TELEGRAM PROFIL BIO: O'zbekiston vaqti
+# Bio 120 belgidan oshmaydi. Telegram cheklov qo'ysa,
+# retry_after bo'yicha kutib qayta urinadi.
 # ============================================================
-PROFILE_BIO_CONFIGURED = False
-PROFILE_BIO_RETRY_AT = 0.0
-PROFILE_NAME_BASE = None
-PROFILE_NAME_LAST = ""
-
-async def sync_bot_profile():
-    """Botning statik bio matnini bir marta sozlaydi."""
-    global PROFILE_BIO_CONFIGURED, PROFILE_BIO_RETRY_AT
-
-    if not bot or PROFILE_BIO_CONFIGURED:
-        return
-
-    monotonic_now = time.monotonic()
-    if monotonic_now < PROFILE_BIO_RETRY_AT:
-        return
-
-    short_bio = (
-        "◉ NEURON V2 • DIGITAL RADAR • SYSTEM ACTIVE • "
-        "AI • EDUCATION • TECHNOLOGY"
-    )
-    try:
-        await bot.set_my_short_description(short_description=short_bio)
-        PROFILE_BIO_CONFIGURED = True
-        logging.info("Telegram profil bio matni yangilandi")
-    except Exception as exc:
-        retry_after = getattr(exc, "retry_after", 300)
-        PROFILE_BIO_RETRY_AT = monotonic_now + max(300, int(retry_after))
-        logging.exception("Telegram profil bio matnini yangilashda xato")
-
-
-async def sync_bot_clock_name():
-    """Bot nomiga O'zbekiston vaqtini qo'shib, har daqiqada yangilashga urinadi."""
-    global PROFILE_NAME_BASE, PROFILE_NAME_LAST
-
+async def sync_bot_clock_bio():
+    """Bot bio'sidagi soatni O'zbekiston vaqti bilan yangilashga urinadi."""
     if not bot:
         return
 
     while True:
         try:
-            if PROFILE_NAME_BASE is None:
-                current = await bot.get_my_name()
-                current_name = (getattr(current, "name", "") or "").strip()
-                # Oldingi ishga tushishdan qolgan | HH:MM qo'shimchasini olib tashlaymiz.
-                PROFILE_NAME_BASE = re.sub(
-                    r"\s*\|\s*\d{2}:\d{2}$", "", current_name
-                ).strip() or "NEURON V2"
-
             clock = local_now().strftime("%H:%M")
-            updated_name = f"{PROFILE_NAME_BASE} | {clock}"[:64]
+            short_bio = (
+                f"🕒 O‘zbekiston vaqti: {clock} | "
+                "NEURON V2 • SYSTEM ACTIVE • AI • EDUCATION"
+            )
+            await bot.set_my_short_description(short_description=short_bio)
+            logging.info("Telegram bio soati yangilandi: %s", clock)
 
-            if updated_name != PROFILE_NAME_LAST:
-                await bot.set_my_name(name=updated_name)
-                PROFILE_NAME_LAST = updated_name
-                logging.info("Telegram bot nomi yangilandi: %s", updated_name)
-
-            # Keyingi daqiqaning boshiga yaqin uyg'onish.
             await asyncio.sleep(max(1, 60 - local_now().second))
         except Exception as exc:
             retry_after = getattr(exc, "retry_after", None)
             wait_seconds = max(60, int(retry_after)) if retry_after is not None else 300
             logging.warning(
-                "Telegram bot nomidagi soat yangilanmadi; %s soniyadan keyin qayta urinadi: %s",
+                "Telegram bio soati yangilanmadi; %s soniyadan keyin qayta urinadi: %s",
                 wait_seconds, exc
             )
             await asyncio.sleep(wait_seconds)
@@ -7913,9 +7872,8 @@ async def main():
     # Kundalik jurnal bot tokenidan mustaqil ishlaydi.
     asyncio.create_task(background_loop())
     if bot:
-        # Bio bir marta, profil nomidagi soat esa har daqiqada yangilanadi.
-        asyncio.create_task(sync_bot_profile())
-        asyncio.create_task(sync_bot_clock_name())
+        # Bio ichidagi O'zbekiston vaqti yangilanadi.
+        asyncio.create_task(sync_bot_clock_bio())
         try:
             await dp.start_polling(bot)
         finally:
