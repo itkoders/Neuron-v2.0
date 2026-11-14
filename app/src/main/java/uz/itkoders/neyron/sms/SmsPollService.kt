@@ -88,7 +88,8 @@ class SmsPollService : Service() {
 
     @Suppress("DEPRECATION")
     private fun smsManager(): SmsManager {
-        return if (Build.VERSION.SDK_INT >= 31) getSystemService(SmsManager::class.java)
+        return if (Build.VERSION.SDK_INT >= 31)
+            getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
         else SmsManager.getDefault()
     }
 
