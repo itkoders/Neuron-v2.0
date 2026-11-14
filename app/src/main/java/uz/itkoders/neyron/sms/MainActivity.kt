@@ -69,7 +69,7 @@ class MainActivity : Activity() {
             setPadding(0, 18, 0, 18)
         }
         val warning = TextView(this).apply {
-            text = "Muhim: SMS o‘qituvchining SIM-kartasidan va uning operator balansidan yuboriladi. Telefon internetga ulangan bo‘lishi, SMS ruxsati berilishi va Android xizmat bildirishnomasini ko‘rsatishi kerak. Ikki SIM bo‘lsa, standart SMS SIM-kartasini tekshiring."
+            text = "Muhim: SMS o‘qituvchining SIM-kartasidan va operator balansidan yuboriladi. Internet, SMS ruxsati va xizmat bildirishnomasi kerak. Ikki SIM bo‘lsa, standart SMS SIM-kartasini tekshiring. Android 15/16 da ushbu fon xizmati 6 soatlik tizim chekloviga ega; to‘xtasa, ilovani qayta ochib xizmatni yana yoqing."
             textSize = 13f
             setTextColor(0xFF7C2D12.toInt())
             setPadding(0, 16, 0, 0)
