@@ -2333,10 +2333,15 @@ body.social-open #paxBuddy{display:none}
   }
   async function renderSocialChat(){
     const host=$("socialContent");
-    host.innerHTML='<div class="tg-chat-layout"><div class="tg-chat-toolbar"><input class="field" id="socialSearch" type="search" placeholder="🔎 Foydalanuvchilarni qidirish…" aria-label="Foydalanuvchilarni qidirish"><div class="tg-search-results" id="socialSearchResults"></div></div><div class="tg-chat-messages" id="socialMessages" aria-live="polite"><div class="loading">Xabarlar yuklanmoqda…</div></div><div class="tg-chat-note">NEURON hamjamiyati · Hurmat bilan muloqot qiling</div><form class="tg-chat-compose" id="socialSend"><input class="field" id="socialMessage" maxlength="800" placeholder="Xabar yozing…" aria-label="Xabar"><button class="btn" type="submit" aria-label="Yuborish">➤</button></form></div>';
+    host.innerHTML='<div class="tg-chat-layout"><div class="tg-chat-toolbar"><select class="field" id="socialChatScope" aria-label="Chat turini tanlang"><option value="general">🌍 Umumiy chat</option></select><input class="field" id="socialSearch" type="search" placeholder="🔎 Foydalanuvchilarni qidirish…" aria-label="Foydalanuvchilarni qidirish"><div class="tg-search-results" id="socialSearchResults"></div></div><div class="tg-chat-messages" id="socialMessages" aria-live="polite"><div class="loading">Xabarlar yuklanmoqda…</div></div><div class="tg-chat-note" id="socialChatNote">Umumiy hamjamiyat · Hurmat bilan muloqot qiling</div><form class="tg-chat-compose" id="socialSend"><input class="field" id="socialMessage" maxlength="800" placeholder="Xabar yozing…" aria-label="Xabar"><button class="btn" type="submit" aria-label="Yuborish">➤</button></form></div>';
     try{const p=await api("/api/social/profile");socialProfile=p.profile;}catch(_){}
-    const box=$("socialMessages");
-    let lastId=0, firstLoad=true;
+    const scopeSelect=$("socialChatScope"), box=$("socialMessages");
+    let scope="general",subjectId=null,lastId=0,firstLoad=true;
+    try{
+      const scopes=await api("/api/social/chat/scopes");
+      scopeSelect.innerHTML=(scopes.items||[]).map(x=>'<option value="'+(x.scope==="subject"?"subject:"+x.subject_id:"general")+'">'+esc(x.name)+'</option>').join("")||'<option value="general">🌍 Umumiy chat</option>';
+    }catch(_){}
+    const scopeQuery=()=>scope==="subject"?"&scope=subject&subject_id="+encodeURIComponent(subjectId):"&scope=general";
     const messageHTML=m=>{
       const mine=Number(m.chat_id)===Number(socialProfile?.chat_id);
       const controls=state.role==="admin"
@@ -2346,18 +2351,25 @@ body.social-open #paxBuddy{display:none}
     };
     const refresh=async()=>{
       try{
-        const d=await api("/api/social/chat?after="+(firstLoad?0:lastId));
+        const d=await api("/api/social/chat?after="+(firstLoad?0:lastId)+scopeQuery());
         const rows=d.messages||[];
         if(firstLoad){box.innerHTML="";rows.forEach(m=>{box.insertAdjacentHTML("beforeend",messageHTML(m));lastId=Math.max(lastId,Number(m.id)||0);});firstLoad=false;box.scrollTop=box.scrollHeight;}
         else if(rows.length){const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<100;rows.forEach(m=>{if(Number(m.id)>lastId){box.insertAdjacentHTML("beforeend",messageHTML(m));lastId=Math.max(lastId,Number(m.id)||0);}});if(nearBottom)box.scrollTop=box.scrollHeight;}
         if(firstLoad===false&&!box.children.length)box.innerHTML='<div class="empty">Hozircha xabar yo‘q. Birinchi bo‘lib yozing!</div>';
       }catch(e){if(!box.children.length)box.innerHTML='<div class="empty">'+esc(errText(e))+'</div>';}
     };
+    scopeSelect.onchange=async()=>{
+      const value=scopeSelect.value.split(":");scope=value[0];subjectId=value[1]?Number(value[1]):null;
+      lastId=0;firstLoad=true;box.innerHTML='<div class="loading">Chat yuklanmoqda…</div>';
+      $("socialChatNote").textContent=scope==="general"?"Umumiy hamjamiyat · Hurmat bilan muloqot qiling":"Faqat shu fan o‘qituvchisi va unga biriktirilgan o‘quvchilar ko‘radi";
+      if(socialPoll){clearInterval(socialPoll);socialPoll=null;}
+      await refresh();socialPoll=setInterval(()=>{if(!document.hidden)refresh();},10000);
+    };
     await refresh();
     $("socialSend").onsubmit=async e=>{
       e.preventDefault();const input=$("socialMessage"),message=input.value.trim();if(!message)return;
       const button=e.submitter||$("socialSend").querySelector("button");button.disabled=true;
-      try{await api("/api/social/chat",{method:"POST",body:JSON.stringify({message})});input.value="";await refresh();box.scrollTop=box.scrollHeight;}
+      try{await api("/api/social/chat",{method:"POST",body:JSON.stringify({message,scope,subject_id:subjectId})});input.value="";await refresh();box.scrollTop=box.scrollHeight;}
       catch(err){toast(err.data?.error==="chat_slow_down"?"Juda tez yozdingiz. Biroz kuting.":errText(err));}
       finally{button.disabled=false;input.focus();}
     };
@@ -2377,6 +2389,7 @@ body.social-open #paxBuddy{display:none}
     };
     socialPoll=setInterval(()=>{if(!document.hidden)refresh();},10000);
   }
+
   $("socialClose")?.addEventListener("click",closeSocial);
   $("socialOverlay")?.addEventListener("click",e=>{if(e.target.id==="socialOverlay")closeSocial();});
    // Profil va chat tugmalari data-social-open orqali barcha rollarda ishlaydi.
