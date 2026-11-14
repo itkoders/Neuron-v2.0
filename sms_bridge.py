@@ -133,6 +133,10 @@ def enqueue_score_sms(run, teacher_id, student, subject, label, value, now_iso):
 
 
 def claim_tasks(run, teacher_id, now_iso, limit=5):
+    # Eski navbatlar kechikib yuborilmasin: 24 soatdan eski pending xabarlar tugatiladi.
+    expired = (datetime.fromisoformat(now_iso) - timedelta(hours=24)).isoformat()
+    run("UPDATE sms_queue SET status='expired' WHERE teacher_id=? AND status='pending' AND created_at < ?",
+        (teacher_id, expired))
     # Stale claims are retried if the Android app closed before reporting.
     stale = (datetime.fromisoformat(now_iso) - timedelta(minutes=3)).isoformat()
     run("""UPDATE sms_queue SET status='pending',claimed_at=''
