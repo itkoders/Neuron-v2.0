@@ -790,6 +790,13 @@ def db_student(s_id):
     return _student(row) if row else None
 
 
+def student_public_code(student_id):
+    row = run("""SELECT i.code FROM student_identities i
+        JOIN student_identity_members m ON m.identity_id=i.id
+        WHERE m.student_id=?""",(student_id,),fetch="one")
+    return str(row[0]) if row else (db_student(student_id) or {}).get("code","")
+
+
 def db_find_student_by_code(code):
     identity = run("SELECT id FROM student_identities WHERE code=?", (str(code).strip(),), fetch="one")
     if identity:
@@ -5168,7 +5175,7 @@ async def api_teacher_settings(request):
         "payment": teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""},
         "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
-                      "code": r[3], "subject_id": r[4], "subject_name": r[5],
+                      "code": student_public_code(r[0]), "subject_id": r[4], "subject_name": r[5],
                       "payment_amount": r[6] or 0, "teacher_note": r[7] or "",
                       "phone": r[8] or ""} for r in rows]
     })
