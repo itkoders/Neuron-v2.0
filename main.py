@@ -493,6 +493,27 @@ def init_db():
         db_set_setting("mini_app_all_plans_v1","1")
 
 
+MESSAGE_EMOJI_KEYS = {
+    "general": "Umumiy xabarlar",
+    "subscription": "Majburiy obuna",
+    "teacher_registration": "O‘qituvchi ro‘yxatdan o‘tishi",
+    "parent_notifications": "Ota-onaga bildirishnomalar",
+    "student_notifications": "O‘quvchiga bildirishnomalar",
+    "payments": "To‘lov xabarlari",
+    "alerts": "Ogohlantirish va maqtovlar",
+    "broadcasts": "E’lonlar",
+    "admin_notifications": "Admin bildirishnomalari",
+}
+
+def message_emoji(key):
+    return str(db_get_setting("message_emoji_" + key) or "").strip()[:16]
+
+def with_message_emoji(text, key):
+    emoji = message_emoji(key)
+    content = str(text or "")
+    return content if not emoji or content.startswith(emoji) else emoji + " " + content
+
+
 def db_get_setting(key):
     row = run("SELECT value FROM settings WHERE key = ?", (key,), fetch="one")
     return row[0] if row else None
@@ -745,13 +766,13 @@ async def notify_super_admins_registration(t):
     """Telefon orqali ro‘yxatdan o‘tgan yangi o‘qituvchi haqida barcha adminlarga xabar."""
     if not bot or not t:
         return
-    text = (
+    text = with_message_emoji((
         "🆕 YANGI O‘QITUVCHI TASDIQLASHI\n\n"
         f"👤 Ism: {md(teacher_name(t))}\n"
         f"📞 Telefon: {md(t.get('phone') or '—')}\n"
         f"🆔 ID: {t['id']}\n"
         "🪪 Holat: Tasdiqlash kutilmoqda"
-    )
+    ), "teacher_registration")
     markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"),
                   btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
     for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
@@ -1372,7 +1393,7 @@ async def notify_teacher(t_id, text, reply_markup=None):
     t = db_teacher(t_id)
     if t and t["chat_id"]:
         try:
-            await bot.send_message(t["chat_id"], text, reply_markup=reply_markup, parse_mode="Markdown")
+            await bot.send_message(t["chat_id"], with_message_emoji(text, "general"), reply_markup=reply_markup, parse_mode="Markdown")
         except Exception:
             logging.exception("O'qituvchiga xabar yuborilmadi: teacher_id=%s", t_id)
 
@@ -1383,7 +1404,7 @@ async def notify_parents_of(student_id, text):
     for p_id in parent_ids:
         try:
             await asyncio.wait_for(
-                bot.send_message(p_id, text, parse_mode="Markdown"),
+                bot.send_message(p_id, with_message_emoji(text, "parent_notifications"), parse_mode="Markdown"),
                 timeout=8
             )
             sent.append(p_id)
@@ -1540,10 +1561,10 @@ class SubGuard(BaseMiddleware):
             if join_url:
                 rows.append([InlineKeyboardButton(text=f"📢 {index}-kanalga obuna bo‘lish", url=join_url)])
         rows.append([btn("✅ Barcha kanallarni tekshirish", "check_sub")])
-        text = "🔔 Botdan foydalanish uchun avval kanalimizga obuna bo'ling, so'ng \"✅ Tekshirish\" tugmasini bosing."
+        text = with_message_emoji("Botdan foydalanish uchun avval kanalimizga obuna bo‘ling, so‘ng \"✅ Tekshirish\" tugmasini bosing.", "subscription")
         if isinstance(event, types.CallbackQuery):
             await event.answer("Avval kanalga obuna bo'ling.", show_alert=True)
-            await bot.send_message(user.id, text, reply_markup=kb(rows))
+            await bot.send_message(user.id, with_message_emoji(text, "subscription"), reply_markup=kb(rows))
         else:
             await event.answer(text, reply_markup=kb(rows))
         return None
@@ -5371,6 +5392,7 @@ def _admin_overview_payload():
         "admin_users": min(admin_member_count(), MAX_ADMIN_USERS)
     }
     settings = {
+        "message_emojis": {key: db_get_setting("message_emoji_" + key) or "" for key in MESSAGE_EMOJI_KEYS},
         "mandatory_sub": db_get_setting("mandatory_sub") == "1",
         "required_channel": db_get_setting("required_channel") or "",
         "required_channels": "\n".join(required_channels()),
@@ -5714,6 +5736,11 @@ async def api_admin_settings(request):
             audit(uid, "verify_mode_locked", "phone", "Telefon tasdig‘i avtomatik rejim")
         elif key == "ai_primary" and value not in {"gemini","openai"}: return web.json_response({"error":"bad_value"},status=400)
         db_set_setting(key,value)
+    elif key.startswith("message_emoji_"):
+        emoji_key = key[len("message_emoji_"):]
+        if emoji_key not in MESSAGE_EMOJI_KEYS or len(value) > 16:
+            return web.json_response({"error":"bad_value"},status=400)
+        db_set_setting(key, value)
     elif key.startswith("ai_allowed_"):
         try: tid=int(key.rsplit("_",1)[1])
         except ValueError: return web.json_response({"error":"bad_value"},status=400)
