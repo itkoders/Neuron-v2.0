@@ -1812,7 +1812,7 @@ async def start_cmd(message: types.Message, state: FSMContext):
 async def back_home(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.clear()
-    await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
+    await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
                                  reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
 
 
