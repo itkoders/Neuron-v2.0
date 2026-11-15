@@ -1583,7 +1583,7 @@ async def check_sub(call: types.CallbackQuery):
         return
     await call.answer("✅ Rahmat! Endi botdan foydalanishingiz mumkin.", show_alert=True)
     try:
-        await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
+        await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n💎 Tariflarni ko‘rish uchun /tarif buyrug‘ini yuboring.\n\n👇 **Kerakli bo‘limni tanlang:**",
                                      reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
     except Exception:
         pass
@@ -1861,6 +1861,24 @@ async def teacher_role_menu(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await call.message.edit_text("Barcha o‘qituvchi funksiyalari NEYRON ilovasida.",
                                  reply_markup=main_menu_kb(call.from_user.id))
+
+
+@dp.message(Command("tarif"), F.chat.type == "private")
+async def public_plans_command(message: types.Message):
+    lines, rows = [], []
+    for p in db_plans():
+        if not p["active"]:
+            continue
+        price = "Bepul" if p["price"] == 0 else f"{p['price']:,} so'm"
+        duration = "Cheksiz" if not p["duration_days"] else f"{p['duration_days']} kun"
+        student_limit = f"{p['student_limit']} tagacha" if p["student_limit"] else "Cheksiz"
+        subject_limit = f"{p.get('subject_limit', 0)} ta" if p.get("subject_limit", 0) else "Cheksiz"
+        feats = ", ".join(label for k, label in FEATURES.items() if k in p["features"]) or "Asosiy imkoniyatlar"
+        lines.append(f"💼 **{md(p['name'])}**\n💰 Narxi: **{price}**\n🗓 Muddati: {duration}\n👥 O‘quvchilar: {student_limit}\n📚 Fanlar: {subject_limit}\n🧩 Imkoniyatlar: {md(feats)}")
+        rows.append([InlineKeyboardButton(text=f"✅ {p['name']} tarifini tanlash", callback_data=f"plan_request:{p['key']}")])
+    text = "💎 **NEURON V2 — TARIFLAR**\n\n" + ("\n\n".join(lines) if lines else "Hozircha faol tarif mavjud emas.")
+    text += "\n\n_Tarifni tanlasangiz, so‘rovingiz Super Adminga yuboriladi. Tarif faqat tasdiqlangandan keyin faollashadi._"
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="Markdown")
 
 
 @dp.callback_query(F.data == "public_plans")
