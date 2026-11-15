@@ -1789,15 +1789,33 @@ async def send_start_rocket(chat_id: int):
 
 @dp.message(F.sticker, F.chat.type == "private")
 async def save_start_rocket_sticker(message: types.Message):
-    """Faqat loyiha egasi yuborgan animatsiyali sticker /start uchun saqlanadi."""
-    if not is_super(message.from_user.id):
-        return
-    sticker = message.sticker
-    if not (getattr(sticker, "is_animated", False) or getattr(sticker, "is_video", False)):
-        await message.answer("⚠️ Bu oddiy statik sticker. Iltimos, animatsiyali 🚀 raketa stickerini yuboring.")
-        return
-    db_set_setting("start_rocket_sticker_file_id", sticker.file_id)
-    await message.answer("✅ Animatsiyali sticker saqlandi. Endi /start bosilganda shu raketa yuboriladi.")
+    """Egasi yuborgan animatsiyali stickerini /start uchun saqlaydi va har holatda javob beradi."""
+    try:
+        user_id = int(message.from_user.id)
+        if not is_super(user_id):
+            await message.answer(
+                "⚠️ Sticker qabul qilindi, lekin bu akkaunt loyiha egasi sifatida tanilmadi.\n"
+                f"Telegram ID: {user_id}\n"
+                "Render → Environment bo‘limidagi OWNER_TELEGRAM_ID qiymatini shu ID bilan tekshiring."
+            )
+            logging.warning("NEURON sticker sozlashga ruxsat yo‘q: telegram_id=%s", user_id)
+            return
+
+        sticker = message.sticker
+        if not (getattr(sticker, "is_animated", False) or getattr(sticker, "is_video", False)):
+            await message.answer(
+                "⚠️ Bu animatsiyasiz oddiy sticker. /start uchun animatsiyali 🚀 sticker yuboring."
+            )
+            return
+
+        db_set_setting("start_rocket_sticker_file_id", sticker.file_id)
+        await message.answer(
+            "✅ Animatsiyali sticker muvaffaqiyatli saqlandi! Endi /start yuborib tekshiring."
+        )
+        logging.info("NEURON start rocket sticker saqlandi: telegram_id=%s", user_id)
+    except Exception:
+        logging.exception("NEURON sticker saqlashda xatolik")
+        await message.answer("❌ Sticker saqlanmadi. Server xatosi qayd etildi; Render Logs tekshirilishi kerak.")
 
 
 @dp.message(CommandStart(), F.chat.type == "private")
