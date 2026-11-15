@@ -1347,13 +1347,16 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    # Telegram chatida faqat Mini App ishga tushirish tugmasi ko'rsatiladi.
+    # Asosiy menyuda Mini App va tariflar doim ko'rinadi.
     if MINIAPP_URL:
-        return kb([[InlineKeyboardButton(
+        rows = [[InlineKeyboardButton(
             text="📱 Ilovani ochish",
             web_app=WebAppInfo(url=miniapp_role_url("entry"))
-        )]])
-    return kb([[btn("📱 Ilovani ochish", "back_home")]])
+        )]]
+    else:
+        rows = [[btn("📱 Ilovani ochish", "back_home")]]
+    rows.append([btn("💎 Tariflar", "public_plans")])
+    return kb(rows)
 
 
 
@@ -1523,17 +1526,19 @@ async def is_subscribed(uid):
     cached = SUB_CACHE.get(uid)
     if cached and time.time() - cached[1] < 60:
         return cached[0]
+    # Barcha kanallarni tekshiramiz; bittasida obuna bo'lmasa hammasi talab qilinadi.
     ok = True
     for channel in channels:
         try:
             member = await bot.get_chat_member(channel, uid)
-            if member.status not in ("member", "administrator", "creator"):
+            is_member = member.status in ("member", "administrator", "creator")
+            if member.status == "restricted":
+                is_member = bool(getattr(member, "is_member", False))
+            if not is_member:
                 ok = False
-                break
         except Exception:
             logging.exception("Majburiy obuna tekshiruvida xato: %s", channel)
             ok = False
-            break
     SUB_CACHE[uid] = (ok, time.time())
     return ok
 
@@ -1556,10 +1561,22 @@ class SubGuard(BaseMiddleware):
         rows = []
         for index, channel in enumerate(channels, 1):
             join_url = links.get(channel, "")
-            if not join_url and channel.startswith("@"):
-                join_url = f"https://t.me/{channel[1:]}"
+            if not join_url:
+                try:
+                    channel_chat = await bot.get_chat(channel)
+                    join_url = (f"https://t.me/{channel_chat.username}"
+                                if channel_chat.username else (channel_chat.invite_link or ""))
+                    if not join_url:
+                        join_url = (await bot.create_chat_invite_link(channel_chat.id)).invite_link
+                except Exception:
+                    logging.exception("Majburiy obuna havolasi olinmadi: %s", channel)
             if join_url:
                 rows.append([InlineKeyboardButton(text=f"📢 {index}-kanalga obuna bo‘lish", url=join_url)])
+            else:
+                rows.append([InlineKeyboardButton(
+                    text=f"⚠️ {index}-kanal havolasi mavjud emas",
+                    callback_data="check_sub"
+                )])
         rows.append([btn("✅ Barcha kanallarni tekshirish", "check_sub")])
         text = with_message_emoji("Botdan foydalanish uchun avval kanalimizga obuna bo‘ling, so‘ng \"✅ Tekshirish\" tugmasini bosing.", "subscription")
         if isinstance(event, types.CallbackQuery):
@@ -3772,16 +3789,34 @@ async def sa_sub_channel_save(message: types.Message, state: FSMContext):
     except Exception:
         await send_and_clean_both(message, "❌ Kanal topilmadi yoki bot kanalga kira olmaydi. Botni kanalga admin qilib, qayta urinib ko'ring.", delay=30)
         return
+    # Kanallarni username emas, yagona Telegram chat ID bilan saqlaymiz.
     channels = required_channels()
-    if raw not in channels:
-        channels.append(raw)
+    links = required_channel_links()
+    normalized = []
+    for existing in channels:
+        try:
+            existing_chat = await bot.get_chat(existing)
+            existing_id = str(existing_chat.id)
+            if existing_id not in normalized:
+                normalized.append(existing_id)
+            old_link = links.get(existing) or (
+                f"https://t.me/{existing_chat.username}" if existing_chat.username else
+                (existing_chat.invite_link or "")
+            )
+            if old_link:
+                links[existing_id] = old_link
+        except Exception:
+            if existing not in normalized:
+                normalized.append(existing)
+    channel_id = str(channel_chat.id)
+    if channel_id not in normalized:
+        normalized.append(channel_id)
+    links[channel_id] = join_url
+    channels = normalized
     db_set_setting("required_channels", json.dumps(channels, ensure_ascii=False))
     db_set_setting("required_channel", channels[0] if channels else "")
-    links = required_channel_links()
-    links[raw] = join_url
     db_set_setting("required_channel_urls", json.dumps(links, ensure_ascii=False))
-    if not db_get_setting("required_channel_url"):
-        db_set_setting("required_channel_url", join_url)
+    db_set_setting("required_channel_url", links.get(channels[0], "") if channels else "")
     SUB_CACHE.clear()
     audit(message.chat.id, "required_channels_add", "", raw)
     await state.clear()
