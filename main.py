@@ -777,7 +777,7 @@ async def notify_super_admins_registration(t):
                   btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
     for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
         try:
-            await bot.send_message(cid, text, reply_markup=markup, parse_mode="Markdown")
+            await bot.send_message(cid, with_message_emoji(text, "teacher_registration"), reply_markup=markup, parse_mode="Markdown")
         except Exception:
             logging.exception("O‘qituvchi tasdiqlash xabari yuborilmadi: admin_id=%s", cid)
 
@@ -786,7 +786,7 @@ async def notify_super_admins_doc(t, file_id):
     for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
         try:
             await bot.send_photo(cid, file_id,
-                                 caption=f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\n📞 `{t['phone']}`",
+                                 caption=with_message_emoji(f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\n📞 `{t['phone']}`", "teacher_registration"),
                                  reply_markup=kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"), btn("❌ Rad etish", f"sa_vrej_{t['id']}")]]),
                                  parse_mode="Markdown")
         except Exception:
@@ -1376,35 +1376,35 @@ async def safe_delete_message(message: types.Message, delay: int = 0):
         pass
 
 
-async def send_auto_clean_message(chat_id, text, reply_markup=None, parse_mode="Markdown", delay: int = 120):
-    msg = await bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode=parse_mode)
+async def send_auto_clean_message(chat_id, text, reply_markup=None, parse_mode="Markdown", delay: int = 120, emoji_key="general"):
+    msg = await bot.send_message(chat_id, with_message_emoji(text, emoji_key), reply_markup=reply_markup, parse_mode=parse_mode)
     asyncio.create_task(safe_delete_message(msg, delay))
     return msg
 
 
-async def send_and_clean_both(message: types.Message, text: str, reply_markup=None, parse_mode="Markdown", delay: int = 120):
+async def send_and_clean_both(message: types.Message, text: str, reply_markup=None, parse_mode="Markdown", delay: int = 120, emoji_key="general"):
     asyncio.create_task(safe_delete_message(message, 0))
-    bot_msg = await bot.send_message(chat_id=message.chat.id, text=text, reply_markup=reply_markup, parse_mode=parse_mode)
+    bot_msg = await bot.send_message(chat_id=message.chat.id, text=with_message_emoji(text, emoji_key), reply_markup=reply_markup, parse_mode=parse_mode)
     asyncio.create_task(safe_delete_message(bot_msg, delay))
     return bot_msg
 
 
-async def notify_teacher(t_id, text, reply_markup=None):
+async def notify_teacher(t_id, text, reply_markup=None, emoji_key="general"):
     t = db_teacher(t_id)
     if t and t["chat_id"]:
         try:
-            await bot.send_message(t["chat_id"], with_message_emoji(text, "general"), reply_markup=reply_markup, parse_mode="Markdown")
+            await bot.send_message(t["chat_id"], with_message_emoji(text, emoji_key), reply_markup=reply_markup, parse_mode="Markdown")
         except Exception:
             logging.exception("O'qituvchiga xabar yuborilmadi: teacher_id=%s", t_id)
 
 
-async def notify_parents_of(student_id, text):
+async def notify_parents_of(student_id, text, emoji_key="parent_notifications"):
     parent_ids = list(dict.fromkeys(db_parent_chat_ids_for_student(student_id)))
     sent, failed = [], []
     for p_id in parent_ids:
         try:
             await asyncio.wait_for(
-                bot.send_message(p_id, with_message_emoji(text, "parent_notifications"), parse_mode="Markdown"),
+                bot.send_message(p_id, with_message_emoji(text, emoji_key), parse_mode="Markdown"),
                 timeout=8
             )
             sent.append(p_id)
@@ -1435,7 +1435,7 @@ async def notify_score_to_parents(st, subj, label, value):
             f"📝 {md(label)}: **{value}/100 ball**\n"
             f"📅 Sana: {local_now().strftime('%d.%m.%Y')}"
         )
-    return await notify_parents_of(st["id"], text)
+    return await notify_parents_of(st["id"], text, "alerts" if value < 60 else "student_notifications")
 
 
 # ============================================================
@@ -1564,9 +1564,9 @@ class SubGuard(BaseMiddleware):
         text = with_message_emoji("Botdan foydalanish uchun avval kanalimizga obuna bo‘ling, so‘ng \"✅ Tekshirish\" tugmasini bosing.", "subscription")
         if isinstance(event, types.CallbackQuery):
             await event.answer("Avval kanalga obuna bo'ling.", show_alert=True)
-            await bot.send_message(user.id, with_message_emoji(text, "subscription"), reply_markup=kb(rows))
+            await bot.send_message(user.id, text, reply_markup=kb(rows))
         else:
-            await event.answer(text, reply_markup=kb(rows))
+            await event.answer(with_message_emoji(text, "subscription"), reply_markup=kb(rows))
         return None
 
 
@@ -1985,24 +1985,24 @@ async def miniapp_teacher_contact(message: types.Message):
     contact = message.contact
     if not contact or contact.user_id != uid or _digits(contact.phone_number) != _digits(data.get("phone", "")):
         db_set_setting(key, "")
-        await message.answer("❌ Telefon raqami tasdiqlanmadi. Ilovada qayta ro‘yxatdan o‘ting.")
+        await message.answer(with_message_emoji("Telefon raqami tasdiqlanmadi. Ilovada qayta ro‘yxatdan o‘ting.", "teacher_registration"))
         return
     if teacher_by_chat(uid):
         db_set_setting(key, "")
-        await message.answer("ℹ️ O‘qituvchi hisobingiz avvaldan mavjud.")
+        await message.answer(with_message_emoji("O‘qituvchi hisobingiz avvaldan mavjud.", "teacher_registration"))
         return
     try:
         teacher, code = create_teacher(uid, data, "approved")
         db_set_setting(key, "")
         audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; account activated")
         await message.answer(
-            f"✅ Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.\n"
+            with_message_emoji(f"Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.\n"
             f"🔑 6 xonali kirish kodingiz: {code}\n"
-            "Kodni xavfsiz saqlang. Endi NEURON ilovasiga qaytib, o‘qituvchi kabinetini oching."
+            "Kodni xavfsiz saqlang. Endi NEURON ilovasiga qaytib, o‘qituvchi kabinetini oching.", "teacher_registration")
         )
     except Exception:
         logging.exception("Mini App teacher registration failed")
-        await message.answer("❌ Ro‘yxatdan o‘tishda xato. Keyinroq urinib ko‘ring.")
+        await message.answer(with_message_emoji("Ro‘yxatdan o‘tishda xato. Keyinroq urinib ko‘ring.", "teacher_registration"))
 
 
 async def _finish_phone(message: types.Message, state: FSMContext):
@@ -2113,8 +2113,7 @@ async def check_teacher_code(message: types.Message, state: FSMContext):
     t = db_teacher(row[0])
     _, expired_now = effective_plan(t)
     if expired_now:
-        await bot.send_message(cid, f"⚠️ Tarif muddatingiz tugadi ({t['plan_expires']}). Hisob Bepul tarifga o'tkazildi. "
-                                    "Tarifni yangilash uchun super admin bilan bog'laning.")
+        await bot.send_message(cid, with_message_emoji(f"Tarif muddatingiz tugadi ({t['plan_expires']}). Hisob Bepul tarifga o'tkazildi. Tarifni yangilash uchun super admin bilan bog'laning.", "alerts"))
     await send_auto_clean_message(cid, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
@@ -2652,7 +2651,7 @@ async def teacher_review_payment(call: types.CallbackQuery):
         else:
             await call.message.edit_text((call.message.text or "") + "\n\n❌ **RAD ETILDI**", parse_mode="Markdown", reply_markup=None)
     try:
-        await bot.send_message(req[1], parent_text, parse_mode="Markdown")
+        await bot.send_message(req[1], with_message_emoji(parent_text, "payments"), parse_mode="Markdown")
     except Exception:
         logging.exception("To‘lov natijasi ota-onaga yuborilmadi: request=%s", req_id)
 
@@ -3390,7 +3389,7 @@ async def tp_bcast_send(message: types.Message, state: FSMContext):
     sent = 0
     for p in parents:
         try:
-            await bot.send_message(p, f"📢 E'lon ({teacher_name(t)}):\n\n{text}")
+            await bot.send_message(p, with_message_emoji(f"E'lon ({teacher_name(t)}):\n\n{text}", "broadcasts"))
             sent += 1
         except Exception:
             pass
@@ -4439,14 +4438,14 @@ async def teacher_process_request(call: types.CallbackQuery):
         run("INSERT INTO parent_children (parent_chat_id, student_id) VALUES (?, ?) ON CONFLICT(parent_chat_id, student_id) DO NOTHING", (parent_chat_id, student_id))
         await call.message.edit_text(f"✅ **Tasdiqlandi!** {md(st['fio'])} ota-onasiga biriktirildi.", parse_mode="Markdown")
         try:
-            await bot.send_message(parent_chat_id, "🎉 **Tabriklaymiz!** O'qituvchi ulanishni tasdiqladi.",
+            await bot.send_message(parent_chat_id, with_message_emoji("**Tabriklaymiz!** O'qituvchi ulanishni tasdiqladi.", "parent_notifications"),
                                    reply_markup=kb([[btn("📊 Kabinetni ochish", "auth_parent")]]), parse_mode="Markdown")
         except Exception:
             pass
     else:
         await call.message.edit_text("❌ **Rad etildi.**", parse_mode="Markdown")
         try:
-            await bot.send_message(parent_chat_id, "❌ Afsuski, o'qituvchi ulanish so'rovini rad etdi.")
+            await bot.send_message(parent_chat_id, with_message_emoji("Afsuski, o'qituvchi ulanish so'rovini rad etdi.", "parent_notifications"))
         except Exception:
             pass
 
@@ -4659,7 +4658,7 @@ async def payment_reminders_once():
                         sent = 0
                         for target in targets:
                             try:
-                                await bot.send_message(target,text_msg,parse_mode="Markdown")
+                                await bot.send_message(target,with_message_emoji(text_msg,"payments"),parse_mode="Markdown")
                                 sent += 1
                             except Exception:
                                 logging.info("To‘lov eslatmasi yuborilmadi: student=%s chat=%s",st["id"],target)
@@ -4687,7 +4686,7 @@ async def scheduled_broadcast_once():
         sent = 0
         for p in parents:
             try:
-                await bot.send_message(p, f"📢 E'lon ({teacher_name(t)}):\n\n{body}")
+                await bot.send_message(p, with_message_emoji(f"E'lon ({teacher_name(t)}):\n\n{body}", "broadcasts"))
                 sent += 1
             except Exception:
                 pass
@@ -4866,7 +4865,7 @@ async def new_year_broadcast_once():
             await bot.send_photo(
                 chat_id=target_id,
                 photo=BufferedInputFile(image_bytes, filename="NEURON-2027-ITKODERS.jpg"),
-                caption=NEW_YEAR_CAPTION
+                caption=with_message_emoji(NEW_YEAR_CAPTION, "broadcasts")
             )
             status, error = "sent", ""
         except Exception as exc:
@@ -5201,7 +5200,7 @@ async def api_daily_report(request):
                 await bot.send_photo(
                     target,
                     BufferedInputFile(image_bytes, filename=f"neuron_group_report_{page_no}.png"),
-                    caption=caption,
+                    caption=with_message_emoji(caption, "student_notifications"),
                     parse_mode="Markdown"
                 )
         except Exception as exc:
@@ -5494,8 +5493,8 @@ async def api_admin_admins(request):
         if bot:
             try:
                 await bot.send_message(target_id,
-                    "🛡 Siz NEURON V2 tizimiga qo‘shimcha administrator sifatida qo‘shildingiz. "
-                    "Ilovani Telegram orqali ochib, Super Admin rolini tanlang.")
+                    with_message_emoji("Siz NEURON V2 tizimiga qo‘shimcha administrator sifatida qo‘shildingiz. "
+                    "Ilovani Telegram orqali ochib, Super Admin rolini tanlang.", "admin_notifications"))
                 notified = True
             except Exception:
                 logging.info("Yangi admin hali botni boshlamagan yoki xabar qabul qilmaydi: %s", target_id)
@@ -6835,7 +6834,7 @@ async def api_teacher_tool_action(request):
         sent=failed=0
         for parent_id in parents:
             try:
-                await bot.send_message(parent_id,"📢 O‘qituvchidan e’lon:\n\n"+message)
+                await bot.send_message(parent_id,with_message_emoji("O‘qituvchidan e’lon:\n\n"+message,"broadcasts"))
                 sent += 1
             except Exception:
                 failed += 1
@@ -7386,7 +7385,7 @@ async def api_teacher_export(request):
             await bot.send_document(
                 locals().get("telegram_target") or teacher["chat_id"],
                 BufferedInputFile(output.getvalue(), filename="NEURON_hisobot.xlsx"),
-                caption="📊 NEURON Excel hisobotingiz tayyor. Hisobot Excel formatida biriktirildi."
+                caption=with_message_emoji("NEURON Excel hisobotingiz tayyor. Hisobot Excel formatida biriktirildi.", "student_notifications")
             )
             telegram_sent = True
         except Exception:
@@ -7536,8 +7535,8 @@ async def api_teacher_request_action(request):
         audit(teacher["chat_id"], "miniapp_parent_link_" + action, str(req_id), student_name)
         try:
             await bot.send_message(parent_id,
-                ("🎉 O‘qituvchi farzandingizni kabinetga ulashni tasdiqladi." if action == "approve"
-                 else "❌ Farzandni ulash so‘rovi rad etildi. O‘qituvchi bilan bog‘laning."))
+                with_message_emoji(("O‘qituvchi farzandingizni kabinetga ulashni tasdiqladi." if action == "approve"
+                 else "Farzandni ulash so‘rovi rad etildi. O‘qituvchi bilan bog‘laning."), "parent_notifications"))
         except Exception:
             logging.exception("Ota-onaga ulanish natijasi yuborilmadi")
         return web.json_response({"ok": True})
@@ -7572,9 +7571,9 @@ async def api_teacher_request_action(request):
     audit(teacher["chat_id"], "miniapp_payment_" + action, str(req_id), student_name)
     try:
         await bot.send_message(parent_id,
-            (f"✅ TO‘LOV TASDIQLANDI\nO‘quvchi: {student_name}\nSumma: {amount:,} so‘m"
+            with_message_emoji((f"TO‘LOV TASDIQLANDI\nO‘quvchi: {student_name}\nSumma: {amount:,} so‘m"
              if action == "approve" else
-             f"❌ TO‘LOV RAD ETILDI\nO‘quvchi: {student_name}\nIltimos, ma’lumotlarni tekshirib qayta yuboring."))
+             f"TO‘LOV RAD ETILDI\nO‘quvchi: {student_name}\nIltimos, ma’lumotlarni tekshirib qayta yuboring."), "payments"))
     except Exception:
         logging.exception("Ota-onaga to‘lov natijasi yuborilmadi")
     return web.json_response({"ok": True})
@@ -7779,7 +7778,7 @@ async def api_parent_payment(request):
         sent_message = await bot.send_photo(
             teacher["chat_id"],
             BufferedInputFile(receipt, filename=receipt_name),
-            caption="\n".join(lines),
+            caption=with_message_emoji("\n".join(lines), "payments"),
             parse_mode="Markdown"
         )
         if sent_message.photo:
