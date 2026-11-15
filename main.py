@@ -1562,7 +1562,7 @@ async def check_sub(call: types.CallbackQuery):
         return
     await call.answer("✅ Rahmat! Endi botdan foydalanishingiz mumkin.", show_alert=True)
     try:
-        await call.message.edit_text("✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
+        await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
                                      reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
     except Exception:
         pass
@@ -1773,40 +1773,38 @@ def create_leaderboard_image(students, subject_name, labels):
 # ============================================================
 # 6. ASOSIY MENYU VA TARIFLAR (ommaviy)
 # ============================================================
-START_STICKER_SET = os.environ.get("START_STICKER_SET", "ocnrocket").strip()
-
-
 async def send_start_rocket(chat_id: int):
-    """/start uchun animatsiyali raketani sticker to'plamidan xavfsiz yuboradi."""
-    if not bot or not START_STICKER_SET:
+    """Egasi tasdiqlagan animatsiyali raketa stickerini yuboradi."""
+    if not bot:
+        return
+    sticker_file_id = db_get_setting("start_rocket_sticker_file_id")
+    if not sticker_file_id:
+        logging.info("NEURON /start: raketa stikeri hali egasi tomonidan sozlanmagan")
         return
     try:
-        sticker_set = await bot.get_sticker_set(name=START_STICKER_SET)
-        stickers = getattr(sticker_set, "stickers", []) or []
-        animated = [
-            sticker for sticker in stickers
-            if getattr(sticker, "is_animated", False) or getattr(sticker, "is_video", False)
-        ]
-        rocket = next(
-            (sticker for sticker in animated if getattr(sticker, "emoji", "") == "🚀"),
-            None
-        )
-        if rocket is None and animated:
-            rocket = animated[0]
-        if rocket is not None:
-            await bot.send_sticker(chat_id=chat_id, sticker=rocket.file_id)
-        else:
-            logging.warning("START_STICKER_SET '%s' ichida animatsiyali sticker topilmadi", START_STICKER_SET)
+        await bot.send_sticker(chat_id=chat_id, sticker=sticker_file_id)
     except Exception:
-        # Sticker to'plami mavjud bo'lmasa ham /start menyusi ishlashda davom etadi.
         logging.exception("NEURON /start raketa stikeri yuborilmadi")
+
+
+@dp.message(F.sticker, F.chat.type == "private")
+async def save_start_rocket_sticker(message: types.Message):
+    """Faqat loyiha egasi yuborgan animatsiyali sticker /start uchun saqlanadi."""
+    if not is_super(message.from_user.id):
+        return
+    sticker = message.sticker
+    if not (getattr(sticker, "is_animated", False) or getattr(sticker, "is_video", False)):
+        await message.answer("⚠️ Bu oddiy statik sticker. Iltimos, animatsiyali 🚀 raketa stickerini yuboring.")
+        return
+    db_set_setting("start_rocket_sticker_file_id", sticker.file_id)
+    await message.answer("✅ Animatsiyali sticker saqlandi. Endi /start bosilganda shu raketa yuboriladi.")
 
 
 @dp.message(CommandStart(), F.chat.type == "private")
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await send_start_rocket(message.chat.id)
-    await send_and_clean_both(message, "🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Tarix va geografiya bilimlaringizni rivojlantiring.\n📊 O‘quv natijalari va ta’lim jarayonini kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
+    await send_and_clean_both(message, "🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
                               reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
 
