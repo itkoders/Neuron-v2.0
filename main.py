@@ -2874,7 +2874,7 @@ async def tp_post_leaderboard(call: types.CallbackQuery):
         for subj in db_subjects(t["id"]):
             img = create_leaderboard_image(db_students(t["id"], subj["id"]), subj["name"], subj["labels"])
             await bot.send_photo(t["channel_id"], BufferedInputFile(img, filename="reyting.png"),
-                                 caption=f"🏆 **{md(subj['name'])} — reyting ({datetime.now().strftime('%d.%m.%Y')})**",
+                                 caption=with_message_emoji(f"**{md(subj['name'])} — reyting ({datetime.now().strftime('%d.%m.%Y')})**", "student_notifications"),
                                  parse_mode="Markdown")
         await call.message.answer("✅ Reyting rasmlari kanalga yuborildi.")
     except Exception:
@@ -2893,7 +2893,7 @@ async def tp_post(call: types.CallbackQuery):
         for subj in db_subjects(t["id"]):
             for idx, img in enumerate(create_daily_report_images(db_students(t["id"], subj["id"]), subj["name"], subj["labels"]), 1):
                 await bot.send_photo(t["channel_id"], BufferedInputFile(img, filename=f"post_{idx}.png"),
-                                     caption=f"📊 **{md(subj['name'])} hisoboti ({idx}-sahifa)**\n📅 {datetime.now().strftime('%d.%m.%Y')}",
+                                     caption=with_message_emoji(f"**{md(subj['name'])} hisoboti ({idx}-sahifa)**\n📅 {datetime.now().strftime('%d.%m.%Y')}", "student_notifications"),
                                      parse_mode="Markdown")
         await call.message.answer("✅ Hisobotlar kanalga yuborildi.")
     except Exception:
