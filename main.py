@@ -1806,7 +1806,7 @@ async def send_start_rocket(chat_id: int):
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await send_start_rocket(message.chat.id)
-    await send_and_clean_both(message, "✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
+    await send_and_clean_both(message, "🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Tarix va geografiya bilimlaringizni rivojlantiring.\n📊 O‘quv natijalari va ta’lim jarayonini kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
                               reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
 
