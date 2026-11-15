@@ -1347,7 +1347,7 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    # Asosiy menyuda Mini App va tariflar doim ko'rinadi.
+    # Mini App va tarif tugmalari Telegram menyusida birga ko'rinadi.
     if MINIAPP_URL:
         rows = [[InlineKeyboardButton(
             text="📱 Ilovani ochish",
@@ -1356,7 +1356,7 @@ def main_menu_kb(user_id=None):
     else:
         rows = [[btn("📱 Ilovani ochish", "back_home")]]
     rows.append([btn("💎 Tariflar", "public_plans")])
-    return kb(rows)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 
@@ -1579,11 +1579,12 @@ class SubGuard(BaseMiddleware):
                 )])
         rows.append([btn("✅ Barcha kanallarni tekshirish", "check_sub")])
         text = with_message_emoji("Botdan foydalanish uchun avval kanalimizga obuna bo‘ling, so‘ng \"✅ Tekshirish\" tugmasini bosing.", "subscription")
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
         if isinstance(event, types.CallbackQuery):
-            await event.answer("Avval kanalga obuna bo'ling.", show_alert=True)
-            await bot.send_message(user.id, text, reply_markup=kb(rows))
+            await event.answer("Avval barcha kanallarga obuna bo'ling.", show_alert=True)
+            await bot.send_message(user.id, text, reply_markup=markup)
         else:
-            await event.answer(with_message_emoji(text, "subscription"), reply_markup=kb(rows))
+            await event.answer(with_message_emoji(text, "subscription"), reply_markup=markup)
         return None
 
 
