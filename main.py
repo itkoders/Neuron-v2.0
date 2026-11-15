@@ -1773,9 +1773,39 @@ def create_leaderboard_image(students, subject_name, labels):
 # ============================================================
 # 6. ASOSIY MENYU VA TARIFLAR (ommaviy)
 # ============================================================
+START_STICKER_SET = os.environ.get("START_STICKER_SET", "ocnrocket").strip()
+
+
+async def send_start_rocket(chat_id: int):
+    """/start uchun animatsiyali raketani sticker to'plamidan xavfsiz yuboradi."""
+    if not bot or not START_STICKER_SET:
+        return
+    try:
+        sticker_set = await bot.get_sticker_set(name=START_STICKER_SET)
+        stickers = getattr(sticker_set, "stickers", []) or []
+        animated = [
+            sticker for sticker in stickers
+            if getattr(sticker, "is_animated", False) or getattr(sticker, "is_video", False)
+        ]
+        rocket = next(
+            (sticker for sticker in animated if getattr(sticker, "emoji", "") == "🚀"),
+            None
+        )
+        if rocket is None and animated:
+            rocket = animated[0]
+        if rocket is not None:
+            await bot.send_sticker(chat_id=chat_id, sticker=rocket.file_id)
+        else:
+            logging.warning("START_STICKER_SET '%s' ichida animatsiyali sticker topilmadi", START_STICKER_SET)
+    except Exception:
+        # Sticker to'plami mavjud bo'lmasa ham /start menyusi ishlashda davom etadi.
+        logging.exception("NEURON /start raketa stikeri yuborilmadi")
+
+
 @dp.message(CommandStart(), F.chat.type == "private")
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
+    await send_start_rocket(message.chat.id)
     await send_and_clean_both(message, "✨ **Maktab Boshqaruv Tizimiga Xush Kelibsiz!**\n\n_Quyidagi bo'limlardan birini tanlang._",
                               reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
