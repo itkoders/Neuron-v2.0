@@ -1866,16 +1866,111 @@ async def teacher_role_menu(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "public_plans")
 async def public_plans(call: types.CallbackQuery):
     await call.answer()
-    lines = []
+    lines, rows = [], []
     for p in db_plans():
         if not p["active"]:
             continue
-        price = "Bepul" if p["price"] == 0 else f"{p['price']:,} so'm/oy"
-        limit = f"{p['student_limit']} tagacha" if p["student_limit"] else "cheksiz"
-        feats = ", ".join(label for k, label in FEATURES.items() if k in p["features"]) or "yo'q"
-        lines.append(f"💼 **{p['name']}** — {price}\n   👥 O'quvchi: {limit}\n   🧩 {feats}")
-    text = "💼 **Tariflar:**\n\n" + "\n\n".join(lines) + "\n\n_Tarifni o'zgartirish uchun super admin bilan bog'laning._"
-    await call.message.edit_text(text, reply_markup=kb([[btn("⬅️ Orqaga", "back_home")]]), parse_mode="Markdown")
+        price = "Bepul" if p["price"] == 0 else f"{p['price']:,} so'm"
+        duration = "Cheksiz" if not p["duration_days"] else f"{p['duration_days']} kun"
+        student_limit = f"{p['student_limit']} tagacha" if p["student_limit"] else "Cheksiz"
+        subject_limit = f"{p.get('subject_limit', 0)} ta" if p.get("subject_limit", 0) else "Cheksiz"
+        feats = ", ".join(label for k, label in FEATURES.items() if k in p["features"]) or "Asosiy imkoniyatlar"
+        lines.append(f"💼 **{md(p['name'])}**\n💰 Narxi: **{price}**\n🗓 Muddati: {duration}\n👥 O‘quvchilar: {student_limit}\n📚 Fanlar: {subject_limit}\n🧩 Imkoniyatlar: {md(feats)}")
+        rows.append([InlineKeyboardButton(text=f"✅ {p['name']} tarifini tanlash", callback_data=f"plan_request:{p['key']}")])
+    text = "💎 **NEURON V2 — TARIFLAR**\n\n" + ("\n\n".join(lines) if lines else "Hozircha faol tarif mavjud emas.")
+    text += "\n\n_Tarifni tanlasangiz, so‘rovingiz Super Adminga yuboriladi. Tarif faqat tasdiqlangandan keyin faollashadi._"
+    rows.append([btn("⬅️ Orqaga", "back_home")])
+    await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("plan_request:"))
+async def public_plan_request(call: types.CallbackQuery):
+    key = str(call.data.split(":", 1)[1]).strip().lower()
+    plan = db_plan(key)
+    teacher = teacher_by_chat(call.from_user.id)
+    if not plan or not plan["active"]:
+        await call.answer("Bu tarif hozir mavjud emas.", show_alert=True)
+        return
+    if not teacher:
+        await call.answer("Tarif tanlash uchun avval NEURON o‘qituvchi hisobiga kiring.", show_alert=True)
+        return
+    if not teacher.get("admin_approved") or teacher.get("verify_status") != "approved":
+        await call.answer("O‘qituvchi hisobingiz hali tasdiqlanmagan.", show_alert=True)
+        return
+    price = "Bepul" if plan["price"] == 0 else f"{plan['price']:,} so'm"
+    duration = "Cheksiz" if not plan["duration_days"] else f"{plan['duration_days']} kun"
+    username = f"@{call.from_user.username}" if call.from_user.username else "username yo‘q"
+    request_text = (
+        "🆕 **YANGI TARIF SO‘ROVI**\n\n"
+        f"👤 O‘qituvchi: {md(teacher_name(teacher))}\n"
+        f"🆔 Telegram ID: `{call.from_user.id}`\n"
+        f"🔗 Username: {md(username)}\n"
+        f"💼 Tarif: **{md(plan['name'])}**\n💰 Narxi: **{price}**\n🗓 Muddati: {duration}\n\n"
+        "Tarifni faollashtirish uchun so‘rovni tasdiqlang."
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"plan_approve:{call.from_user.id}:{key}"),
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"plan_reject:{call.from_user.id}:{key}")
+    ]])
+    try:
+        await bot.send_message(OWNER_TELEGRAM_ID, request_text, reply_markup=markup, parse_mode="Markdown")
+    except Exception:
+        logging.exception("Tarif so‘rovi Super Adminga yuborilmadi")
+        await call.answer("So‘rov yuborilmadi. Keyinroq qayta urinib ko‘ring.", show_alert=True)
+        return
+    audit(call.from_user.id, "plan_request", key, f"teacher_id={teacher['id']}")
+    await call.answer("So‘rov Super Adminga yuborildi.")
+    await call.message.answer(
+        f"📨 **{md(plan['name'])}** tarifi uchun so‘rovingiz yuborildi.\n"
+        "⏳ Tasdiqlanishini kuting. Tarif hozircha faollashtirilmadi.",
+        parse_mode="Markdown"
+    )
+
+
+@dp.callback_query(F.data.startswith("plan_approve:"))
+async def public_plan_approve(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("Bu amal faqat loyiha egasiga ruxsat etilgan.", show_alert=True)
+        return
+    try:
+        _, chat_raw, key = call.data.split(":", 2)
+        chat_id = int(chat_raw)
+    except (ValueError, TypeError):
+        await call.answer("So‘rov ma’lumoti noto‘g‘ri.", show_alert=True)
+        return
+    plan, teacher = db_plan(key), teacher_by_chat(chat_id)
+    if not plan or not plan["active"] or not teacher:
+        await call.answer("Tarif yoki o‘qituvchi hisobi topilmadi.", show_alert=True)
+        return
+    expires = (datetime.now().date() + timedelta(days=plan["duration_days"])).strftime("%d.%m.%Y") if plan["duration_days"] else None
+    run("UPDATE teachers SET plan_key=?, plan_expires=? WHERE id=?", (key, expires, teacher["id"]))
+    if teacher.get("chat_id"):
+        run("UPDATE user_profiles SET badge=?,badge_status=?,badge_request='' WHERE chat_id=?",
+            (plan.get("badge", ""), "approved" if plan.get("badge") else "", teacher["chat_id"]))
+    audit(call.from_user.id, "plan_request_approved", key, f"teacher_id={teacher['id']}; chat_id={chat_id}")
+    await bot.send_message(chat_id, f"🎉 **Tarifingiz tasdiqlandi!**\n💼 Tarif: **{md(plan['name'])}**\n🗓 Amal qilish muddati: {expires or 'Cheksiz'}", parse_mode="Markdown")
+    await call.message.edit_text((call.message.text or "") + "\n\n✅ **TASDIQLANDI**")
+    await call.answer("Tarif faollashtirildi.")
+
+
+@dp.callback_query(F.data.startswith("plan_reject:"))
+async def public_plan_reject(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("Bu amal faqat loyiha egasiga ruxsat etilgan.", show_alert=True)
+        return
+    try:
+        _, chat_raw, key = call.data.split(":", 2)
+        chat_id = int(chat_raw)
+    except (ValueError, TypeError):
+        await call.answer("So‘rov ma’lumoti noto‘g‘ri.", show_alert=True)
+        return
+    audit(call.from_user.id, "plan_request_rejected", key, f"chat_id={chat_id}")
+    try:
+        await bot.send_message(chat_id, "ℹ️ Tarif so‘rovingiz Super Admin tomonidan rad etildi. Batafsil ma’lumot uchun yordam xizmatiga murojaat qiling.")
+    except Exception:
+        logging.exception("Tarif rad etilgani haqida xabar yuborilmadi")
+    await call.message.edit_text((call.message.text or "") + "\n\n❌ **RAD ETILDI**")
+    await call.answer("So‘rov rad etildi.")
 
 
 @dp.callback_query(F.data == "faq_menu")
