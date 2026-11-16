@@ -8093,7 +8093,7 @@ async def api_tests_restart(request):
     target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
     target_params=[t["id"],test["subject_id"]]
     if test["group_name"]!="*":
-        target_sql+=" AND TRIM(COALESCE(group_name,''))=TRIM(?) COLLATE NOCASE"
+        target_sql+=" AND LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?))"
         target_params.append(test["group_name"])
     student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
     chat_ids=set()
@@ -8189,7 +8189,7 @@ async def api_tests_student(request):
     if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
     rows=run("""SELECT id,title,group_name,start_at,end_at,questions_json FROM tests
                 WHERE teacher_id=? AND subject_id=? AND status='published'
-                  AND (group_name='*' OR TRIM(COALESCE(group_name,''))=TRIM(?) COLLATE NOCASE)
+                  AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))
                 ORDER BY id DESC""",(st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="all")
     items=[]
     for r in rows:
