@@ -2896,8 +2896,11 @@ body.social-open #paxBuddy{display:none}
       const d=await api("/api/tests/student");
       const cards=(d.tests||[]).map(t=>{
         const stateLabel=t.availability==="open"?"Hozir ochiq":t.availability==="upcoming"?"Hali boshlanmagan":"Yopilgan";
-        const status=t.attempt_status?'<p class="hint">Holat: '+esc(t.attempt_status==="pending_review"?"Tekshiruv kutilmoqda":t.attempt_status==="graded"?"Yakunlangan":t.attempt_status)+'</p><p class="hint">Natija: '+(t.score??"—")+'/'+(t.total??t.question_count)+'</p>':"";
-        return '<div class="card panel"><b>🧪 '+esc(t.title)+'</b><p class="hint">'+esc(t.group_name==="*"?"Barcha guruhlar":t.group_name)+' · '+t.question_count+' savol</p><p class="hint">'+esc(testDateLabel(t.start_at))+' — '+esc(testDateLabel(t.end_at))+'</p>'+status+(t.attempt_status?"":'<button class="btn btn-wide" data-start-test="'+t.id+'" '+(t.availability!=="open"?"disabled":"")+'>'+(t.availability==="open"?"Testni boshlash":stateLabel)+'</button>')+'</div>';
+        const finished=["pending_review","graded"].includes(t.attempt_status);
+        const status=finished?'<p class="hint">Holat: '+esc(t.attempt_status==="pending_review"?"Tekshiruv kutilmoqda":"Yakunlangan")+'</p><p class="hint">Natija: '+(t.score??"—")+'/'+(t.total??t.question_count)+'</p>':"";
+        const canOpen=t.availability==="open"||(t.attempt_status==="in_progress"&&t.availability==="closed");
+        const action=finished?"":'<button class="btn btn-wide" data-start-test="'+t.id+'" '+(!canOpen?"disabled":"")+'>'+(t.attempt_status==="in_progress"?"Davom ettirish":t.availability==="open"?"Testni boshlash":stateLabel)+'</button>';
+        return '<div class="card panel"><b>🧪 '+esc(t.title)+'</b><p class="hint">'+esc(t.group_name==="*"?"Barcha guruhlar":t.group_name)+' · '+t.question_count+' savol</p><p class="hint">'+esc(testDateLabel(t.start_at))+' — '+esc(testDateLabel(t.end_at))+'</p>'+status+action+'</div>';
       }).join("");
       host.innerHTML=cards||'<div class="card empty">Hozircha sizga biriktirilgan test yo‘q.</div>';
     }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
