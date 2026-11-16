@@ -2826,7 +2826,7 @@ body.social-open #paxBuddy{display:none}
 
 
   /* ---------- ONLINE TESTLAR ---------- */
-  let studentTestTimer=null;
+  let studentTestTimer=null, studentTestSaveTimer=null;
   const testDateLabel=v=>{try{return new Date(v).toLocaleString("uz-UZ",{timeZone:"Asia/Tashkent"});}catch(_){return v||"—";}};
   const testImageHtml=images=>(images||[]).map((src,i)=>'<img src="'+esc(src)+'" alt="Savol rasmi '+(i+1)+'" style="display:block;width:100%;max-height:260px;object-fit:contain;border-radius:14px;margin:8px 0;background:var(--surface-2)">').join("");
 
@@ -2903,10 +2903,20 @@ body.social-open #paxBuddy{display:none}
       const d=await api("/api/tests/student/"+id+"/start",{method:"POST",body:"{}"}),t=d.test;
       host.innerHTML='<div class="card panel"><h3>🧪 '+esc(t.title)+'</h3><div class="chips"><span class="chip good" id="studentTestTimer">Hisoblanmoqda…</span></div><form id="studentTestForm">'+(t.questions||[]).map(q=>'<div class="card panel" style="margin:10px 0"><b>'+q.id+'. '+esc(q.text)+'</b>'+testImageHtml(q.images)+(q.type==="choice"?'<div style="display:grid;gap:8px;margin-top:10px">'+q.options.map(o=>'<label class="att-item" style="justify-content:flex-start"><input type="radio" name="q_'+q.id+'" value="'+esc(o.key)+'" style="width:20px;height:20px"><span><b>'+esc(o.key)+'.</b> '+esc(o.text)+'</span></label>').join("")+'</div>':'<label class="hint">Javobingiz<textarea class="field" name="q_'+q.id+'" rows="3" maxlength="2000" style="width:100%"></textarea></label>')+'</div>').join("")+'<button class="btn btn-wide" id="submitStudentTest">✅ Testni yakunlash</button></form></div>';
       (t.questions||[]).forEach(q=>{const old=d.answers?.[String(q.id)];if(!old)return;const radio=host.querySelector('input[name="q_'+q.id+'"][value="'+old+'"]');if(radio)radio.checked=true;const area=host.querySelector('textarea[name="q_'+q.id+'"]');if(area)area.value=old;});
+      const collectAnswers=()=>{
+        const form=$("studentTestForm"),answers={};if(!form)return answers;
+        (t.questions||[]).forEach(q=>{const r=form.querySelector('input[name="q_'+q.id+'"]:checked'),a=form.querySelector('textarea[name="q_'+q.id+'"]');answers[String(q.id)]=r?r.value:(a?a.value:"");});
+        return answers;
+      };
+      const saveDraft=async()=>{try{await api("/api/tests/student/"+id+"/save",{method:"POST",body:JSON.stringify({answers:collectAnswers()})});}catch(_){/* keyingi o‘zgarishda qayta saqlanadi */}};
+      $("studentTestForm").addEventListener("change",()=>{
+        if(studentTestSaveTimer)clearTimeout(studentTestSaveTimer);
+        studentTestSaveTimer=setTimeout(saveDraft,350);
+      });
       const end=new Date(t.end_at).getTime();if(studentTestTimer)clearInterval(studentTestTimer);
       const submit=async()=>{
         const form=$("studentTestForm");if(!form||form.dataset.sent==="1")return;form.dataset.sent="1";
-        const answers={};(t.questions||[]).forEach(q=>{const r=form.querySelector('input[name="q_'+q.id+'"]:checked'),a=form.querySelector('textarea[name="q_'+q.id+'"]');answers[String(q.id)]=r?r.value:(a?a.value:"");});
+        const answers=collectAnswers();
         try{const result=await api("/api/tests/student/"+id+"/submit",{method:"POST",body:JSON.stringify({answers})});if(studentTestTimer)clearInterval(studentTestTimer);host.innerHTML='<div class="card panel"><h3>✅ Test yakunlandi</h3><p class="hint">'+(result.written_pending?"Variantli savollar tekshirildi. Yozma javoblarni o‘qituvchi baholaydi.":"Natija: "+result.score+"/"+result.total)+'</p><button class="chip-btn" id="refreshStudentTests">Testlar ro‘yxatiga qaytish</button></div>';}
         catch(e){form.dataset.sent="";toast(errText(e));}
       };
