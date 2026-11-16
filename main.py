@@ -7968,11 +7968,25 @@ async def api_tests_publish(request):
     body=await _read_json(request);key=body.get("answer_key") if isinstance(body.get("answer_key"),dict) else {}
     start,end=_test_datetime(body.get("start_at")), _test_datetime(body.get("end_at"))
     if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):return web.json_response({"error":"bad_time"},status=400)
+    incoming=body.get("questions") if isinstance(body.get("questions"),list) else []
+    if incoming:
+        by_id={str(x.get("id")):x for x in incoming if isinstance(x,dict)}
+        corrected=[]
+        for original in test["questions"]:
+            item=by_id.get(str(original["id"]),{})
+            q=dict(original);q["text"]=str(item.get("text",q["text"])).strip()[:1200]
+            if not q["text"]:return web.json_response({"error":"empty_question","question":q["id"]},status=400)
+            if q["type"]=="choice":
+                incoming_opts={str(x.get("key")):x for x in item.get("options",[]) if isinstance(x,dict)}
+                q["options"]=[{"key":o["key"],"text":str(incoming_opts.get(o["key"],{}).get("text",o["text"])).strip()[:500]} for o in q["options"]]
+                if any(not o["text"] for o in q["options"]):return web.json_response({"error":"empty_option","question":q["id"]},status=400)
+            corrected.append(q)
+        test["questions"]=corrected
     for q in test["questions"]:
         if q["type"]=="choice" and str(key.get(str(q["id"]),"")).upper() not in {o["key"] for o in q["options"]}:
             return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
-    run("UPDATE tests SET answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
-        (json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
+    run("UPDATE tests SET questions_json=?,answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
+        (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
     audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
     return web.json_response({"ok":True})
 
