@@ -3,6 +3,7 @@
 The deterministic parser remains the fallback. This module never publishes a test:
 every extracted question must be reviewed by the teacher before publication.
 """
+import asyncio
 import base64
 import json
 import os
@@ -13,7 +14,7 @@ import aiohttp
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
-MAX_QUESTIONS = 100
+MAX_QUESTIONS = 101
 
 
 QUESTION_SCHEMA = {
@@ -201,6 +202,3 @@ async def extract_questions_with_gemini(filename, raw):
     except Exception:
         return [], "ai_parse_error"
 
-
-# Imported only for explicit timeout handling; kept separate from the main bot module.
-import asyncio
