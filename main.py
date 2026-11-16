@@ -93,6 +93,53 @@ SEED_PLANS = [
 bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
+# PostgreSQL advisory lock prevents overlapping Render deploy instances from
+# polling Telegram simultaneously. Keep this connection open while polling.
+_BOT_POLLING_LOCK_CONN = None
+
+
+def acquire_bot_polling_lock():
+    global _BOT_POLLING_LOCK_CONN
+    if not DATABASE_URL:
+        logging.warning("DATABASE_URL yo'q: Telegram polling uchun serverlararo lock ishlamaydi.")
+        return True
+    import psycopg2
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(hashtext(%s))", ("neuron-v2-telegram-polling",))
+            acquired = bool(cur.fetchone()[0])
+        if acquired:
+            _BOT_POLLING_LOCK_CONN = conn
+            logging.info("Telegram polling lock olindi.")
+            return True
+    except Exception:
+        conn.close()
+        raise
+    conn.close()
+    return False
+
+
+async def wait_for_bot_polling_lock():
+    if not DATABASE_URL:
+        acquire_bot_polling_lock()
+        return
+    while not acquire_bot_polling_lock():
+        logging.warning("Boshqa NEURON jarayoni Telegram polling qilmoqda; lock bo'shashishi kutilmoqda.")
+        await asyncio.sleep(5)
+
+
+def release_bot_polling_lock():
+    global _BOT_POLLING_LOCK_CONN
+    if _BOT_POLLING_LOCK_CONN is not None:
+        try:
+            _BOT_POLLING_LOCK_CONN.close()
+        except Exception:
+            logging.exception("Telegram polling lock yopilmadi")
+        finally:
+            _BOT_POLLING_LOCK_CONN = None
+
 
 # ============================================================
 # 1. MA'LUMOTLAR BAZASI
@@ -7976,7 +8023,7 @@ async def api_tests_teacher(request):
     try:sid=int(request.query.get("subject_id",""))
     except Exception:return web.json_response({"error":"bad_subject"},status=400)
     if not owned_subject(t,sid):return web.json_response({"error":"not_found"},status=404)
-    groups=[r[0] for r in run("SELECT DISTINCT COALESCE(group_name,'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=? ORDER BY 1",(t["id"],sid),fetch="all")]
+    groups=[r[0] for r in run("SELECT DISTINCT COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=? ORDER BY 1",(t["id"],sid),fetch="all")]
     rows=run("SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at FROM tests WHERE teacher_id=? AND subject_id=? ORDER BY id DESC",(t["id"],sid),fetch="all")
     items=[]
     for raw in rows:
@@ -7996,8 +8043,10 @@ async def api_tests_upload(request):
         sid=int(fields.get("subject_id",""))
         if not owned_subject(t,sid):return web.json_response({"error":"not_found"},status=404)
         group=fields.get("group_name") or "*"
-        groups={r[0] for r in run("SELECT DISTINCT COALESCE(group_name,'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=?",(t["id"],sid),fetch="all")}
-        if group!="*" and group not in groups:return web.json_response({"error":"bad_group"},status=400)
+        groups={r[0] for r in run("SELECT DISTINCT COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=?",(t["id"],sid),fetch="all")}
+        group=group.strip() or "*"
+        if group!="*" and group.casefold() not in {str(x).strip().casefold() for x in groups}:
+            return web.json_response({"error":"bad_group"},status=400)
         start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
         if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
         parser_error=None
@@ -8093,7 +8142,7 @@ async def api_tests_restart(request):
     target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
     target_params=[t["id"],test["subject_id"]]
     if test["group_name"]!="*":
-        target_sql+=" AND LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?))"
+        target_sql+=" AND LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?))"
         target_params.append(test["group_name"])
     student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
     chat_ids=set()
@@ -8156,7 +8205,7 @@ async def api_tests_publish(request):
     target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
     target_params=[t["id"],test["subject_id"]]
     if test["group_name"]!="*":
-        target_sql+=" AND LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?))"
+        target_sql+=" AND LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?))"
         target_params.append(test["group_name"])
     student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
     chat_ids=set()
@@ -8189,7 +8238,7 @@ async def api_tests_student(request):
     if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
     rows=run("""SELECT id,title,group_name,start_at,end_at,questions_json FROM tests
                 WHERE teacher_id=? AND subject_id=? AND status='published'
-                  AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))
+                  AND (group_name='*' OR LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?)))
                 ORDER BY id DESC""",(st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="all")
     items=[]
     for r in rows:
@@ -8209,7 +8258,7 @@ async def api_tests_student_start(request):
     try:tid=int(request.match_info["tid"])
     except Exception:return web.json_response({"error":"bad"},status=400)
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row)
@@ -8239,7 +8288,7 @@ async def api_tests_student_save(request):
     except Exception:return web.json_response({"error":"bad"},status=400)
     body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row)
@@ -8263,7 +8312,7 @@ async def api_tests_student_submit(request):
     except Exception:return web.json_response({"error":"bad"},status=400)
     body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
@@ -8706,17 +8755,20 @@ async def start_web_server():
 async def main():
     init_db()
     runner = await start_web_server()
-    # Kundalik jurnal bot tokenidan mustaqil ishlaydi.
-    asyncio.create_task(background_loop())
     if bot:
-        # Bio ichidagi O'zbekiston vaqti yangilanadi.
+        # Deploy paytida eski va yangi Render instance ustma-ust ishlashi mumkin.
+        # Faqat lock egasi Telegram polling va fon vazifalarini ishga tushiradi.
+        await wait_for_bot_polling_lock()
+        asyncio.create_task(background_loop())
         asyncio.create_task(sync_bot_clock_bio())
         try:
             await dp.start_polling(bot)
         finally:
+            release_bot_polling_lock()
             await runner.cleanup()
             await bot.session.close()
     else:
+        asyncio.create_task(background_loop())
         logging.warning("BOT_TOKEN kiritilmagan: web server ishlayapti, Telegram bot polling kutmoqda.")
         try:
             await asyncio.Event().wait()
