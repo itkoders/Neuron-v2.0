@@ -2855,7 +2855,7 @@ body.social-open #paxBuddy{display:none}
     if(!start||!end||new Date(end)<=new Date(start)){toast("Boshlanish va tugash vaqtini tekshiring.");return;}
     const fd=new FormData();fd.append("file",file,file.name);fd.append("title",$("testTitle").value||file.name);fd.append("subject_id",String(state.subject.id));fd.append("group_name",$("testGroup").value);fd.append("start_at",start);fd.append("end_at",end);
     btn.disabled=true;if(hint)hint.textContent="Fayl tahlil qilinmoqda…";
-    try{const out=await apiUpload("/api/tests/upload",fd);renderTeacherTestEditor(out.test_id,out.title,out.questions||[],out.start_at,out.end_at);const method=out.extraction_method==="gemini"?"Gemini AI":"bepul parser";const notice=out.truncated?" Faqat dastlabki 100 ta savol olindi.":"";toast(method+" savollarni ajratdi. Nashr qilishdan oldin hammasini tekshiring."+notice);}
+    try{const out=await apiUpload("/api/tests/upload",fd);renderTeacherTestEditor(out.test_id,out.title,out.questions||[],out.start_at,out.end_at);const method=out.extraction_method==="gemini"?"Gemini AI":"bepul parser";const fallback=out.extraction_method!=="gemini"&&out.ai_status==="not_configured"?" (Gemini API kaliti hali ulanmagan)":"";const notice=out.truncated?" Faqat dastlabki 100 ta savol olindi.":"";toast(method+" savollarni ajratdi"+fallback+". Nashr qilishdan oldin hammasini tekshiring."+notice);}
     catch(e){if(hint)hint.textContent=e.data?.message||errText(e);toast(e.data?.message||errText(e));}
     finally{if($("testUploadBtn"))$("testUploadBtn").disabled=false;}
   }
