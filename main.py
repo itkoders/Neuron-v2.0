@@ -8078,7 +8078,9 @@ async def api_tests_student_save(request):
                FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
-    test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    test=_test_row(row)
+    if not _test_is_open(test):return web.json_response({"error":"test_closed"},status=403)
+    attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
     if not attempt or attempt[1]!="in_progress":return web.json_response({"error":"attempt_not_found"},status=404)
     clean={}
     for q in test["questions"]:
@@ -8135,7 +8137,7 @@ async def api_tests_teacher_grade(request):
     try:aid=int(body.get("attempt_id"))
     except Exception:return web.json_response({"error":"bad"},status=400)
     scores=body.get("written_scores") if isinstance(body.get("written_scores"),dict) else {}
-    a=run("""SELECT a.id,a.score FROM test_attempts a JOIN students s ON s.id=a.student_id
+    a=run("""SELECT a.id,a.score,a.written_scores_json FROM test_attempts a JOIN students s ON s.id=a.student_id
              WHERE a.id=? AND a.test_id=? AND s.teacher_id=?""",(aid,tid,t["id"]),fetch="one")
     if not a:return web.json_response({"error":"not_found"},status=404)
     normalized={}
@@ -8144,7 +8146,9 @@ async def api_tests_teacher_grade(request):
             try:v=int(scores.get(str(q["id"]),0))
             except Exception:v=0
             normalized[str(q["id"])]=max(0,min(1,v))
-    final=int(a[1] or 0)+sum(normalized.values())
+    previous=json.loads(a[2] or "{}")
+    previous_total=sum(int(v or 0) for v in previous.values())
+    final=max(0,int(a[1] or 0)-previous_total)+sum(normalized.values())
     run("UPDATE test_attempts SET written_scores_json=?,score=?,status='graded' WHERE id=?",(json.dumps(normalized),final,aid))
     audit(t.get("chat_id"),"test_grade",str(tid),f"attempt={aid}; score={final}")
     return web.json_response({"ok":True,"score":final,"total":len(test["questions"])})
