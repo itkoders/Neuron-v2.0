@@ -8015,6 +8015,29 @@ async def api_tests_student_start(request):
     return web.json_response({"ok":True,"attempt_id":attempt[0],"answers":json.loads(attempt[2] or "{}"),
                               "test":{"id":tid,"title":test["title"],"end_at":test["end_at"],"questions":safe}})
 
+
+async def api_tests_student_save(request):
+    kind,st,err=miniapp_identity(request)
+    if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
+    row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+            (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
+    if not row:return web.json_response({"error":"not_found"},status=404)
+    test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    if not attempt or attempt[1]!="in_progress":return web.json_response({"error":"attempt_not_found"},status=404)
+    clean={}
+    for q in test["questions"]:
+        value=str(answers.get(str(q["id"]),"")).strip()[:2000]
+        if q["type"]=="choice":
+            if value.upper() in {o["key"] for o in q["options"]}:clean[str(q["id"])]=value.upper()
+        else:clean[str(q["id"])]=value
+    run("UPDATE test_attempts SET answers_json=? WHERE id=? AND student_id=?",
+        (json.dumps(clean,ensure_ascii=False),attempt[0],st["id"]))
+    return web.json_response({"ok":True})
+
 async def api_tests_student_submit(request):
     kind,st,err=miniapp_identity(request)
     if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
@@ -8428,6 +8451,7 @@ async def start_web_server():
     app.router.add_post("/api/tests/{tid}/grade", api_tests_teacher_grade)
     app.router.add_get("/api/tests/student", api_tests_student)
     app.router.add_post("/api/tests/student/{tid}/start", api_tests_student_start)
+    app.router.add_post("/api/tests/student/{tid}/save", api_tests_student_save)
     app.router.add_post("/api/tests/student/{tid}/submit", api_tests_student_submit)
     app.router.add_get("/api/student/overview", api_student_overview)
     app.router.add_get("/api/parent/overview", api_parent_overview)
