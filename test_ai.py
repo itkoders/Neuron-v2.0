@@ -208,9 +208,12 @@ async def grade_written_answers(items):
         qid = str(item.get("id", ""))
         reference = " ".join(str(item.get("reference") or "").split()).strip()
         answer = " ".join(str(item.get("answer") or "").split()).strip()
-        if not qid or not reference or not answer:
+        if not qid or not reference:
             if qid:
                 results[qid] = None
+            continue
+        if not answer:
+            results[qid] = {"score": 0, "confidence": 1.0, "feedback": "Javob kiritilmagan."}
             continue
         required_years = _year_tokens(reference)
         submitted_years = _year_tokens(answer)
