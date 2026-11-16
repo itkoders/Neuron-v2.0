@@ -8127,10 +8127,9 @@ async def api_tests_upload(request):
         try:
             # Gemini javobini cheksiz kutmaymiz. Oddiy parser topgan savollar zaxira bo'lib qoladi.
             ai_questions,ai_status=await asyncio.wait_for(
-                extract_questions_with_gemini(filename,raw,timeout_seconds=35),
-                timeout=40
+                extract_questions_with_gemini(filename,raw,timeout_seconds=90),
+                timeout=100
             )
-        except asyncio.TimeoutError:
             ai_questions,ai_status=[], "timeout"
             logging.warning("Gemini test extraction timed out; using parser fallback")
         except Exception:
@@ -8205,34 +8204,12 @@ async def api_tests_restart(request):
         (new_start,new_end,tid,t["id"]))
     audit(t.get("chat_id"),"test_restart",str(tid),test["title"])
 
-    target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
-    target_params=[t["id"],test["subject_id"]]
-    if test["group_name"]!="*":
-        target_sql+=" AND LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?))"
-        target_params.append(test["group_name"])
-    student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
-    chat_ids=set()
-    for student_id in student_ids:
-        chat_ids.update(db_student_chat_ids_for_student(student_id))
-    notified=0;failed=0
-    if bot:
-        message=("🔄 Test qayta ishga tushirildi!\n"
-                 f"📚 {test['title']}\n"
-                 f"📝 Savollar: {len(test['questions'])} ta\n"
-                 f"⏰ {new_start} — {new_end}\n\n"
-                 "NEURON ilovasidagi «Testlar» bo‘limidan oching.")
-        markup=None
-        if MINIAPP_URL:
-            markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📝 Testni ochish",web_app=WebAppInfo(url=miniapp_role_url("student")))
-            ]])
-        for chat_id in chat_ids:
-            try:
-                await bot.send_message(chat_id,message,reply_markup=markup);notified+=1
-            except Exception:
-                failed+=1
-                logging.warning("Restart test notification failed: test=%s",tid)
-    return web.json_response({"ok":True,"students_found":len(student_ids),"notified":notified,
+    students_found, notified, failed = await _send_test_notifications(
+        tid, t["id"], test["subject_id"], test["group_name"], test["title"],
+        len(test["questions"]), new_start, new_end, "🔄 Test qayta ishga tushirildi"
+    )
+    return web.json_response({"ok":True,"students_found":students_found,"notified":notified,
+                              "notification_failed":failed,"start_at":new_start,"end_at":new_end})
                               "notification_failed":failed,"start_at":new_start,"end_at":new_end})
 
 
@@ -8267,36 +8244,23 @@ async def api_tests_publish(request):
         (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
     audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
 
-    # Test faollashganda shu fan/guruhdagi botga ulangan o'quvchilarga xabar yuboramiz.
+    # Kelajakdagi test xabari boshlanish vaqti yetganda fon vazifasi orqali yuboriladi.
     target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
     target_params=[t["id"],test["subject_id"]]
     if test["group_name"]!="*":
         target_sql+=" AND LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?))"
         target_params.append(test["group_name"])
     student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
-    chat_ids=set()
-    for student_id in student_ids:
-        chat_ids.update(int(cid) for cid in db_student_chat_ids_for_student(student_id) if cid)
-    notified=0; notification_failed=0
-    if bot:
-        message=("🧪 Yangi test sizga biriktirildi!\n"
-                 f"📚 {test['title']}\n"
-                 f"📝 Savollar: {len(test['questions'])} ta\n"
-                 f"⏰ {start} — {end}\n\n"
-                 "Testni NEURON ilovasidagi «Testlar» bo‘limidan oching.")
-        markup=None
-        if MINIAPP_URL:
-            markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="📝 Testni ochish",web_app=WebAppInfo(url=miniapp_role_url("student")))
-            ]])
-        for chat_id in chat_ids:
-            try:
-                await bot.send_message(chat_id,message,reply_markup=markup)
-                notified+=1
-            except Exception:
-                notification_failed+=1
-                logging.info("Test xabari yuborilmadi: test=%s chat=%s",tid,chat_id)
+    notified=0
+    notification_failed=0
+    if datetime.fromisoformat(start) <= local_now():
+        _, notified, notification_failed = await _send_test_notifications(
+            tid, t["id"], test["subject_id"], test["group_name"], test["title"],
+            len(test["questions"]), start, end, "🧪 Yangi test sizga biriktirildi"
+        )
+    is_scheduled = datetime.fromisoformat(start) > local_now()
     return web.json_response({"ok":True,"notified":notified,"notification_failed":notification_failed,
+                              "students_found":len(student_ids),"scheduled":is_scheduled,"starts_at":start})
                               "students_found":len(student_ids)})
 
 async def api_tests_student(request):
