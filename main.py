@@ -8018,8 +8018,15 @@ async def api_tests_student_start(request):
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row)
-    if not _test_is_open(test):return web.json_response({"error":"test_closed"},status=403)
     attempt=run("SELECT id,status,answers_json,score,total FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    try:
+        starts=datetime.fromisoformat(test["start_at"]);ends=datetime.fromisoformat(test["end_at"])
+        if starts.tzinfo is None:starts=starts.replace(tzinfo=TEST_TZ)
+        if ends.tzinfo is None:ends=ends.replace(tzinfo=TEST_TZ)
+        now=local_now()
+        if now<starts or (now>ends and (not attempt or attempt[1]!="in_progress")):
+            return web.json_response({"error":"test_closed"},status=403)
+    except Exception:return web.json_response({"error":"test_closed"},status=403)
     if attempt and attempt[1]!="in_progress":return web.json_response({"error":"already_submitted","status":attempt[1],"score":attempt[3],"total":attempt[4]},status=409)
     if not attempt:
         run("""INSERT INTO test_attempts(test_id,student_id,answers_json,written_scores_json,score,total,status,started_at)
