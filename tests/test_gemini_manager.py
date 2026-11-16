@@ -2,7 +2,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from gemini_manager import _configured_keys
+import gemini_manager
+from gemini_manager import _configured_keys, gemini_generate
 
 
 class GeminiKeyConfigTests(unittest.TestCase):
@@ -21,6 +22,41 @@ class GeminiKeyConfigTests(unittest.TestCase):
     def test_single_legacy_variable_still_works(self):
         with patch.dict(os.environ, {"GEMINI_API_KEY": "legacy-key"}, clear=True):
             self.assertEqual(_configured_keys(), ["legacy-key"])
+
+    def test_rotates_to_next_key_after_rate_limit(self):
+        class FakeResponse:
+            def __init__(self, status):
+                self.status = status
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+            async def json(self, content_type=None):
+                return {"candidates": []}
+
+        class FakeSession:
+            def __init__(self, *args, **kwargs):
+                self.calls = 0
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+            def post(self, *args, **kwargs):
+                self.calls += 1
+                return FakeResponse(429 if self.calls == 1 else 200)
+
+        async def run_test():
+            gemini_manager._STATE.clear()
+            gemini_manager._CURSOR = 0
+            with patch.dict(os.environ, {"GEMINI_API_KEYS": "first-key,second-key"}, clear=True):
+                with patch("gemini_manager.aiohttp.ClientSession", FakeSession):
+                    data, status = await gemini_generate("test-model", {"contents": []})
+            self.assertEqual(status, "ok")
+            self.assertEqual(data, {"candidates": []})
+            self.assertTrue(gemini_manager._STATE["first-key"]["cooldown_until"] > 0)
+
+        import asyncio
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":
