@@ -40,6 +40,11 @@ class WrittenGradingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         self.assertEqual(status, "needs_review")
 
+    async def test_blank_answer_is_incorrect_without_ai(self):
+        result, status = await grade_written_answer("Savol", "To‘g‘ri javob", "")
+        self.assertEqual(status, "ok")
+        self.assertEqual(result["score"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
