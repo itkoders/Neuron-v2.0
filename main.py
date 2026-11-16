@@ -16,6 +16,7 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
+from test_ai import extract_questions_with_gemini
 from aiohttp import web
 from urllib.parse import parse_qsl
 from aiogram.types import WebAppInfo
@@ -7995,12 +7996,23 @@ async def api_tests_upload(request):
         start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
         if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
         questions,truncated=_test_extract_file(filename,raw)
+        parser_questions=questions
+        ai_questions,ai_status=await extract_questions_with_gemini(filename,raw)
+        extraction_method="parser"
+        if ai_questions:
+            # Keep extracted source images only when both parsers agree on question count.
+            if len(ai_questions)==len(parser_questions):
+                for index,q in enumerate(ai_questions):
+                    q["images"]=(parser_questions[index].get("images") or [])[:2]
+            questions=ai_questions[:100]
+            extraction_method="gemini"
+        truncated=bool(truncated or (ai_questions and len(ai_questions)>100))
         title=(fields.get("title") or filename.rsplit(".",1)[0] or "Yangi test")[:100]
         tid=run("""INSERT INTO tests(teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at)
                    VALUES(?,?,?,?,?,?,'draft',?,'{}',?)""",
                 (t["id"],sid,title,group,start,end,json.dumps(questions,ensure_ascii=False),local_now().isoformat()),fetch="lastid")
         audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
-        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
+        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"extraction_method":extraction_method,"ai_status":ai_status,"needs_review":True,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
     except ValueError as exc:
         code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
         return web.json_response({"error":code,"message":messages.get(code,"Faylni o‘qib bo‘lmadi.")},status=400)
