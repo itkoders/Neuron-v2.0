@@ -2855,7 +2855,7 @@ body.social-open #paxBuddy{display:none}
     if(!start||!end||new Date(end)<=new Date(start)){toast("Boshlanish va tugash vaqtini tekshiring.");return;}
     const fd=new FormData();fd.append("file",file,file.name);fd.append("title",$("testTitle").value||file.name);fd.append("subject_id",String(state.subject.id));fd.append("group_name",$("testGroup").value);fd.append("start_at",start);fd.append("end_at",end);
     btn.disabled=true;if(hint)hint.textContent="Fayl tahlil qilinmoqda…";
-    try{const out=await apiUpload("/api/tests/upload",fd);renderTeacherTestEditor(out.test_id,out.title,out.questions||[],out.start_at,out.end_at);toast("Savollar ajratildi. To‘g‘ri javoblarni belgilang.");}
+    try{const out=await apiUpload("/api/tests/upload",fd);renderTeacherTestEditor(out.test_id,out.title,out.questions||[],out.start_at,out.end_at);toast(out.truncated?"Faylda 100 tadan ortiq savol bor edi. Faqat birinchi 100 ta savol olindi.":"Savollar ajratildi. To‘g‘ri javoblarni belgilang.");}
     catch(e){if(hint)hint.textContent=e.data?.message||errText(e);toast(e.data?.message||errText(e));}
     finally{if($("testUploadBtn"))$("testUploadBtn").disabled=false;}
   }
