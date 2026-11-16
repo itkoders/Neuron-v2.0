@@ -2869,7 +2869,7 @@ body.social-open #paxBuddy{display:none}
         q.options=q.options.map(o=>{const field=host.querySelector('[data-option-text="'+q.id+'_'+o.key+'"]');return {...o,text:field?field.value:o.text};});
       }
     }
-    try{await api("/api/tests/"+id+"/publish",{method:"POST",body:JSON.stringify({answer_key:key,questions,start_at:host.dataset.startAt,end_at:host.dataset.endAt})});toast("Test faollashtirildi.");await loadTeacherTests();}
+    try{const result=await api("/api/tests/"+id+"/publish",{method:"POST",body:JSON.stringify({answer_key:key,questions,start_at:host.dataset.startAt,end_at:host.dataset.endAt})});toast(result.notified>0?"Test faollashtirildi. Telegram xabari "+result.notified+" o‘quvchiga yuborildi.":result.students_found>0?"Test faollashtirildi, lekin o‘quvchilarga Telegram xabari yuborilmadi. Ular ilovadagi Testlar bo‘limidan tekshirsin.":"Test faollashtirildi, ammo tanlangan guruhda o‘quvchi topilmadi.");await loadTeacherTests();}
     catch(e){toast(errText(e));}
   }
 
