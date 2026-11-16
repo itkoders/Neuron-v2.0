@@ -136,7 +136,7 @@ async def extract_questions_with_gemini(filename, raw):
             "mark it as written and return an empty options array. Ignore page numbers, "
             "headers, footers, answer keys, explanations, and unrelated paragraphs. "
             "If a diagram or picture is part of a question, keep the question text and "
-            "do not invent a description. Return at most 100 questions in source order. "
+            "do not invent a description. Return at most 101 questions in source order; the server keeps only the first 100 and warns if an extra question exists. "
             "If the source is not a test or the question is unclear, omit it rather than guess. "
             "The document may contain multiple questions on one page."
         )
