@@ -125,10 +125,10 @@ def _parse_model_json(data):
     if not candidates:
         return None
     parts = (candidates[0].get("content") or {}).get("parts") or []
-    raw = "\\n".join(str(p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
+    raw = "\n".join(str(p.get("text") or "") for p in parts if isinstance(p, dict)).strip()
     if not raw:
         return None
-    raw = re.sub(r"^\\s*```(?:json)?\\s*|\\s*```$", "", raw, flags=re.I)
+    raw = re.sub(r"^\s*```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
     return json.loads(raw)
 
 
@@ -179,7 +179,7 @@ async def extract_questions_with_gemini(filename, raw):
             text_value, image_parts = _docx_parts(raw)
             if not text_value and not image_parts:
                 return [], "empty_document"
-            parts.append({"text": "DOCX text content:\\n" + text_value[:180_000]})
+            parts.append({"text": "DOCX text content:\n" + text_value[:180_000]})
             parts.extend(image_parts)
         else:
             return [], "unsupported_file"
@@ -197,7 +197,7 @@ async def extract_questions_with_gemini(filename, raw):
 
 def _year_tokens(value):
     # Three- or four-digit historical years are strict; surrounding suffixes such as "-yil" are ignored.
-    return set(re.findall(r"(?<!\\d)([1-9]\\d{2,3})(?!\\d)", str(value or "")))
+    return set(re.findall(r"(?<!\d)([1-9]\d{2,3})(?!\d)", str(value or "")))
 
 
 async def grade_written_answer(question_text, reference_answer, student_answer):
@@ -230,8 +230,8 @@ async def grade_written_answer(question_text, reference_answer, student_answer):
         "Do not invent facts or give credit for vague related text. If uncertain, return confidence below 0.82. "
         "Historical years are strict: a wrong, missing, or additional conflicting year is incorrect. "
         "Return JSON only.\nQUESTION: " + str(question_text)[:3000] +
-        "\\nTEACHER REFERENCE: " + reference[:3000] +
-        "\\nSTUDENT ANSWER: " + answer[:3000]
+        "\nTEACHER REFERENCE: " + reference[:3000] +
+        "\nSTUDENT ANSWER: " + answer[:3000]
     )
     parsed, status = await _gemini_json(model, [{"text": prompt}], schema, max_tokens=500)
     if not parsed:
