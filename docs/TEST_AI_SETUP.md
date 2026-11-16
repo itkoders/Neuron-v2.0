@@ -1,29 +1,40 @@
-# NEURON V2 — Gemini test extraction setup
+# NEURON V2 — Gemini AI test module setup
 
-## Environment variables (Render)
+## Render Environment Variables
 
-Add these variables to the NEURON V2 web service:
+Set these on the NEURON V2 Render service:
 
-- `GEMINI_API_KEY`: API key created in Google AI Studio. Keep it secret; never put it in GitHub or send it in Telegram/chat.
+- `GEMINI_API_KEYS`: up to 10 Gemini keys, separated by commas or new lines. Example format only: `key1,key2,key3`.
+- `GEMINI_API_KEY`: optional legacy/single-key fallback; can be kept while migrating.
 - `GEMINI_MODEL`: optional; defaults to `gemini-3.8-flash`.
 
-After saving environment variables, trigger a manual deploy. If the key is absent, NEURON uses its deterministic PDF/DOCX parser and does not call Gemini.
+Do not paste real keys into GitHub, source code, Telegram, or ChatGPT. Add them only in Render Environment settings. The application masks keys in status output and never logs full key values.
 
-## Extraction flow
+The manager rotates keys, skips keys in cooldown, and tries another configured key after rate limits, invalid credentials, transient server errors, or timeouts. It tracks per-key success/error counters in process memory and exposes safe, masked status in the Super Admin overview API. Counters reset when the service restarts.
 
-1. Existing PDF/DOCX parser extracts a first-pass question set and document images.
-2. Gemini receives the PDF itself (native document/vision input) or DOCX text plus embedded images.
-3. Gemini returns structured JSON containing question text, type, and answer choices.
-4. NEURON validates and caps the result at 100 questions.
-5. The existing teacher editor remains mandatory. The test is not published until the teacher reviews the questions and sets the correct answer key.
-6. If Gemini is unavailable, rate-limited, or returns invalid data, the parser fallback remains available.
+**Quota warning:** key rotation does not multiply quota when keys belong to the same Google Cloud project. Gemini quotas are generally project/model/tier based. Separate keys help with credential isolation and rotation; independent project quotas require separately configured projects and must follow Google's terms. Do not create multiple projects to evade provider limits.
 
-## Privacy note
+## Test extraction
 
-Google's Gemini API free tier may use submitted content to improve Google's products. Do not upload files containing student names, phone numbers, grades, or other personal information to the free tier. Use anonymized test papers. Check the current Google AI Studio/API terms and quota before production use.
+1. Teacher uploads PDF/DOCX.
+2. Gemini parses source questions and options; deterministic parser is fallback.
+3. Teacher reviews every question and provides the correct choice or reference answer for written questions.
+4. Nothing is published until the teacher confirms the answer key.
 
-## Current provider references
+## Written-answer grading
 
-- Pricing and free-tier details: https://ai.google.dev/gemini-api/docs/pricing
-- PDF document understanding: https://ai.google.dev/gemini-api/docs/document-processing
-- Model information: https://ai.google.dev/gemini-api/docs/models
+- Gemini grades by meaning and essential facts, not exact character matching.
+- Minor spelling, apostrophe, and one-letter mistakes are tolerated when the intended meaning is clearly correct.
+- Historical years found in the teacher's reference answer are checked strictly before AI grading. A missing, different, or extra year results in an incorrect answer.
+- Low-confidence or unavailable-AI results remain pending for teacher review.
+- AI does not see or change the student's answer key; it grades only after submission.
+
+## Privacy
+
+Google's Gemini API free tier may use submitted content to improve Google's products. Use anonymized test papers only; do not send student names, phone numbers, grades, or other personal information. Review current Google AI Studio/API terms and quotas before production use.
+
+## Official references
+
+- https://ai.google.dev/gemini-api/docs/pricing
+- https://ai.google.dev/gemini-api/docs/document-processing
+- https://ai.google.dev/gemini-api/docs/models
