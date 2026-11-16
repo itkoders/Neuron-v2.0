@@ -2232,14 +2232,24 @@ body.social-open #paxBuddy{display:none}
     return data;
   }
   async function apiUpload(path, form) {
-    const res = await fetch(path, { method: "POST", body: form, headers: {
-      "X-Init-Data": INIT,
-      "X-App-Role": new URLSearchParams(location.search).get("role") || ""
-    }});
-    let data = {};
-    try { data = await res.json(); } catch (_) {}
-    if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), {status:res.status,data});
-    return data;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 65000);
+    try {
+      const res = await fetch(path, { method: "POST", body: form, signal: controller.signal,
+        headers: {
+          "X-Init-Data": INIT,
+          "X-App-Role": new URLSearchParams(location.search).get("role") || ""
+        }});
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      if (!res.ok) throw Object.assign(new Error(data.message || data.error || "http " + res.status), {status:res.status,data});
+      return data;
+    } catch (err) {
+      if (err.name === "AbortError") throw new Error("Fayl tahlili 65 soniyada yakunlanmadi. Faylni kichikroq qilib qayta yuboring.");
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   let socialPoll=null, socialProfile=null;

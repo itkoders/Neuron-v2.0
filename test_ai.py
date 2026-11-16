@@ -132,7 +132,7 @@ def _parse_model_json(data):
     return json.loads(raw)
 
 
-async def _gemini_json(model, parts, schema, max_tokens=16000):
+async def _gemini_json(model, parts, schema, max_tokens=16000, timeout_seconds=100):
     payload = {
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {
@@ -142,7 +142,7 @@ async def _gemini_json(model, parts, schema, max_tokens=16000):
             "responseSchema": schema,
         },
     }
-    data, status = await gemini_generate(model, payload, timeout_seconds=100)
+    data, status = await gemini_generate(model, payload, timeout_seconds=timeout_seconds)
     if status != "ok":
         return None, status
     try:
@@ -152,7 +152,7 @@ async def _gemini_json(model, parts, schema, max_tokens=16000):
         return None, "ai_parse_error"
 
 
-async def extract_questions_with_gemini(filename, raw):
+async def extract_questions_with_gemini(filename, raw, timeout_seconds=35):
     """Return (questions, status). Empty questions means use deterministic fallback."""
     extension = str(filename or "").lower().rsplit(".", 1)[-1]
     parts = [{
@@ -184,7 +184,7 @@ async def extract_questions_with_gemini(filename, raw):
         else:
             return [], "unsupported_file"
         model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
-        parsed, status = await _gemini_json(model, parts, QUESTION_SCHEMA)
+        parsed, status = await _gemini_json(model, parts, QUESTION_SCHEMA, timeout_seconds=timeout_seconds)
         if not parsed:
             return [], status
         questions = _clean_questions(parsed)

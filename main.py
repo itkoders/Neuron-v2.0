@@ -8005,7 +8005,19 @@ async def api_tests_upload(request):
             logging.warning("Deterministic test parser failed; trying Gemini: %s",type(parse_exc).__name__)
             questions=[];truncated=False;parser_error=parse_exc
         parser_questions=questions
-        ai_questions,ai_status=await extract_questions_with_gemini(filename,raw)
+        logging.info("Test extraction started: extension=%s size=%s", filename.rsplit(".",1)[-1].lower(), len(raw))
+        try:
+            # Gemini javobini cheksiz kutmaymiz. Oddiy parser topgan savollar zaxira bo'lib qoladi.
+            ai_questions,ai_status=await asyncio.wait_for(
+                extract_questions_with_gemini(filename,raw,timeout_seconds=35),
+                timeout=40
+            )
+        except asyncio.TimeoutError:
+            ai_questions,ai_status=[], "timeout"
+            logging.warning("Gemini test extraction timed out; using parser fallback")
+        except Exception:
+            ai_questions,ai_status=[], "ai_error"
+            logging.exception("Gemini test extraction failed; using parser fallback")
         extraction_method="parser"
         if ai_questions:
             # Keep extracted source images only when both parsers agree on question count.
@@ -8024,6 +8036,8 @@ async def api_tests_upload(request):
                    VALUES(?,?,?,?,?,?,'draft',?,'{}',?)""",
                 (t["id"],sid,title,group,start,end,json.dumps(questions,ensure_ascii=False),local_now().isoformat()),fetch="lastid")
         audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
+        logging.info("Test extraction finished: test_id=%s questions=%s method=%s ai_status=%s",
+                     tid, len(questions), extraction_method, ai_status)
         return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"extraction_method":extraction_method,"ai_status":ai_status,"needs_review":True,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
     except ValueError as exc:
         code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}

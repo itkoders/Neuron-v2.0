@@ -1,6 +1,6 @@
 import asyncio
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from test_ai import _clean_questions, extract_questions_with_gemini
 
@@ -57,6 +57,15 @@ class GeminiFallbackTests(unittest.IsolatedAsyncioTestCase):
             result, status = await extract_questions_with_gemini("test.pdf", b"%PDF-test")
         self.assertEqual(result, [])
         self.assertEqual(status, "not_configured")
+
+    async def test_extraction_uses_bounded_timeout(self):
+        with patch("test_ai._gemini_json", new=AsyncMock(return_value=(None, "timeout"))) as mocked:
+            result, status = await extract_questions_with_gemini(
+                "test.pdf", b"%PDF-test", timeout_seconds=12
+            )
+        self.assertEqual(result, [])
+        self.assertEqual(status, "timeout")
+        self.assertEqual(mocked.await_args.kwargs["timeout_seconds"], 12)
 
 
 if __name__ == "__main__":
