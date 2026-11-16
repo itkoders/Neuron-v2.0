@@ -7806,8 +7806,8 @@ def _test_image_uri(raw):
 
 def _test_parse_text(value,image_tokens=None):
     image_tokens=image_tokens or {}; result=[]; cur=None; opt=None
-    qr=re.compile(r"^\\s*(?:savol\\s*)?(\\d{1,3})[\\.\\):\\-]\\s*(.*)$",re.I)
-    ar=re.compile(r"^\\s*([A-DА-Г])[\\)\\.\\:\\-]\\s*(.*)$",re.I)
+    qr=re.compile(r"^\s*(?:savol\s*)?(\d{1,3})[\.\):\-]\s*(.*)$",re.I)
+    ar=re.compile(r"^\s*([A-DА-Г])[\)\.\:\-]\s*(.*)$",re.I)
     def finish():
         nonlocal cur
         if cur:
@@ -7820,7 +7820,7 @@ def _test_parse_text(value,image_tokens=None):
     for raw in str(value or "").splitlines():
         line=raw.strip()
         if not line:continue
-        token=re.fullmatch(r"\\[\\[NEURON_IMAGE_(\\d+)\\]\\]",line)
+        token=re.fullmatch(r"\[\[NEURON_IMAGE_(\d+)\]\]",line)
         if token:
             if cur:
                 uri=image_tokens.get(int(token.group(1)))
@@ -7876,7 +7876,7 @@ def _test_extract_file(filename,raw):
                             if uri:
                                 n+=1;tokens[n]=uri;lines.append(f"[[NEURON_IMAGE_{n}]]")
                 except Exception:pass
-            questions=_test_parse_text("\\n".join(lines),tokens)
+            questions=_test_parse_text("\n".join(lines),tokens)
         except Exception as exc:
             logging.exception("DOCX test parse failed");raise ValueError("docx_parse_error") from exc
     else:raise ValueError("file_type")
