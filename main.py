@@ -16,6 +16,8 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
+from test_ai import extract_questions_with_gemini, grade_written_answers
+from gemini_manager import gemini_status
 from aiohttp import web
 from urllib.parse import parse_qsl
 from aiogram.types import WebAppInfo
@@ -5639,6 +5641,7 @@ async def api_admin_overview(request):
         payload["settings"]["verify_mode"] = ""
         payload["settings"]["ai_primary"] = ""
     if is_super(uid):
+        payload["ai_manager"] = gemini_status()
         rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
         payload["admins"] = [
             {"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID,
@@ -7994,13 +7997,34 @@ async def api_tests_upload(request):
         if group!="*" and group not in groups:return web.json_response({"error":"bad_group"},status=400)
         start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
         if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
-        questions,truncated=_test_extract_file(filename,raw)
+        parser_error=None
+        try:
+            questions,truncated=_test_extract_file(filename,raw)
+        except Exception as parse_exc:
+            # Let Gemini try even when the deterministic parser cannot recognize the layout.
+            logging.warning("Deterministic test parser failed; trying Gemini: %s",type(parse_exc).__name__)
+            questions=[];truncated=False;parser_error=parse_exc
+        parser_questions=questions
+        ai_questions,ai_status=await extract_questions_with_gemini(filename,raw)
+        extraction_method="parser"
+        if ai_questions:
+            # Keep extracted source images only when both parsers agree on question count.
+            if len(ai_questions)==len(parser_questions):
+                for index,q in enumerate(ai_questions):
+                    q["images"]=(parser_questions[index].get("images") or [])[:2]
+            questions=ai_questions[:100]
+            extraction_method="gemini"
+        elif not questions:
+            if isinstance(parser_error,ValueError):
+                raise parser_error
+            raise ValueError("questions_not_found")
+        truncated=bool(truncated or (ai_questions and len(ai_questions)>100))
         title=(fields.get("title") or filename.rsplit(".",1)[0] or "Yangi test")[:100]
         tid=run("""INSERT INTO tests(teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at)
                    VALUES(?,?,?,?,?,?,'draft',?,'{}',?)""",
                 (t["id"],sid,title,group,start,end,json.dumps(questions,ensure_ascii=False),local_now().isoformat()),fetch="lastid")
         audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
-        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
+        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"extraction_method":extraction_method,"ai_status":ai_status,"needs_review":True,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
     except ValueError as exc:
         code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
         return web.json_response({"error":code,"message":messages.get(code,"Faylni o‘qib bo‘lmadi.")},status=400)
@@ -8031,6 +8055,8 @@ async def api_tests_publish(request):
         test["questions"]=corrected
     for q in test["questions"]:
         if q["type"]=="choice" and str(key.get(str(q["id"]),"")).upper() not in {o["key"] for o in q["options"]}:
+            return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
+        if q["type"]=="written" and not str(key.get(str(q["id"]),"")).strip():
             return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
     run("UPDATE tests SET questions_json=?,answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
         (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
@@ -8151,18 +8177,31 @@ async def api_tests_student_submit(request):
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
     if not attempt or attempt[1]!="in_progress":return web.json_response({"error":"attempt_not_found"},status=404)
-    clean={};score=0;written=0
+    clean={};score=0;written_pending=0;written_auto=0;written_scores={};written_batch=[]
     for q in test["questions"]:
         value=str(answers.get(str(q["id"]),"")).strip()[:2000]
+        qid=str(q["id"])
         if q["type"]=="choice":
             if value.upper() in {o["key"] for o in q["options"]}:
-                clean[str(q["id"])]=value.upper()
-                if test["answer_key"].get(str(q["id"]))==value.upper():score+=1
-        else:clean[str(q["id"])]=value;written+=1
-    status="pending_review" if written else "graded"
-    run("UPDATE test_attempts SET answers_json=?,score=?,total=?,status=?,submitted_at=? WHERE id=? AND student_id=?",
-        (json.dumps(clean,ensure_ascii=False),score,len(test["questions"]),status,local_now().isoformat(),attempt[0],st["id"]))
-    return web.json_response({"ok":True,"score":score if not written else None,"total":len(test["questions"]),"written_pending":written,"status":status})
+                clean[qid]=value.upper()
+                if test["answer_key"].get(qid)==value.upper():score+=1
+        else:
+            clean[qid]=value
+            written_batch.append({"id":qid,"question":q["text"],
+                                  "reference":test["answer_key"].get(qid),"answer":value})
+    ai_written,ai_status=await grade_written_answers(written_batch)
+    for item in written_batch:
+        qid=item["id"];grade=ai_written.get(qid)
+        if grade is None:
+            written_pending+=1
+        else:
+            written_scores[qid]=int(grade["score"])
+            score+=int(grade["score"])
+            written_auto+=1
+    status="pending_review" if written_pending else "graded"
+    run("UPDATE test_attempts SET answers_json=?,written_scores_json=?,score=?,total=?,status=?,submitted_at=? WHERE id=? AND student_id=?",
+        (json.dumps(clean,ensure_ascii=False),json.dumps(written_scores,ensure_ascii=False),score,len(test["questions"]),status,local_now().isoformat(),attempt[0],st["id"]))
+    return web.json_response({"ok":True,"score":score if not written_pending else None,"total":len(test["questions"]),"written_pending":written_pending,"written_auto_graded":written_auto,"status":status})
 
 async def api_tests_teacher_results(request):
     try:tid=int(request.match_info["tid"])
