@@ -2844,7 +2844,7 @@ body.social-open #paxBuddy{display:none}
 
   function renderTeacherTestEditor(id,title,questions,startAt,endAt){
     const host=$("teacherTests");
-    host.innerHTML='<div class="card panel"><h3>🧩 '+esc(title)+'</h3><p class="hint">Savollarni tekshiring. Variantli savollarda to‘g‘ri javobni belgilang. Variantlarsiz savollar yozma tarzda tekshiriladi.</p>'+(questions||[]).map(q=>'<div class="card panel" style="margin:10px 0"><b>'+q.id+'. '+esc(q.text)+'</b>'+testImageHtml(q.images)+(q.type==="choice"?'<div style="display:grid;gap:8px;margin-top:10px">'+q.options.map(o=>'<label class="att-item" style="justify-content:flex-start"><input type="radio" name="testkey_'+q.id+'" value="'+esc(o.key)+'" style="width:20px;height:20px"><span><b>'+esc(o.key)+'.</b> '+esc(o.text)+'</span></label>').join("")+'</div>':'<p class="hint">✍️ Yozma savol — o‘qituvchi keyin tekshiradi.</p>')+'</div>').join("")+'<button class="btn btn-wide" id="publishTestBtn">✅ Javoblarni saqlash va faollashtirish</button><button class="chip-btn" id="backTestsBtn" style="width:100%;margin-top:8px">Orqaga</button></div>';
+    host.innerHTML='<div class="card panel"><h3>🧩 '+esc(title)+'</h3><p class="hint">Savollarni tekshiring. Variantli savollarda to‘g‘ri javobni belgilang. Variantlarsiz savollar yozma tarzda tekshiriladi.</p>'+(questions||[]).map(q=>'<div class="card panel" style="margin:10px 0"><label class="hint">Savol matni<textarea class="field" data-q-text="'+q.id+'" rows="2" style="width:100%">'+esc(q.text)+'</textarea></label>'+testImageHtml(q.images)+(q.type==="choice"?'<div style="display:grid;gap:8px;margin-top:10px">'+q.options.map(o=>'<label class="att-item" style="align-items:flex-start"><input type="radio" name="testkey_'+q.id+'" value="'+esc(o.key)+'" style="width:20px;height:20px"><span style="flex:1"><b>'+esc(o.key)+'.</b><textarea class="field" data-option-text="'+q.id+'_'+esc(o.key)+'" rows="2" style="width:100%">'+esc(o.text)+'</textarea></span></label>').join("")+'</div>':'<p class="hint">✍️ Yozma savol — o‘qituvchi keyin tekshiradi.</p>')+'</div>').join("")+'<button class="btn btn-wide" id="publishTestBtn">✅ Javoblarni saqlash va faollashtirish</button><button class="chip-btn" id="backTestsBtn" style="width:100%;margin-top:8px">Orqaga</button></div>';
     host.dataset.editingTest=String(id);host.dataset.questions=JSON.stringify(questions||[]);host.dataset.startAt=startAt||"";host.dataset.endAt=endAt||"";
   }
 
@@ -2862,8 +2862,14 @@ body.social-open #paxBuddy{display:none}
 
   async function publishTeacherTest(){
     const host=$("teacherTests"),id=host.dataset.editingTest,questions=JSON.parse(host.dataset.questions||"[]"),key={};
-    for(const q of questions){if(q.type==="choice"){const el=host.querySelector('input[name="testkey_'+q.id+'"]:checked');if(!el){toast(q.id+"-savolning to‘g‘ri javobini belgilang.");return;}key[String(q.id)]=el.value;}}
-    try{await api("/api/tests/"+id+"/publish",{method:"POST",body:JSON.stringify({answer_key:key,start_at:host.dataset.startAt,end_at:host.dataset.endAt})});toast("Test faollashtirildi.");await loadTeacherTests();}
+    for(const q of questions){
+      const textEl=host.querySelector('[data-q-text="'+q.id+'"]');if(textEl)q.text=textEl.value;
+      if(q.type==="choice"){
+        const el=host.querySelector('input[name="testkey_'+q.id+'"]:checked');if(!el){toast(q.id+"-savolning to‘g‘ri javobini belgilang.");return;}key[String(q.id)]=el.value;
+        q.options=q.options.map(o=>{const field=host.querySelector('[data-option-text="'+q.id+'_'+o.key+'"]');return {...o,text:field?field.value:o.text};});
+      }
+    }
+    try{await api("/api/tests/"+id+"/publish",{method:"POST",body:JSON.stringify({answer_key:key,questions,start_at:host.dataset.startAt,end_at:host.dataset.endAt})});toast("Test faollashtirildi.");await loadTeacherTests();}
     catch(e){toast(errText(e));}
   }
 
