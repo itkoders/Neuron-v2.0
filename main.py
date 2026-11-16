@@ -16,7 +16,8 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
-from test_ai import extract_questions_with_gemini
+from test_ai import extract_questions_with_gemini, grade_written_answer
+from gemini_manager import gemini_status
 from aiohttp import web
 from urllib.parse import parse_qsl
 from aiogram.types import WebAppInfo
@@ -8173,18 +8174,28 @@ async def api_tests_student_submit(request):
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
     if not attempt or attempt[1]!="in_progress":return web.json_response({"error":"attempt_not_found"},status=404)
-    clean={};score=0;written=0
+    clean={};score=0;written_pending=0;written_auto=0;written_scores={}
     for q in test["questions"]:
         value=str(answers.get(str(q["id"]),"")).strip()[:2000]
+        qid=str(q["id"])
         if q["type"]=="choice":
             if value.upper() in {o["key"] for o in q["options"]}:
-                clean[str(q["id"])]=value.upper()
-                if test["answer_key"].get(str(q["id"]))==value.upper():score+=1
-        else:clean[str(q["id"])]=value;written+=1
-    status="pending_review" if written else "graded"
-    run("UPDATE test_attempts SET answers_json=?,score=?,total=?,status=?,submitted_at=? WHERE id=? AND student_id=?",
-        (json.dumps(clean,ensure_ascii=False),score,len(test["questions"]),status,local_now().isoformat(),attempt[0],st["id"]))
-    return web.json_response({"ok":True,"score":score if not written else None,"total":len(test["questions"]),"written_pending":written,"status":status})
+                clean[qid]=value.upper()
+                if test["answer_key"].get(qid)==value.upper():score+=1
+        else:
+            clean[qid]=value
+            reference=test["answer_key"].get(qid)
+            grade,grade_status=await grade_written_answer(q["text"],reference,value)
+            if grade is None or grade_status!="ok":
+                written_pending+=1
+            else:
+                written_scores[qid]=int(grade["score"])
+                score+=int(grade["score"])
+                written_auto+=1
+    status="pending_review" if written_pending else "graded"
+    run("UPDATE test_attempts SET answers_json=?,written_scores_json=?,score=?,total=?,status=?,submitted_at=? WHERE id=? AND student_id=?",
+        (json.dumps(clean,ensure_ascii=False),json.dumps(written_scores,ensure_ascii=False),score,len(test["questions"]),status,local_now().isoformat(),attempt[0],st["id"]))
+    return web.json_response({"ok":True,"score":score if not written_pending else None,"total":len(test["questions"]),"written_pending":written_pending,"written_auto_graded":written_auto,"status":status})
 
 async def api_tests_teacher_results(request):
     try:tid=int(request.match_info["tid"])
