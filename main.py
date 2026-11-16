@@ -7865,24 +7865,26 @@ def _test_extract_file(filename,raw):
                 # Skanerlangan PDF sahifalari uchun OCR: matn qatlami bo‘lmasa sahifani rasmga aylantirib o‘qiymiz.
                 if not parsed:
                     try:
-                        import pytesseract
                         if fitz_doc is None:raise RuntimeError("PDF renderer unavailable")
                         pix=fitz_doc.load_page(page_index).get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
-                        pil=Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                        png_data=pix.tobytes("png")
+                        scanned_image=_test_image_uri(png_data)
+                        pil=Image.open(io.BytesIO(png_data)).convert("RGB")
+                        ocr_text=""
                         try:
-                            ocr_text=pytesseract.image_to_string(pil,lang="uzb+rus+eng",config="--psm 6")
+                            import pytesseract
+                            try:
+                                ocr_text=pytesseract.image_to_string(pil,lang="uzb+rus+eng",config="--psm 6")
+                            except Exception:
+                                ocr_text=pytesseract.image_to_string(pil,lang="eng",config="--psm 6")
+                            parsed=_test_parse_text(ocr_text)
                         except Exception:
-                            ocr_text=pytesseract.image_to_string(pil,lang="eng",config="--psm 6")
-                        parsed=_test_parse_text(ocr_text)
-                        if not parsed:
-                            scanned_image=_test_image_uri(pix.tobytes("png"))
-                            if scanned_image and (ocr_text or imgs):
-                                fallback_text=" ".join((ocr_text or "").split())[:1000]
-                                parsed=[{"id":1,"text":fallback_text or f"Rasmli savol — PDF sahifasi {page_index+1}. Rasmga qarab javob bering.","options":[],"images":[scanned_image],"type":"written"}]
-                        elif parsed:
-                            scanned_image=_test_image_uri(pix.tobytes("png"))
+                            logging.warning("Tesseract OCR is not available; keeping scanned page as an image question")
+                        if not parsed and scanned_image:
+                            fallback_text=" ".join((ocr_text or "").split())[:1000]
+                            parsed=[{"id":1,"text":fallback_text or f"Rasmli savol — PDF sahifasi {page_index+1}. Rasmga qarab javob bering.","options":[],"images":[scanned_image],"type":"written"}]
                     except Exception:
-                        logging.exception("Scanned PDF OCR unavailable or failed")
+                        logging.exception("Scanned PDF image extraction failed")
                 for q in parsed:
                     q["id"]=len(questions)+1
                     q["images"]=(imgs[:1] if imgs else ([scanned_image] if scanned_image else []))
