@@ -7847,7 +7847,13 @@ def _test_extract_file(filename,raw):
         try:
             from pypdf import PdfReader
             reader=PdfReader(io.BytesIO(raw))
-            for page in reader.pages:
+            fitz_doc=None
+            try:
+                import fitz
+                fitz_doc=fitz.open(stream=raw,filetype="pdf")
+            except Exception:
+                fitz_doc=None
+            for page_index,page in enumerate(reader.pages):
                 text_value=page.extract_text() or ""; imgs=[]
                 try:
                     for image in page.images:
@@ -7859,9 +7865,9 @@ def _test_extract_file(filename,raw):
                 # Skanerlangan PDF sahifalari uchun OCR: matn qatlami bo‘lmasa sahifani rasmga aylantirib o‘qiymiz.
                 if not parsed:
                     try:
-                        import fitz
                         import pytesseract
-                        pix=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
+                        if fitz_doc is None:raise RuntimeError("PDF renderer unavailable")
+                        pix=fitz_doc.load_page(page_index).get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
                         pil=Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
                         try:
                             ocr_text=pytesseract.image_to_string(pil,lang="uzb+rus+eng",config="--psm 6")
