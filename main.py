@@ -547,6 +547,9 @@ def init_db():
         answers_json TEXT DEFAULT '{}', written_scores_json TEXT DEFAULT '{}', score INTEGER DEFAULT 0,
         total INTEGER DEFAULT 0, status TEXT DEFAULT 'in_progress', started_at TEXT, submitted_at TEXT,
         UNIQUE(test_id,student_id))""")
+    run("""CREATE TABLE IF NOT EXISTS test_notification_deliveries (
+        test_id INTEGER NOT NULL, chat_id BIGINT NOT NULL, sent_at TEXT NOT NULL,
+        PRIMARY KEY(test_id,chat_id))""")
 
 
 MESSAGE_EMOJI_KEYS = {
@@ -3157,7 +3160,13 @@ async def gemini_json(system, user_text):
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
     }
-    data, status = await gemini_generate(GEMINI_MODEL, body, timeout_seconds=35)
+    try:
+        data, status = await asyncio.wait_for(
+            gemini_generate(GEMINI_MODEL, body, timeout_seconds=90),
+            timeout=100
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError("Gemini javobi 100 soniyada kelmadi. Keyinroq qayta urinib ko‘ring.")
     if status == "rate_limited":
         raise ProviderLimit("Gemini kalitlarining limiti vaqtincha tugagan")
     if status != "ok":
@@ -5182,6 +5191,7 @@ async def background_loop():
             await auto_notify_once()
             await payment_reminders_once()
             await scheduled_broadcast_once()
+            await scheduled_tests_once()
             await new_year_broadcast_once()
         except Exception:
             logging.exception("Fon vazifasi xatosi")
@@ -8009,6 +8019,63 @@ def _test_row(row):
     return {"id":int(row[0]),"teacher_id":int(row[1]),"subject_id":int(row[2]),"title":row[3],
             "group_name":row[4],"start_at":row[5],"end_at":row[6],"status":row[7],
             "questions":json.loads(row[8] or "[]"),"answer_key":json.loads(row[9] or "{}"),"created_at":row[10]}
+
+async def _send_test_notifications(test_id, teacher_id, subject_id, group_name, title,
+                                   question_count, start_at, end_at, prefix="🧪 Yangi test"):
+    """Send each test notification once per student chat; retry only failed recipients."""
+    target_sql = "SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
+    params = [teacher_id, subject_id]
+    if group_name != "*":
+        target_sql += " AND LOWER(TRIM(COALESCE(NULLIF(TRIM(group_name),''),'Guruhsiz')))=LOWER(TRIM(?))"
+        params.append(group_name)
+    student_ids = [row[0] for row in run(target_sql, params, fetch="all")]
+    chat_ids = set()
+    for student_id in student_ids:
+        chat_ids.update(int(cid) for cid in db_student_chat_ids_for_student(student_id) if cid)
+    notified = 0
+    failed = 0
+    if not bot:
+        return len(student_ids), 0, len(chat_ids)
+    markup = None
+    if MINIAPP_URL:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📝 Testni ochish", web_app=WebAppInfo(url=miniapp_role_url("student")))
+        ]])
+    message = (f"{prefix}!\\n"
+               f"📚 {title}\\n"
+               f"📝 Savollar: {question_count} ta\\n"
+               f"⏰ {start_at} — {end_at}\\n\\n"
+               "Testni NEURON ilovasidagi «Testlar» bo‘limidan oching.")
+    for chat_id in chat_ids:
+        exists = run("SELECT 1 FROM test_notification_deliveries WHERE test_id=? AND chat_id=?",
+                     (test_id, chat_id), fetch="one")
+        if exists:
+            continue
+        try:
+            await bot.send_message(chat_id, message, reply_markup=markup)
+            run("INSERT INTO test_notification_deliveries(test_id,chat_id,sent_at) VALUES(?,?,?)",
+                (test_id, chat_id, local_now().isoformat()))
+            notified += 1
+        except Exception:
+            failed += 1
+            logging.warning("Test xabari yuborilmadi: test=%s chat=%s", test_id, chat_id)
+    return len(student_ids), notified, failed
+
+
+async def scheduled_tests_once():
+    """Activate scheduled tests by time and notify students when their start time arrives."""
+    now = local_now()
+    rows = run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,questions_json
+                  FROM tests WHERE status='published' AND start_at<=? AND end_at>=? ORDER BY start_at""",
+               (now.isoformat(), now.isoformat()), fetch="all")
+    for row in rows:
+        try:
+            await _send_test_notifications(
+                int(row[0]), int(row[1]), int(row[2]), row[4] or "*", row[3],
+                len(json.loads(row[7] or "[]")), row[5], row[6], "⏰ Test boshlandi"
+            )
+        except Exception:
+            logging.exception("Rejalashtirilgan testni faollashtirishda xato: test=%s", row[0])
 
 def _test_teacher_owned(request,test_id):
     kind,teacher,err=miniapp_identity(request)
