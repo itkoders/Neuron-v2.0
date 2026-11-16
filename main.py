@@ -7874,7 +7874,13 @@ def _test_extract_file(filename,raw):
                         except Exception:
                             ocr_text=pytesseract.image_to_string(pil,lang="eng",config="--psm 6")
                         parsed=_test_parse_text(ocr_text)
-                        if parsed:scanned_image=_test_image_uri(pix.tobytes("png"))
+                        if not parsed:
+                            scanned_image=_test_image_uri(pix.tobytes("png"))
+                            if scanned_image and (ocr_text or imgs):
+                                fallback_text=" ".join((ocr_text or "").split())[:1000]
+                                parsed=[{"id":1,"text":fallback_text or f"Rasmli savol — PDF sahifasi {page_index+1}. Rasmga qarab javob bering.","options":[],"images":[scanned_image],"type":"written"}]
+                        elif parsed:
+                            scanned_image=_test_image_uri(pix.tobytes("png"))
                     except Exception:
                         logging.exception("Scanned PDF OCR unavailable or failed")
                 for q in parsed:
@@ -7900,6 +7906,8 @@ def _test_extract_file(filename,raw):
                                 n+=1;tokens[n]=uri;lines.append(f"[[NEURON_IMAGE_{n}]]")
                 except Exception:pass
             questions=_test_parse_text("\n".join(lines),tokens)
+            if not questions and tokens:
+                questions=[{"id":i,"text":f"Rasmli savol {i} — rasmga qarab javob bering.","options":[],"images":[uri],"type":"written"} for i,uri in enumerate(tokens.values(),1)]
         except Exception as exc:
             logging.exception("DOCX test parse failed");raise ValueError("docx_parse_error") from exc
     else:raise ValueError("file_type")
@@ -7978,7 +7986,7 @@ async def api_tests_upload(request):
         audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
         return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end})
     except ValueError as exc:
-        code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDF ichidan matn topilmadi. Skanerlangan PDFni avtomatik ajratib bo‘lmaydi.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","too_many_questions":"Testda 100 tadan ko‘p savol bo‘lmasin.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
+        code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","too_many_questions":"Testda 100 tadan ko‘p savol bo‘lmasin.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
         return web.json_response({"error":code,"message":messages.get(code,"Faylni o‘qib bo‘lmadi.")},status=400)
     except Exception:
         logging.exception("Online test upload failed");return web.json_response({"error":"upload_failed"},status=400)
