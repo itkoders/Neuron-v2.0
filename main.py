@@ -460,8 +460,6 @@ def init_db():
     if not run("SELECT 1 FROM plans LIMIT 1", fetch="one"):
         for p in SEED_PLANS:
             run("INSERT INTO plans (key, name, price, student_limit, duration_days, features) VALUES (?, ?, ?, ?, ?, ?)", p)
-    run("INSERT INTO plans (key,name,price,student_limit,duration_days,features,active,subject_limit) "
-        "VALUES (?,?,?,?,?,?,1,0) ON CONFLICT(key) DO NOTHING", SEED_PLANS[0])
     if SUPER_ADMIN_PASSWORD and db_get_setting("super_admin_password") is None:
         db_set_setting("super_admin_password", hash_pw(SUPER_ADMIN_PASSWORD))
     if db_get_setting("verify_mode") is None:
@@ -676,10 +674,15 @@ def expired(date_str):
 
 
 def effective_plan(t):
-    """Teacher hozir qaysi tarifda ekanini qaytaradi. Muddati o'tgan bo'lsa Bepulga tushadi."""
-    p = db_plan(t["plan_key"]) or db_plan("free")
-    if t["plan_expires"] and expired(t["plan_expires"]) and p["key"] != "free":
-        return db_plan("free"), True
+    """O'qituvchining tarifini qaytaradi; tarif o'chirilgan bo'lsa mavjud faol tarifga o'tadi."""
+    p = db_plan(t["plan_key"])
+    fallback = db_plan("free")
+    if not fallback:
+        available = db_plans()
+        fallback = next((x for x in available if x["active"]), available[0] if available else None)
+    p = p or fallback
+    if t["plan_expires"] and expired(t["plan_expires"]) and p and p["key"] != "free":
+        return fallback, True
     return p, False
 
 
@@ -3654,6 +3657,7 @@ async def render_plan(call, key):
         [btn("📅 Kun", f"sa_pf_{key}_duration_days")],
         *feat_rows,
         [btn("🔴 Faolsizlantirish" if p["active"] else "🟢 Faollashtirish", f"sa_ptog_{key}")],
+        [btn("🗑 Tarifni o‘chirish", f"sa_pdel_{key}")],
         [btn("⬅️ Tariflar", "sa_plans")],
     ]
     await call.message.edit_text(_plan_text(p), reply_markup=kb(rows), parse_mode="Markdown")
@@ -3939,6 +3943,52 @@ async def sa_support_delete(call: types.CallbackQuery):
     db_set_setting("support_enabled", "0")
     audit(call.from_user.id, "support_contact", "", "deleted")
     await call.message.edit_text(sa_support_text(), reply_markup=sa_support_kb(), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("sa_pdel_confirm_"))
+async def sa_plan_delete_confirm(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.", show_alert=True)
+        return
+    key = call.data[len("sa_pdel_confirm_"):]
+    plan = db_plan(key)
+    if not plan:
+        await call.answer("Tarif topilmadi yoki avval o‘chirilgan.", show_alert=True)
+        return
+    assigned = run("SELECT COUNT(*) FROM teachers WHERE plan_key = ?", (key,), fetch="one")[0]
+    total = run("SELECT COUNT(*) FROM plans", fetch="one")[0]
+    if total <= 1:
+        await call.answer("Oxirgi tarifni o‘chirib bo‘lmaydi. Kamida bitta tarif qolishi kerak.", show_alert=True)
+        return
+    if assigned:
+        await call.answer(f"Bu tarif {assigned} ta o‘qituvchiga biriktirilgan. Avval ularni boshqa tarifga o‘tkazing.", show_alert=True)
+        return
+    run("DELETE FROM plans WHERE key = ?", (key,))
+    audit(call.from_user.id, "plan_delete", key, plan["name"])
+    await call.answer("Tarif o‘chirildi.")
+    rows = [[btn(f"{'🟢' if p['active'] else '🔴'} {p['name']} — {p['price']:,} so'm", f"sa_plan_{p['key']}")] for p in db_plans()]
+    rows.extend([[btn("🧩 Imkoniyatlar matritsasi", "sa_matrix")], [btn("➕ Yangi tarif", "sa_plannew")], [btn("🔙 Super panel", "sa_menu")]])
+    await call.message.edit_text("💼 **Tariflar**\n\nTarif muvaffaqiyatli o‘chirildi.", reply_markup=kb(rows), parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("sa_pdel_"))
+async def sa_plan_delete_start(call: types.CallbackQuery):
+    if not is_super(call.from_user.id):
+        await call.answer("⛔ Bu boshqaruv faqat loyiha egasiga ochiq.", show_alert=True)
+        return
+    key = call.data[len("sa_pdel_"):]
+    plan = db_plan(key)
+    if not plan:
+        await call.answer("Tarif topilmadi.", show_alert=True)
+        return
+    await call.answer()
+    await call.message.edit_text(
+        f"⚠️ **Tarifni o‘chirish**\n\n💼 Tarif: **{md(plan['name'])}** (kalit: {key})\n\n"
+        "Bu amal tarifni ro‘yxatdan butunlay o‘chiradi. Agar tarif o‘qituvchilarga biriktirilgan bo‘lsa, avval ularni boshqa tarifga o‘tkazing. "
+        "Kamida bitta tarif tizimda qolishi shart.\n\nHaqiqatan ham o‘chirasizmi?",
+        reply_markup=kb([[btn("🗑 Ha, butunlay o‘chirish", f"sa_pdel_confirm_{key}")], [btn("❌ Bekor qilish", f"sa_plan_{key}")]]),
+        parse_mode="Markdown"
+    )
 
 
 @dp.callback_query(F.data.startswith("sa_ptog_"))
