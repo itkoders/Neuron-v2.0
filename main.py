@@ -489,6 +489,15 @@ def init_db():
             features.add("mini_app")
             run("UPDATE plans SET features=? WHERE key=?",(",".join(sorted(features)),row[0]))
         db_set_setting("mini_app_all_plans_v1","1")
+    run("""CREATE TABLE IF NOT EXISTS tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL, subject_id INTEGER NOT NULL,
+        title TEXT NOT NULL, group_name TEXT DEFAULT '*', start_at TEXT NOT NULL, end_at TEXT NOT NULL,
+        status TEXT DEFAULT 'draft', questions_json TEXT NOT NULL, answer_key_json TEXT DEFAULT '{}', created_at TEXT)""")
+    run("""CREATE TABLE IF NOT EXISTS test_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+        answers_json TEXT DEFAULT '{}', written_scores_json TEXT DEFAULT '{}', score INTEGER DEFAULT 0,
+        total INTEGER DEFAULT 0, status TEXT DEFAULT 'in_progress', started_at TEXT, submitted_at TEXT,
+        UNIQUE(test_id,student_id))""")
 
 
 MESSAGE_EMOJI_KEYS = {
@@ -7778,6 +7787,295 @@ async def api_teacher_request_action(request):
     return web.json_response({"ok": True})
 
 
+
+# ============================================================
+# NEURON ONLINE TESTLAR
+# ============================================================
+TEST_TZ = timezone(timedelta(hours=5))
+TEST_MAX_UPLOAD = 10 * 1024 * 1024
+
+def _test_image_uri(raw):
+    try:
+        im=Image.open(io.BytesIO(raw)).convert("RGB"); im.thumbnail((1400,1400))
+        out=io.BytesIO(); im.save(out,format="JPEG",quality=76,optimize=True)
+        data=out.getvalue()
+        if len(data)>420000:
+            out=io.BytesIO(); im.save(out,format="JPEG",quality=60,optimize=True); data=out.getvalue()
+        return "data:image/jpeg;base64,"+base64.b64encode(data).decode("ascii") if len(data)<=420000 else None
+    except Exception:return None
+
+def _test_parse_text(value,image_tokens=None):
+    image_tokens=image_tokens or {}; result=[]; cur=None; opt=None
+    qr=re.compile(r"^\\s*(?:savol\\s*)?(\\d{1,3})[\\.\\):\\-]\\s*(.*)$",re.I)
+    ar=re.compile(r"^\\s*([A-DА-Г])[\\)\\.\\:\\-]\\s*(.*)$",re.I)
+    def finish():
+        nonlocal cur
+        if cur:
+            cur["text"]=" ".join(cur["text"].split()).strip()
+            for o in cur["options"]:o["text"]=" ".join(o["text"].split()).strip()
+            if cur["text"]:
+                cur["type"]="choice" if len(cur["options"])>=2 else "written"
+                cur["options"]=cur["options"][:6];cur["images"]=cur["images"][:2];result.append(cur)
+        cur=None
+    for raw in str(value or "").splitlines():
+        line=raw.strip()
+        if not line:continue
+        token=re.fullmatch(r"\\[\\[NEURON_IMAGE_(\\d+)\\]\\]",line)
+        if token:
+            if cur:
+                uri=image_tokens.get(int(token.group(1)))
+                if uri and uri not in cur["images"]:cur["images"].append(uri)
+            continue
+        am=ar.match(line)
+        if am and cur:
+            opt={"key":am.group(1).upper(),"text":am.group(2).strip()};cur["options"].append(opt);continue
+        qm=qr.match(line)
+        if qm:
+            finish();cur={"id":len(result)+1,"text":qm.group(2).strip(),"options":[],"images":[],"type":"written"};opt=None;continue
+        if cur:
+            if opt is not None:opt["text"]=(opt["text"]+" "+line).strip()
+            else:cur["text"]=(cur["text"]+" "+line).strip()
+    finish()
+    for q in result:
+        if q["type"]=="choice":
+            for i,o in enumerate(q["options"]):o["key"]="ABCDEF"[i]
+    return result
+
+def _test_extract_file(filename,raw):
+    ext=str(filename or "").lower().rsplit(".",1)[-1]; questions=[]
+    if ext=="pdf":
+        try:
+            from pypdf import PdfReader
+            reader=PdfReader(io.BytesIO(raw))
+            for page in reader.pages:
+                text_value=page.extract_text() or ""; imgs=[]
+                try:
+                    for image in page.images:
+                        uri=_test_image_uri(image.data)
+                        if uri:imgs.append(uri)
+                except Exception:pass
+                parsed=_test_parse_text(text_value)
+                for q in parsed:
+                    q["id"]=len(questions)+1;q["images"]=imgs[:2]
+                questions.extend(parsed)
+        except Exception as exc:
+            logging.exception("PDF test parse failed");raise ValueError("pdf_parse_error") from exc
+        if not questions:raise ValueError("pdf_text_not_found")
+    elif ext=="docx":
+        try:
+            from docx import Document
+            from docx.oxml.ns import qn
+            doc=Document(io.BytesIO(raw)); tokens={}; lines=[]; n=0
+            for para in doc.paragraphs:
+                lines.append(para.text or "")
+                try:
+                    for blip in para._p.xpath(".//a:blip"):
+                        rid=blip.get(qn("r:embed"));part=doc.part.related_parts.get(rid) if rid else None
+                        if part:
+                            uri=_test_image_uri(part.blob)
+                            if uri:
+                                n+=1;tokens[n]=uri;lines.append(f"[[NEURON_IMAGE_{n}]]")
+                except Exception:pass
+            questions=_test_parse_text("\\n".join(lines),tokens)
+        except Exception as exc:
+            logging.exception("DOCX test parse failed");raise ValueError("docx_parse_error") from exc
+    else:raise ValueError("file_type")
+    if not questions:raise ValueError("questions_not_found")
+    if len(questions)>100:raise ValueError("too_many_questions")
+    total=0
+    for q in questions:
+        kept=[]
+        for uri in q["images"]:
+            total+=len(uri)
+            if total<=3500000 and len(kept)<2:kept.append(uri)
+        q["images"]=kept
+    return questions
+
+def _test_datetime(value):
+    try:
+        d=datetime.fromisoformat(str(value).strip())
+        if d.tzinfo is None:d=d.replace(tzinfo=TEST_TZ)
+        return d.astimezone(TEST_TZ).isoformat()
+    except Exception:return None
+
+def _test_is_open(test):
+    try:
+        a=datetime.fromisoformat(test["start_at"]);b=datetime.fromisoformat(test["end_at"])
+        if a.tzinfo is None:a=a.replace(tzinfo=TEST_TZ)
+        if b.tzinfo is None:b=b.replace(tzinfo=TEST_TZ)
+        return a<=local_now()<=b
+    except Exception:return False
+
+def _test_row(row):
+    return {"id":int(row[0]),"teacher_id":int(row[1]),"subject_id":int(row[2]),"title":row[3],
+            "group_name":row[4],"start_at":row[5],"end_at":row[6],"status":row[7],
+            "questions":json.loads(row[8] or "[]"),"answer_key":json.loads(row[9] or "{}"),"created_at":row[10]}
+
+def _test_teacher_owned(request,test_id):
+    kind,teacher,err=miniapp_identity(request)
+    if err or kind!="teacher":return None,err or web.json_response({"error":"forbidden"},status=403),None
+    row=run("SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at FROM tests WHERE id=? AND teacher_id=?",(test_id,teacher["id"]),fetch="one")
+    return teacher,(web.json_response({"error":"not_found"},status=404) if not row else None),(_test_row(row) if row else None)
+
+async def api_tests_teacher(request):
+    kind,t,err=miniapp_identity(request)
+    if err or kind!="teacher":return err or web.json_response({"error":"forbidden"},status=403)
+    try:sid=int(request.query.get("subject_id",""))
+    except Exception:return web.json_response({"error":"bad_subject"},status=400)
+    if not owned_subject(t,sid):return web.json_response({"error":"not_found"},status=404)
+    groups=[r[0] for r in run("SELECT DISTINCT COALESCE(group_name,'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=? ORDER BY 1",(t["id"],sid),fetch="all")]
+    rows=run("SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at FROM tests WHERE teacher_id=? AND subject_id=? ORDER BY id DESC",(t["id"],sid),fetch="all")
+    items=[]
+    for raw in rows:
+        x=_test_row(raw);a=run("SELECT COUNT(*) FROM test_attempts WHERE test_id=?",(x["id"],),fetch="one")
+        items.append({"id":x["id"],"title":x["title"],"group_name":x["group_name"],"start_at":x["start_at"],"end_at":x["end_at"],"status":x["status"],"question_count":len(x["questions"]),"attempts":int(a[0] or 0)})
+    return web.json_response({"groups":groups,"tests":items})
+
+async def api_tests_upload(request):
+    kind,t,err=miniapp_identity(request)
+    if err or kind!="teacher":return err or web.json_response({"error":"forbidden"},status=403)
+    try:
+        mp=await request.multipart();fields={};raw=None;filename=""
+        async for part in mp:
+            if part.name=="file":filename=part.filename or "";raw=await part.read(decode=False)
+            else:fields[part.name]=(await part.text()).strip()
+        if not raw or len(raw)>TEST_MAX_UPLOAD:raise ValueError("file_size_or_missing")
+        sid=int(fields.get("subject_id",""))
+        if not owned_subject(t,sid):return web.json_response({"error":"not_found"},status=404)
+        group=fields.get("group_name") or "*"
+        groups={r[0] for r in run("SELECT DISTINCT COALESCE(group_name,'Guruhsiz') FROM students WHERE teacher_id=? AND subject_id=?",(t["id"],sid),fetch="all")}
+        if group!="*" and group not in groups:return web.json_response({"error":"bad_group"},status=400)
+        start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
+        if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
+        questions=_test_extract_file(filename,raw)
+        title=(fields.get("title") or filename.rsplit(".",1)[0] or "Yangi test")[:100]
+        tid=run("""INSERT INTO tests(teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at)
+                   VALUES(?,?,?,?,?,?,'draft',?,'{}',?)""",
+                (t["id"],sid,title,group,start,end,json.dumps(questions,ensure_ascii=False),local_now().isoformat()),fetch="lastid")
+        audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
+        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end})
+    except ValueError as exc:
+        code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDF ichidan matn topilmadi. Skanerlangan PDFni avtomatik ajratib bo‘lmaydi.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","too_many_questions":"Testda 100 tadan ko‘p savol bo‘lmasin.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
+        return web.json_response({"error":code,"message":messages.get(code,"Faylni o‘qib bo‘lmadi.")},status=400)
+    except Exception:
+        logging.exception("Online test upload failed");return web.json_response({"error":"upload_failed"},status=400)
+
+async def api_tests_publish(request):
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    body=await _read_json(request);key=body.get("answer_key") if isinstance(body.get("answer_key"),dict) else {}
+    start,end=_test_datetime(body.get("start_at")), _test_datetime(body.get("end_at"))
+    if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):return web.json_response({"error":"bad_time"},status=400)
+    for q in test["questions"]:
+        if q["type"]=="choice" and str(key.get(str(q["id"]),"")).upper() not in {o["key"] for o in q["options"]}:
+            return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
+    run("UPDATE tests SET answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
+        (json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
+    audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
+    return web.json_response({"ok":True})
+
+async def api_tests_student(request):
+    kind,st,err=miniapp_identity(request)
+    if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
+    rows=run("""SELECT id,title,group_name,start_at,end_at,questions_json FROM tests
+                WHERE teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)
+                ORDER BY id DESC""",(st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="all")
+    items=[]
+    for r in rows:
+        attempt=run("SELECT status,score,total FROM test_attempts WHERE test_id=? AND student_id=?",(r[0],st["id"]),fetch="one")
+        try:
+            a=datetime.fromisoformat(r[3]);b=datetime.fromisoformat(r[4])
+            if a.tzinfo is None:a=a.replace(tzinfo=TEST_TZ)
+            if b.tzinfo is None:b=b.replace(tzinfo=TEST_TZ)
+            state="upcoming" if local_now()<a else ("closed" if local_now()>b else "open")
+        except Exception:state="closed"
+        items.append({"id":r[0],"title":r[1],"group_name":r[2],"start_at":r[3],"end_at":r[4],"question_count":len(json.loads(r[5] or "[]")),"availability":state,"attempt_status":attempt[0] if attempt else "","score":attempt[1] if attempt else None,"total":attempt[2] if attempt else None})
+    return web.json_response({"tests":items})
+
+async def api_tests_student_start(request):
+    kind,st,err=miniapp_identity(request)
+    if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+            (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
+    if not row:return web.json_response({"error":"not_found"},status=404)
+    test=_test_row(row)
+    if not _test_is_open(test):return web.json_response({"error":"test_closed"},status=403)
+    attempt=run("SELECT id,status,answers_json,score,total FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    if attempt and attempt[1]!="in_progress":return web.json_response({"error":"already_submitted","status":attempt[1],"score":attempt[3],"total":attempt[4]},status=409)
+    if not attempt:
+        run("""INSERT INTO test_attempts(test_id,student_id,answers_json,written_scores_json,score,total,status,started_at)
+               VALUES(?,?,'{}','{}',0,0,'in_progress',?)""",(tid,st["id"],local_now().isoformat()))
+        attempt=run("SELECT id,status,answers_json,score,total FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    safe=[{k:q[k] for k in ("id","text","type","options","images")} for q in test["questions"]]
+    return web.json_response({"ok":True,"attempt_id":attempt[0],"answers":json.loads(attempt[2] or "{}"),
+                              "test":{"id":tid,"title":test["title"],"end_at":test["end_at"],"questions":safe}})
+
+async def api_tests_student_submit(request):
+    kind,st,err=miniapp_identity(request)
+    if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
+    row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+            (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
+    if not row:return web.json_response({"error":"not_found"},status=404)
+    test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
+    if not attempt or attempt[1]!="in_progress":return web.json_response({"error":"attempt_not_found"},status=404)
+    clean={};score=0;written=0
+    for q in test["questions"]:
+        value=str(answers.get(str(q["id"]),"")).strip()[:2000]
+        if q["type"]=="choice":
+            if value.upper() in {o["key"] for o in q["options"]}:
+                clean[str(q["id"])]=value.upper()
+                if test["answer_key"].get(str(q["id"]))==value.upper():score+=1
+        else:clean[str(q["id"])]=value;written+=1
+    status="pending_review" if written else "graded"
+    run("UPDATE test_attempts SET answers_json=?,score=?,total=?,status=?,submitted_at=? WHERE id=? AND student_id=?",
+        (json.dumps(clean,ensure_ascii=False),score,len(test["questions"]),status,local_now().isoformat(),attempt[0],st["id"]))
+    return web.json_response({"ok":True,"score":score if not written else None,"total":len(test["questions"]),"written_pending":written,"status":status})
+
+async def api_tests_teacher_results(request):
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    rows=run("""SELECT a.id,a.student_id,s.fio,s.group_name,a.answers_json,a.written_scores_json,a.score,a.total,a.status,a.submitted_at
+                FROM test_attempts a JOIN students s ON s.id=a.student_id WHERE a.test_id=? AND s.teacher_id=? ORDER BY s.fio""",
+             (tid,t["id"]),fetch="all")
+    items=[{"attempt_id":r[0],"student_id":r[1],"fio":r[2],"group_name":r[3],"answers":json.loads(r[4] or "{}"),"written_scores":json.loads(r[5] or "{}"),"score":r[6],"total":r[7],"status":r[8],"submitted_at":r[9]} for r in rows]
+    return web.json_response({"test":{"id":tid,"title":test["title"],"questions":test["questions"]},"attempts":items})
+
+async def api_tests_teacher_grade(request):
+    try:tid=int(request.match_info["tid"])
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    body=await _read_json(request)
+    try:aid=int(body.get("attempt_id"))
+    except Exception:return web.json_response({"error":"bad"},status=400)
+    scores=body.get("written_scores") if isinstance(body.get("written_scores"),dict) else {}
+    a=run("""SELECT a.id,a.score FROM test_attempts a JOIN students s ON s.id=a.student_id
+             WHERE a.id=? AND a.test_id=? AND s.teacher_id=?""",(aid,tid,t["id"]),fetch="one")
+    if not a:return web.json_response({"error":"not_found"},status=404)
+    normalized={}
+    for q in test["questions"]:
+        if q["type"]=="written":
+            try:v=int(scores.get(str(q["id"]),0))
+            except Exception:v=0
+            normalized[str(q["id"])]=max(0,min(1,v))
+    final=int(a[1] or 0)+sum(normalized.values())
+    run("UPDATE test_attempts SET written_scores_json=?,score=?,status='graded' WHERE id=?",(json.dumps(normalized),final,aid))
+    audit(t.get("chat_id"),"test_grade",str(tid),f"attempt={aid}; score={final}")
+    return web.json_response({"ok":True,"score":final,"total":len(test["questions"])})
+
+
+
 async def api_student_overview(request):
     kind, st, err = miniapp_identity(request)
     if err or kind != "student":
@@ -8059,7 +8357,7 @@ async def start_web_server():
             return web.json_response({"error":"subscription_required","join_url":join_url},status=403)
         return await handler(request)
 
-    app = web.Application(client_max_size=6 * 1024 * 1024, middlewares=[miniapp_subscription_guard])
+    app = web.Application(client_max_size=12 * 1024 * 1024, middlewares=[miniapp_subscription_guard])
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
@@ -8123,6 +8421,14 @@ async def start_web_server():
     app.router.add_post("/api/score", api_score)
     app.router.add_post("/api/report/send", api_daily_report)
     app.router.add_post("/api/attendance", api_attendance)
+    app.router.add_get("/api/tests/teacher", api_tests_teacher)
+    app.router.add_post("/api/tests/upload", api_tests_upload)
+    app.router.add_post("/api/tests/{tid}/publish", api_tests_publish)
+    app.router.add_get("/api/tests/{tid}/results", api_tests_teacher_results)
+    app.router.add_post("/api/tests/{tid}/grade", api_tests_teacher_grade)
+    app.router.add_get("/api/tests/student", api_tests_student)
+    app.router.add_post("/api/tests/student/{tid}/start", api_tests_student_start)
+    app.router.add_post("/api/tests/student/{tid}/submit", api_tests_student_submit)
     app.router.add_get("/api/student/overview", api_student_overview)
     app.router.add_get("/api/parent/overview", api_parent_overview)
     app.router.add_delete("/api/parent/child/{sid}", api_parent_unlink_child)
