@@ -1149,11 +1149,14 @@ def db_parent_chat_ids_for_student(student_id):
 
 
 def db_student_chat_ids_for_student(student_id):
-    return [r[0] for r in run("""SELECT DISTINCT sl.chat_id FROM student_links sl
+    # Be tolerant of older student records that have a direct link but no shared identity row.
+    rows = run("SELECT chat_id FROM student_links WHERE student_id=?", (student_id,), fetch="all") or []
+    rows += run("""SELECT DISTINCT sl.chat_id FROM student_links sl
         JOIN student_identity_members linked ON linked.student_id=sl.student_id
         WHERE linked.identity_id=(SELECT identity_id FROM student_identity_members
                                   WHERE student_id=? LIMIT 1)""",
-        (student_id,), fetch="all")]
+        (student_id,), fetch="all") or []
+    return list(dict.fromkeys(int(r[0]) for r in rows if r and r[0]))
 
 
 def db_log_student_login(s_id, fio):
@@ -8045,6 +8048,79 @@ async def api_tests_upload(request):
     except Exception:
         logging.exception("Online test upload failed");return web.json_response({"error":"upload_failed"},status=400)
 
+async def api_tests_get(request):
+    try: tid=int(request.match_info["tid"])
+    except Exception: return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    return web.json_response({"test":{"id":tid,"title":test["title"],"questions":test["questions"],
+        "answer_key":test["answer_key"],"start_at":test["start_at"],"end_at":test["end_at"],
+        "status":test["status"],"group_name":test["group_name"]}})
+
+
+async def api_tests_delete(request):
+    try: tid=int(request.match_info["tid"])
+    except Exception: return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    # Remove dependent attempts first; the database schema does not rely on cascading deletes.
+    run("DELETE FROM test_attempts WHERE test_id=?", (tid,))
+    run("DELETE FROM tests WHERE id=? AND teacher_id=?", (tid,t["id"]))
+    audit(t.get("chat_id"),"test_delete",str(tid),test["title"])
+    return web.json_response({"ok":True})
+
+
+async def api_tests_restart(request):
+    try: tid=int(request.match_info["tid"])
+    except Exception: return web.json_response({"error":"bad"},status=400)
+    t,err,test=_test_teacher_owned(request,tid)
+    if err:return err
+    try:
+        old_start=datetime.fromisoformat(test["start_at"])
+        old_end=datetime.fromisoformat(test["end_at"])
+        duration=max(60,int((old_end-old_start).total_seconds()))
+    except Exception:
+        duration=3600
+    now=local_now()
+    new_start=now.isoformat()
+    new_end=(now+timedelta(seconds=duration)).isoformat()
+    # Restart intentionally clears previous attempts and scores so every student can take it again.
+    run("DELETE FROM test_attempts WHERE test_id=?", (tid,))
+    run("UPDATE tests SET start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
+        (new_start,new_end,tid,t["id"]))
+    audit(t.get("chat_id"),"test_restart",str(tid),test["title"])
+
+    target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
+    target_params=[t["id"],test["subject_id"]]
+    if test["group_name"]!="*":
+        target_sql+=" AND TRIM(COALESCE(group_name,''))=TRIM(?) COLLATE NOCASE"
+        target_params.append(test["group_name"])
+    student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
+    chat_ids=set()
+    for student_id in student_ids:
+        chat_ids.update(db_student_chat_ids_for_student(student_id))
+    notified=0;failed=0
+    if bot:
+        message=("🔄 Test qayta ishga tushirildi!\n"
+                 f"📚 {test['title']}\n"
+                 f"📝 Savollar: {len(test['questions'])} ta\n"
+                 f"⏰ {new_start} — {new_end}\n\n"
+                 "NEURON ilovasidagi «Testlar» bo‘limidan oching.")
+        markup=None
+        if MINIAPP_URL:
+            markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📝 Testni ochish",web_app=WebAppInfo(url=miniapp_role_url("student")))
+            ]])
+        for chat_id in chat_ids:
+            try:
+                await bot.send_message(chat_id,message,reply_markup=markup);notified+=1
+            except Exception:
+                failed+=1
+                logging.warning("Restart test notification failed: test=%s",tid)
+    return web.json_response({"ok":True,"students_found":len(student_ids),"notified":notified,
+                              "notification_failed":failed,"start_at":new_start,"end_at":new_end})
+
+
 async def api_tests_publish(request):
     try:tid=int(request.match_info["tid"])
     except Exception:return web.json_response({"error":"bad"},status=400)
@@ -8112,7 +8188,8 @@ async def api_tests_student(request):
     kind,st,err=miniapp_identity(request)
     if err or kind!="student":return err or web.json_response({"error":"forbidden"},status=403)
     rows=run("""SELECT id,title,group_name,start_at,end_at,questions_json FROM tests
-                WHERE teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)
+                WHERE teacher_id=? AND subject_id=? AND status='published'
+                  AND (group_name='*' OR TRIM(COALESCE(group_name,''))=TRIM(?) COLLATE NOCASE)
                 ORDER BY id DESC""",(st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="all")
     items=[]
     for r in rows:
@@ -8602,6 +8679,9 @@ async def start_web_server():
     app.router.add_post("/api/attendance", api_attendance)
     app.router.add_get("/api/tests/teacher", api_tests_teacher)
     app.router.add_post("/api/tests/upload", api_tests_upload)
+    app.router.add_get("/api/tests/{tid}", api_tests_get)
+    app.router.add_delete("/api/tests/{tid}", api_tests_delete)
+    app.router.add_post("/api/tests/{tid}/restart", api_tests_restart)
     app.router.add_post("/api/tests/{tid}/publish", api_tests_publish)
     app.router.add_get("/api/tests/{tid}/results", api_tests_teacher_results)
     app.router.add_post("/api/tests/{tid}/grade", api_tests_teacher_grade)

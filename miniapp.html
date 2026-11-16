@@ -2847,15 +2847,37 @@ body.social-open #paxBuddy{display:none}
     try{
       const d=await api("/api/tests/teacher?subject_id="+encodeURIComponent(state.subject.id));
       const groups=['<option value="*">Barcha guruhlar</option>'].concat((d.groups||[]).map(g=>'<option value="'+esc(g)+'">'+esc(g)+'</option>')).join("");
-      const items=(d.tests||[]).map(t=>'<div class="card panel"><b>🧪 '+esc(t.title)+'</b><p class="hint">'+esc(t.group_name==="*"?"Barcha guruhlar":t.group_name)+' · '+t.question_count+' savol · '+t.attempts+' urinish</p><p class="hint">'+esc(testDateLabel(t.start_at))+' — '+esc(testDateLabel(t.end_at))+'</p><span class="chip '+(t.status==="published"?"good":"")+'">'+(t.status==="published"?"Faol":"Qoralama")+'</span> <button class="chip-btn" data-test-results="'+t.id+'">📊 Natijalar</button></div>').join("");
-      host.innerHTML='<div class="card panel"><h3>➕ Yangi test yuklash</h3><p class="hint">PDF yoki DOCX. Savollar, variantlar va hujjat ichidagi rasmlar avtomatik ajratiladi.</p><label class="hint" for="testTitle">Test nomi</label><input class="field" id="testTitle" maxlength="100" placeholder="Masalan: Tarix — 1-test"><label class="hint" for="testGroup">Guruh</label><select class="field" id="testGroup" style="width:100%">'+groups+'</select><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="hint">Boshlanish<input class="field" id="testStart" type="datetime-local" style="width:100%"></label><label class="hint">Tugash<input class="field" id="testEnd" type="datetime-local" style="width:100%"></label></div><label class="hint" for="testFile">PDF yoki DOCX fayl</label><input class="field" id="testFile" type="file" accept=".pdf,.docx" style="width:100%"><button class="btn btn-wide" id="testUploadBtn" type="button" style="margin-top:10px">📤 Faylni yuklash va savollarni ajratish</button><div class="hint" id="testUploadHint"></div></div>'+(items?'<h3 class="section-title">Yuklangan testlar</h3>'+items:'<div class="card empty">Hozircha test yo‘q.</div>');
+      const items=(d.tests||[]).map(t=>'<div class="card panel"><b>🧪 '+esc(t.title)+'</b><p class="hint">'+esc(t.group_name==="*"?"Barcha guruhlar":t.group_name)+' · '+t.question_count+' savol · '+t.attempts+' urinish</p><p class="hint">'+esc(testDateLabel(t.start_at))+' — '+esc(testDateLabel(t.end_at))+'</p><span class="chip '+(t.status==="published"?"good":"")+'">'+(t.status==="published"?"Faol":"Qoralama — o‘quvchilarga hali yuborilmagan")+'</span><div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:10px">'+(t.status==="published"?'<button class="chip-btn" data-test-restart="'+t.id+'">🔄 Qayta ishga tushirish</button>':'<button class="chip-btn primary" data-test-edit="'+t.id+'">📝 Tahrirlash / faollashtirish</button>')+'<button class="chip-btn" data-test-results="'+t.id+'">📊 Natijalar</button><button class="chip-btn" data-test-delete="'+t.id+'" style="color:var(--bad)">🗑 O‘chirish</button></div></div>').join("");
+      host.innerHTML='<div class="card panel"><h3>➕ Yangi test yuklash</h3><p class="hint">PDF yoki DOCX. Savollar, variantlar va hujjat ichidagi rasmlar avtomatik ajratiladi.</p><label class="hint" for="testTitle">Test nomi</label><input class="field" id="testTitle" maxlength="100" placeholder="Masalan: Tarix — 1-test"><label class="hint" for="testGroup">Guruh</label><select class="field" id="testGroup" style="width:100%">'+groups+'</select><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="hint">Boshlanish<input class="field" id="testStart" type="datetime-local" style="width:100%"></label><label class="hint">Tugash<input class="field" id="testEnd" type="datetime-local" style="width:100%"></label></div><label class="hint" for="testFile">PDF yoki DOCX fayl</label><input class="field" id="testFile" type="file" accept=".pdf,.docx" style="width:100%"><button class="btn btn-wide" id="testUploadBtn" type="button" style="margin-top:10px">📤 Faylni yuklash va savollarni ajratish</button><div class="hint" id="testUploadHint"></div></div>'+(items.length?'<h3 class="section-title">Yuklangan testlar</h3>'+items:'<div class="card empty">Hozircha test yo‘q.</div>');
     }catch(e){host.innerHTML='<div class="card empty">'+esc(errText(e))+'</div>';}
   }
 
-  function renderTeacherTestEditor(id,title,questions,startAt,endAt){
+  function renderTeacherTestEditor(id,title,questions,startAt,endAt,answerKey={}){
     const host=$("teacherTests");
-    host.innerHTML='<div class="card panel"><h3>🧩 '+esc(title)+'</h3><p class="hint">Savollarni tekshiring. Variantli savollarda to‘g‘ri javobni belgilang. Variantlarsiz savollar yozma tarzda tekshiriladi.</p>'+(questions||[]).map(q=>'<div class="card panel" style="margin:10px 0"><label class="hint">Savol matni<textarea class="field" data-q-text="'+q.id+'" rows="2" style="width:100%">'+esc(q.text)+'</textarea></label>'+testImageHtml(q.images)+(q.type==="choice"?'<div style="display:grid;gap:8px;margin-top:10px">'+q.options.map(o=>'<label class="att-item" style="align-items:flex-start"><input type="radio" name="testkey_'+q.id+'" value="'+esc(o.key)+'" style="width:20px;height:20px"><span style="flex:1"><b>'+esc(o.key)+'.</b><textarea class="field" data-option-text="'+q.id+'_'+esc(o.key)+'" rows="2" style="width:100%">'+esc(o.text)+'</textarea></span></label>').join("")+'</div>':'<label class="hint">✍️ To‘g‘ri javob (AI tekshirishi uchun)<textarea class="field" data-written-key="'+q.id+'" rows="2" style="width:100%" placeholder="Mazmunan to‘g‘ri javobni yozing; muhim yilni aniq kiriting"></textarea></label>')+'</div>').join("")+'<button class="btn btn-wide" id="publishTestBtn">✅ Javoblarni saqlash va faollashtirish</button><button class="chip-btn" id="backTestsBtn" style="width:100%;margin-top:8px">Orqaga</button></div>';
+    host.innerHTML='<div class="card panel"><h3>🧩 '+esc(title)+'</h3><p class="hint">Savollarni tekshiring. Variantli savollarda to‘g‘ri javobni belgilang. Variantlarsiz savollar yozma tarzda tekshiriladi.</p>'+(questions||[]).map(q=>'<div class="card panel" style="margin:10px 0"><label class="hint">Savol matni<textarea class="field" data-q-text="'+q.id+'" rows="2" style="width:100%">'+esc(q.text)+'</textarea></label>'+testImageHtml(q.images)+(q.type==="choice"?'<div style="display:grid;gap:8px;margin-top:10px">'+q.options.map(o=>'<label class="att-item" style="align-items:flex-start"><input type="radio" name="testkey_'+q.id+'" value="'+esc(o.key)+'" '+(answerKey[String(q.id)]===o.key?'checked':'')+' style="width:20px;height:20px"><span style="flex:1"><b>'+esc(o.key)+'.</b><textarea class="field" data-option-text="'+q.id+'_'+esc(o.key)+'" rows="2" style="width:100%">'+esc(o.text)+'</textarea></span></label>').join("")+'</div>':'<label class="hint">✍️ To‘g‘ri javob (AI tekshirishi uchun)<textarea class="field" data-written-key="'+q.id+'" rows="2" style="width:100%" placeholder="Mazmunan to‘g‘ri javobni yozing; muhim yilni aniq kiriting">'+esc(answerKey[String(q.id)]||'')+'</textarea></label>')+'</div>').join("")+'<button class="btn btn-wide" id="publishTestBtn">✅ Javoblarni saqlash va faollashtirish</button><button class="chip-btn" id="backTestsBtn" style="width:100%;margin-top:8px">Orqaga</button></div>';
     host.dataset.editingTest=String(id);host.dataset.questions=JSON.stringify(questions||[]);host.dataset.startAt=startAt||"";host.dataset.endAt=endAt||"";
+  }
+
+  async function editTeacherTest(id){
+    try{
+      const d=await api("/api/tests/"+id),t=d.test;
+      renderTeacherTestEditor(t.id,t.title,t.questions||[],t.start_at,t.end_at,t.answer_key||{});
+    }catch(e){toast(errText(e));}
+  }
+
+  async function deleteTeacherTest(id){
+    if(!confirm("Bu test va uning barcha urinishlari/natijalari butunlay o‘chadi. Davom etasizmi?"))return;
+    try{await api("/api/tests/"+id,{method:"DELETE"});toast("Test o‘chirildi.");await loadTeacherTests();}
+    catch(e){toast(errText(e));}
+  }
+
+  async function restartTeacherTest(id){
+    if(!confirm("Test qayta boshlanadi. Barcha eski javoblar va natijalar o‘chadi, yangi muddat hozirdan boshlanadi. Davom etasizmi?"))return;
+    try{
+      const d=await api("/api/tests/"+id+"/restart",{method:"POST",body:"{}"});
+      toast("Test qayta ishga tushdi. "+d.students_found+" o‘quvchi topildi, "+d.notified+" kishiga Telegram xabari yuborildi.");
+      await loadTeacherTests();
+    }catch(e){toast(errText(e));}
   }
 
   async function uploadTeacherTest(){
@@ -2950,6 +2972,9 @@ body.social-open #paxBuddy{display:none}
     if(e.target.closest("#testUploadBtn")){uploadTeacherTest();return;}
     if(e.target.closest("#publishTestBtn")){publishTeacherTest();return;}
     if(e.target.closest("#backTestsBtn")){loadTeacherTests();return;}
+    const edit=e.target.closest("[data-test-edit]");if(edit){editTeacherTest(edit.dataset.testEdit);return;}
+    const del=e.target.closest("[data-test-delete]");if(del){deleteTeacherTest(del.dataset.testDelete);return;}
+    const restart=e.target.closest("[data-test-restart]");if(restart){restartTeacherTest(restart.dataset.testRestart);return;}
     const r=e.target.closest("[data-test-results]");if(r){loadTeacherTestResults(r.dataset.testResults);return;}
     const g=e.target.closest("[data-grade-attempt]");if(g)gradeTeacherAttempt(g.dataset.gradeAttempt);
   });
