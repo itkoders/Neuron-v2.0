@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import aiohttp
 from test_ai import extract_questions_with_gemini, grade_written_answers
-from gemini_manager import gemini_status
+from gemini_manager import gemini_status, gemini_generate
 from aiohttp import web
 from urllib.parse import parse_qsl
 from aiogram.types import WebAppInfo
@@ -3097,9 +3097,7 @@ async def tp_post(call: types.CallbackQuery):
 
 
 # --- Premium: AI o'qituvchi (Gemini) ---
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 AI_DAILY_LIMIT = int(os.environ.get("AI_DAILY_LIMIT", "30"))  # bir o'quvchi uchun kunlik limit
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip()
@@ -3152,22 +3150,22 @@ def ai_quota_consume(s_id):
 
 
 async def gemini_json(system, user_text):
-    if not GEMINI_KEY:
-        raise RuntimeError("GEMINI_API_KEY sozlanmagan")
+    if not gemini_status()["configured"]:
+        raise RuntimeError("Gemini API kalitlari sozlanmagan")
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user_text}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
     }
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=18)) as s:
-        async with s.post(GEMINI_URL.format(model=GEMINI_MODEL), json=body,
-                          headers={"x-goog-api-key": GEMINI_KEY}) as r:
-            data = await r.json(content_type=None)
-            if r.status in (402, 429):
-                raise ProviderLimit(f"Gemini limit HTTP {r.status}")
-            if r.status != 200:
-                raise RuntimeError(f"Gemini HTTP {r.status}")
-    res = json.loads(data["candidates"][0]["content"]["parts"][0]["text"])
+    data, status = await gemini_generate(GEMINI_MODEL, body, timeout_seconds=35)
+    if status == "rate_limited":
+        raise ProviderLimit("Gemini kalitlarining limiti vaqtincha tugagan")
+    if status != "ok":
+        raise RuntimeError(f"Gemini {status}")
+    try:
+        res = json.loads(data["candidates"][0]["content"]["parts"][0]["text"])
+    except Exception as exc:
+        raise ValueError("Gemini noto'g'ri JSON qaytardi") from exc
     if not isinstance(res, dict):
         raise ValueError("Gemini noto'g'ri format qaytardi")
     return res
@@ -3201,7 +3199,7 @@ def ai_primary():
 
 
 def ai_any_configured():
-    return bool(GEMINI_KEY or OPENAI_KEY)
+    return bool(gemini_status()["configured"] or OPENAI_KEY)
 
 
 def provider_used_today(prov):
@@ -3209,8 +3207,8 @@ def provider_used_today(prov):
 
 
 def ai_provider_ready(prov):
-    key = GEMINI_KEY if prov == "gemini" else OPENAI_KEY
-    if not key:
+    configured = bool(gemini_status()["configured"]) if prov == "gemini" else bool(OPENAI_KEY)
+    if not configured:
         return False
     if float(db_get_setting(f"ai_down_{prov}") or 0) > time.time():  # limit yaqinda tugagan
         return False
@@ -3390,7 +3388,8 @@ async def tp_ai_set_tone(call: types.CallbackQuery):
 
 # --- Super admin: AI boshqaruvi ---
 def sa_ai_text():
-    gem = "✅ kalit bor" if GEMINI_KEY else "❌ kalit yo'q"
+    gem_count = int(gemini_status()["configured"])
+    gem = f"✅ {gem_count}/10 ta kalit sozlangan" if gem_count else "❌ kalit yo'q"
     oai = "✅ kalit bor" if OPENAI_KEY else "❌ kalit yo'q"
     allowed = run("SELECT COUNT(*) FROM settings WHERE key LIKE 'ai_allowed_%' AND value = '1'", fetch="one")[0]
     return (f"🤖 **AI sozlamalari**\n\n⭐ Asosiy provayder: **{ai_primary()}**\n"
