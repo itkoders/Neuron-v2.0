@@ -106,6 +106,8 @@ def _clean_questions(value):
                 if option_text:
                     options.append({"key": "ABCDEF"[len(options)], "text": option_text})
         question_type = "choice" if len(options) >= 2 else "written"
+        if question_type == "written":
+            options = []
         result.append({
             "id": len(result) + 1,
             "text": question_text[:5000],
