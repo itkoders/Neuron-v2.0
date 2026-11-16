@@ -7903,7 +7903,13 @@ def _test_extract_file(filename,raw):
             from docx import Document
             from docx.oxml.ns import qn
             doc=Document(io.BytesIO(raw)); tokens={}; lines=[]; n=0
-            for para in doc.paragraphs:
+            # Word hujjatlaridagi oddiy matn bilan birga jadval kataklarini ham o‘qiymiz.
+            paragraphs=list(doc.paragraphs)
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        paragraphs.extend(cell.paragraphs)
+            for para in paragraphs:
                 lines.append(para.text or "")
                 try:
                     for blip in para._p.xpath(".//a:blip"):
