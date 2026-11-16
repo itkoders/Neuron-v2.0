@@ -289,4 +289,5 @@ async def grade_written_answer(question_text, reference_answer, student_answer):
         "id": "1", "question": question_text,
         "reference": reference_answer, "answer": student_answer,
     }])
-    return result.get("1"), status
+    grade = result.get("1")
+    return grade, ("needs_review" if grade is None and status == "ok" else status)
