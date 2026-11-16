@@ -3,30 +3,47 @@ import unittest
 from unittest.mock import patch
 
 import gemini_manager
-from gemini_manager import _configured_keys, gemini_generate
+from gemini_manager import _configured_key, gemini_generate
 
 
 class GeminiKeyConfigTests(unittest.TestCase):
-    def test_reads_comma_and_newline_separated_keys(self):
+    def setUp(self):
+        gemini_manager._STATE.clear()
+        for key in gemini_manager._TOTAL:
+            gemini_manager._TOTAL[key] = 0
+
+    def test_reads_only_single_api_key(self):
         with patch.dict(os.environ, {
-            "GEMINI_API_KEYS": "key-one, key-two\nkey-three",
-            "GEMINI_API_KEY": "key-four",
+            "GEMINI_API_KEY": "one-key",
+            "GEMINI_API_KEYS": "ignored-one,ignored-two",
         }, clear=True):
-            self.assertEqual(_configured_keys(), ["key-one", "key-two", "key-three", "key-four"])
+            self.assertEqual(_configured_key(), "one-key")
 
-    def test_deduplicates_and_caps_at_ten(self):
-        values = ",".join("key-" + str(i) for i in range(12))
-        with patch.dict(os.environ, {"GEMINI_API_KEYS": values}, clear=True):
-            self.assertEqual(len(_configured_keys()), 10)
+    def test_missing_single_key_is_not_configured(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEYS": "ignored-key"}, clear=True):
+            self.assertEqual(_configured_key(), "")
 
-    def test_single_legacy_variable_still_works(self):
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "legacy-key"}, clear=True):
-            self.assertEqual(_configured_keys(), ["legacy-key"])
+    def test_status_exposes_one_masked_key_only(self):
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "secret-1234"}, clear=True):
+            status = gemini_manager.gemini_status()
+        self.assertEqual(status["configured"], 1)
+        self.assertEqual(status["max_keys"], 1)
+        self.assertEqual(len(status["keys"]), 1)
+        self.assertEqual(status["keys"][0]["masked"], "…1234")
+        self.assertNotIn("secret-1234", str(status))
 
-    def test_rotates_to_next_key_after_rate_limit(self):
+    def test_missing_key_does_not_call_provider(self):
+        async def run_test():
+            with patch.dict(os.environ, {}, clear=True):
+                data, status = await gemini_generate("test-model", {"contents": []})
+            self.assertIsNone(data)
+            self.assertEqual(status, "not_configured")
+        import asyncio
+        asyncio.run(run_test())
+
+    def test_single_key_success(self):
         class FakeResponse:
-            def __init__(self, status):
-                self.status = status
+            status = 200
             async def __aenter__(self):
                 return self
             async def __aexit__(self, *args):
@@ -36,25 +53,21 @@ class GeminiKeyConfigTests(unittest.TestCase):
 
         class FakeSession:
             def __init__(self, *args, **kwargs):
-                self.calls = 0
+                pass
             async def __aenter__(self):
                 return self
             async def __aexit__(self, *args):
                 return False
             def post(self, *args, **kwargs):
-                self.calls += 1
-                return FakeResponse(429 if self.calls == 1 else 200)
+                return FakeResponse()
 
         async def run_test():
-            gemini_manager._STATE.clear()
-            gemini_manager._CURSOR = 0
-            with patch.dict(os.environ, {"GEMINI_API_KEYS": "first-key,second-key"}, clear=True):
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "single-key"}, clear=True):
                 with patch("gemini_manager.aiohttp.ClientSession", FakeSession):
                     data, status = await gemini_generate("test-model", {"contents": []})
             self.assertEqual(status, "ok")
             self.assertEqual(data, {"candidates": []})
-            self.assertTrue(gemini_manager._STATE["first-key"]["cooldown_until"] > 0)
-
+            self.assertEqual(gemini_manager._STATE["single-key"]["success"], 1)
         import asyncio
         asyncio.run(run_test())
 
