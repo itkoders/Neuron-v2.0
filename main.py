@@ -7807,7 +7807,7 @@ def _test_image_uri(raw):
 def _test_parse_text(value,image_tokens=None):
     image_tokens=image_tokens or {}; result=[]; cur=None; opt=None
     qr=re.compile(r"^\s*(?:savol\s*)?(\d{1,3})[\.\):\-]\s*(.*)$",re.I)
-    ar=re.compile(r"^\s*([A-DА-Г])[\)\.\:\-]\s*(.*)$",re.I)
+    ar=re.compile(r"^\s*([A-FА-Е])[\)\.\:\-]\s*(.*)$",re.I)
     def finish():
         nonlocal cur
         if cur:
@@ -7855,8 +7855,25 @@ def _test_extract_file(filename,raw):
                         if uri:imgs.append(uri)
                 except Exception:pass
                 parsed=_test_parse_text(text_value)
+                scanned_image=None
+                # Skanerlangan PDF sahifalari uchun OCR: matn qatlami bo‘lmasa sahifani rasmga aylantirib o‘qiymiz.
+                if not parsed:
+                    try:
+                        import fitz
+                        import pytesseract
+                        pix=page.get_pixmap(matrix=fitz.Matrix(2,2),alpha=False)
+                        pil=Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                        try:
+                            ocr_text=pytesseract.image_to_string(pil,lang="uzb+rus+eng",config="--psm 6")
+                        except Exception:
+                            ocr_text=pytesseract.image_to_string(pil,lang="eng",config="--psm 6")
+                        parsed=_test_parse_text(ocr_text)
+                        if parsed:scanned_image=_test_image_uri(pix.tobytes("png"))
+                    except Exception:
+                        logging.exception("Scanned PDF OCR unavailable or failed")
                 for q in parsed:
-                    q["id"]=len(questions)+1;q["images"]=imgs[:2]
+                    q["id"]=len(questions)+1
+                    q["images"]=(imgs[:1] if imgs else ([scanned_image] if scanned_image else []))
                 questions.extend(parsed)
         except Exception as exc:
             logging.exception("PDF test parse failed");raise ValueError("pdf_parse_error") from exc
