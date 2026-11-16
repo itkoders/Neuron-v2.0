@@ -200,48 +200,93 @@ def _year_tokens(value):
     return set(re.findall(r"(?<!\d)([1-9]\d{2,3})(?!\d)", str(value or "")))
 
 
-async def grade_written_answer(question_text, reference_answer, student_answer):
-    """Semantically grade one written response; exact historical years are enforced locally."""
-    reference = " ".join(str(reference_answer or "").split()).strip()
-    answer = " ".join(str(student_answer or "").split()).strip()
-    if not reference or not answer:
-        return None, "needs_review"
-    required_years = _year_tokens(reference)
-    submitted_years = _year_tokens(answer)
-    if required_years and submitted_years != required_years:
-        return {"score": 0, "confidence": 1.0,
-                "feedback": "Tarixiy yil aniq mos kelmadi."}, "ok"
+async def grade_written_answers(items):
+    """Grade many written answers in one Gemini request; return per-question scores."""
+    results = {}
+    candidates = []
+    for item in items:
+        qid = str(item.get("id", ""))
+        reference = " ".join(str(item.get("reference") or "").split()).strip()
+        answer = " ".join(str(item.get("answer") or "").split()).strip()
+        if not qid or not reference or not answer:
+            if qid:
+                results[qid] = None
+            continue
+        required_years = _year_tokens(reference)
+        submitted_years = _year_tokens(answer)
+        if required_years and submitted_years != required_years:
+            results[qid] = {"score": 0, "confidence": 1.0,
+                            "feedback": "Tarixiy yil aniq mos kelmadi."}
+        else:
+            candidates.append({
+                "id": qid,
+                "question": str(item.get("question") or "")[:2000],
+                "reference": reference[:2000],
+                "answer": answer[:2000],
+            })
+    if not candidates:
+        return results, "ok"
 
     model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
     schema = {
         "type": "OBJECT",
         "properties": {
-            "correct": {"type": "BOOLEAN"},
-            "confidence": {"type": "NUMBER"},
-            "feedback": {"type": "STRING"},
+            "results": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "id": {"type": "STRING"},
+                        "correct": {"type": "BOOLEAN"},
+                        "confidence": {"type": "NUMBER"},
+                        "feedback": {"type": "STRING"},
+                    },
+                    "required": ["id", "correct", "confidence", "feedback"],
+                },
+            }
         },
-        "required": ["correct", "confidence", "feedback"],
+        "required": ["results"],
     }
     prompt = (
-        "You are a careful school-exam marker. Grade the student's answer against the teacher's reference answer. "
-        "Judge meaning and essential facts, not exact wording. Accept minor spelling mistakes, a missing/extra "
-        "single letter, common Uzbek apostrophe variants, and harmless grammatical differences when the intended "
-        "meaning is unmistakably correct. Do not accept a different person, place, event, cause, result, or fact. "
-        "Do not invent facts or give credit for vague related text. If uncertain, return confidence below 0.82. "
-        "Historical years are strict: a wrong, missing, or additional conflicting year is incorrect. "
-        "Return JSON only.\nQUESTION: " + str(question_text)[:3000] +
-        "\nTEACHER REFERENCE: " + reference[:3000] +
-        "\nSTUDENT ANSWER: " + answer[:3000]
+        "You are a careful school-exam marker. Grade each student's written answer against that question's "
+        "teacher reference answer. Judge meaning and essential facts, not exact wording. Accept minor spelling "
+        "mistakes, one-letter omissions/additions, common Uzbek apostrophe variants, and harmless grammar "
+        "differences when the intended meaning is unmistakably correct. Do not accept a different person, place, "
+        "event, cause, result, or fact. Do not invent facts or award credit for vague related text. "
+        "If uncertain, confidence must be below 0.82. Historical years are strict: a wrong, missing, or extra "
+        "conflicting year is incorrect. Return one result for every id.\nDATA:\n" +
+        json.dumps(candidates, ensure_ascii=False)
     )
-    parsed, status = await _gemini_json(model, [{"text": prompt}], schema, max_tokens=500)
-    if not parsed:
-        return None, status
-    try:
-        confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0))))
-        correct = bool(parsed.get("correct"))
-        feedback = " ".join(str(parsed.get("feedback") or "").split())[:300]
-    except Exception:
-        return None, "ai_parse_error"
-    if confidence < 0.82:
-        return {"score": 0, "confidence": confidence, "feedback": feedback}, "needs_review"
-    return {"score": 1 if correct else 0, "confidence": confidence, "feedback": feedback}, "ok"
+    parsed, status = await _gemini_json(model, [{"text": prompt}], schema, max_tokens=6000)
+    if not parsed or not isinstance(parsed.get("results"), list):
+        for item in candidates:
+            results[item["id"]] = None
+        return results, status
+    returned = {}
+    for row in parsed["results"]:
+        if not isinstance(row, dict):
+            continue
+        qid = str(row.get("id", ""))
+        if qid not in {x["id"] for x in candidates}:
+            continue
+        try:
+            confidence = max(0.0, min(1.0, float(row.get("confidence", 0))))
+            correct = bool(row.get("correct"))
+            feedback = " ".join(str(row.get("feedback") or "").split())[:300]
+        except Exception:
+            continue
+        returned[qid] = ({"score": 1 if correct else 0,
+                          "confidence": confidence, "feedback": feedback}
+                         if confidence >= 0.82 else None)
+    for item in candidates:
+        results[item["id"]] = returned.get(item["id"])
+    return results, "ok"
+
+
+async def grade_written_answer(question_text, reference_answer, student_answer):
+    """Compatibility wrapper for a single written answer."""
+    result, status = await grade_written_answers([{
+        "id": "1", "question": question_text,
+        "reference": reference_answer, "answer": student_answer,
+    }])
+    return result.get("1"), status
