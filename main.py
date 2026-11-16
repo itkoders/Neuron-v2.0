@@ -8041,10 +8041,10 @@ async def _send_test_notifications(test_id, teacher_id, subject_id, group_name, 
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="📝 Testni ochish", web_app=WebAppInfo(url=miniapp_role_url("student")))
         ]])
-    message = (f"{prefix}!\\n"
-               f"📚 {title}\\n"
-               f"📝 Savollar: {question_count} ta\\n"
-               f"⏰ {start_at} — {end_at}\\n\\n"
+    message = (f"{prefix}!\n"
+               f"📚 {title}\n"
+               f"📝 Savollar: {question_count} ta\n"
+               f"⏰ {start_at} — {end_at}\n\n"
                "Testni NEURON ilovasidagi «Testlar» bo‘limidan oching.")
     for chat_id in chat_ids:
         exists = run("SELECT 1 FROM test_notification_deliveries WHERE test_id=? AND chat_id=?",
@@ -8130,6 +8130,7 @@ async def api_tests_upload(request):
                 extract_questions_with_gemini(filename,raw,timeout_seconds=90),
                 timeout=100
             )
+        except asyncio.TimeoutError:
             ai_questions,ai_status=[], "timeout"
             logging.warning("Gemini test extraction timed out; using parser fallback")
         except Exception:
@@ -8210,7 +8211,6 @@ async def api_tests_restart(request):
     )
     return web.json_response({"ok":True,"students_found":students_found,"notified":notified,
                               "notification_failed":failed,"start_at":new_start,"end_at":new_end})
-                              "notification_failed":failed,"start_at":new_start,"end_at":new_end})
 
 
 async def api_tests_publish(request):
@@ -8261,7 +8261,6 @@ async def api_tests_publish(request):
     is_scheduled = datetime.fromisoformat(start) > local_now()
     return web.json_response({"ok":True,"notified":notified,"notification_failed":notification_failed,
                               "students_found":len(student_ids),"scheduled":is_scheduled,"starts_at":start})
-                              "students_found":len(student_ids)})
 
 async def api_tests_student(request):
     kind,st,err=miniapp_identity(request)
