@@ -5641,6 +5641,7 @@ async def api_admin_overview(request):
         payload["settings"]["verify_mode"] = ""
         payload["settings"]["ai_primary"] = ""
     if is_super(uid):
+        payload["ai_manager"] = gemini_status()
         rows = run("SELECT chat_id FROM super_admins ORDER BY chat_id", fetch="all") or []
         payload["admins"] = [
             {"chat_id": int(row[0]), "is_owner": int(row[0]) == OWNER_TELEGRAM_ID,
