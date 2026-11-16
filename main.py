@@ -8156,7 +8156,7 @@ async def api_tests_publish(request):
     target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
     target_params=[t["id"],test["subject_id"]]
     if test["group_name"]!="*":
-        target_sql+=" AND TRIM(COALESCE(group_name,''))=TRIM(?)"
+        target_sql+=" AND LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?))"
         target_params.append(test["group_name"])
     student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
     chat_ids=set()
@@ -8209,7 +8209,7 @@ async def api_tests_student_start(request):
     try:tid=int(request.match_info["tid"])
     except Exception:return web.json_response({"error":"bad"},status=400)
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row)
@@ -8239,7 +8239,7 @@ async def api_tests_student_save(request):
     except Exception:return web.json_response({"error":"bad"},status=400)
     body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row)
@@ -8263,7 +8263,7 @@ async def api_tests_student_submit(request):
     except Exception:return web.json_response({"error":"bad"},status=400)
     body=await _read_json(request);answers=body.get("answers") if isinstance(body.get("answers"),dict) else {}
     row=run("""SELECT id,teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at
-               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR group_name=?)""",
+               FROM tests WHERE id=? AND teacher_id=? AND subject_id=? AND status='published' AND (group_name='*' OR LOWER(TRIM(COALESCE(group_name,'')))=LOWER(TRIM(?)))""",
             (tid,st["teacher_id"],st["subject_id"],st.get("group_name") or "Guruhsiz"),fetch="one")
     if not row:return web.json_response({"error":"not_found"},status=404)
     test=_test_row(row);attempt=run("SELECT id,status FROM test_attempts WHERE test_id=? AND student_id=?",(tid,st["id"]),fetch="one")
