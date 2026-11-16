@@ -7914,7 +7914,9 @@ def _test_extract_file(filename,raw):
             logging.exception("DOCX test parse failed");raise ValueError("docx_parse_error") from exc
     else:raise ValueError("file_type")
     if not questions:raise ValueError("questions_not_found")
-    if len(questions)>100:raise ValueError("too_many_questions")
+    truncated=len(questions)>100
+    questions=questions[:100]
+    for index,q in enumerate(questions,1):q["id"]=index
     total=0
     for q in questions:
         kept=[]
@@ -7922,7 +7924,7 @@ def _test_extract_file(filename,raw):
             total+=len(uri)
             if total<=3500000 and len(kept)<2:kept.append(uri)
         q["images"]=kept
-    return questions
+    return questions,truncated
 
 def _test_datetime(value):
     try:
@@ -7980,15 +7982,15 @@ async def api_tests_upload(request):
         if group!="*" and group not in groups:return web.json_response({"error":"bad_group"},status=400)
         start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
         if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
-        questions=_test_extract_file(filename,raw)
+        questions,truncated=_test_extract_file(filename,raw)
         title=(fields.get("title") or filename.rsplit(".",1)[0] or "Yangi test")[:100]
         tid=run("""INSERT INTO tests(teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at)
                    VALUES(?,?,?,?,?,?,'draft',?,'{}',?)""",
                 (t["id"],sid,title,group,start,end,json.dumps(questions,ensure_ascii=False),local_now().isoformat()),fetch="lastid")
         audit(t.get("chat_id"),"test_upload",str(tid),f"{title}; {len(questions)} savol")
-        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end})
+        return web.json_response({"ok":True,"test_id":tid,"title":title,"questions":questions,"start_at":start,"end_at":end,"truncated":truncated,"message":"Faylda 100 tadan ko‘p savol bor edi. Faqat dastlabki 100 ta savol olindi." if truncated else "Savollar muvaffaqiyatli ajratildi."})
     except ValueError as exc:
-        code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","too_many_questions":"Testda 100 tadan ko‘p savol bo‘lmasin.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
+        code=str(exc);messages={"file_type":"Faqat PDF yoki DOCX fayl yuklang.","pdf_text_not_found":"PDFdan savol aniqlanmadi. Savollar raqamlangan yoki rasmli sahifada bo‘lishi kerak.","questions_not_found":"Fayldan raqamlangan savollar topilmadi.","file_size_or_missing":"Fayl yo‘q yoki 10 MB dan katta.","bad_time":"Boshlanish va tugash vaqtini tekshiring."}
         return web.json_response({"error":code,"message":messages.get(code,"Faylni o‘qib bo‘lmadi.")},status=400)
     except Exception:
         logging.exception("Online test upload failed");return web.json_response({"error":"upload_failed"},status=400)
