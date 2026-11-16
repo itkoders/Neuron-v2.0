@@ -8056,6 +8056,8 @@ async def api_tests_publish(request):
     for q in test["questions"]:
         if q["type"]=="choice" and str(key.get(str(q["id"]),"")).upper() not in {o["key"] for o in q["options"]}:
             return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
+        if q["type"]=="written" and not str(key.get(str(q["id"]),"")).strip():
+            return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
     run("UPDATE tests SET questions_json=?,answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
         (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
     audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
