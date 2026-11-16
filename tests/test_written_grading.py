@@ -18,7 +18,7 @@ class WrittenGradingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["score"], 0)
 
     async def test_correct_year_allows_ai_semantic_review(self):
-        fake = {"candidates": [{"content": {"parts": [{"text": '{"correct": true, "confidence": 0.96, "feedback": "To‘g‘ri"}'}]}}]}
+        fake = {"candidates": [{"content": {"parts": [{"text": '{"results": [{"id": "1", "correct": true, "confidence": 0.96, "feedback": "To‘g‘ri"}]}'}]}}]}
         with patch("test_ai.gemini_generate", new=AsyncMock(return_value=(fake, "ok"))):
             result, status = await grade_written_answer(
                 "O‘zbekiston mustaqilligi qachon e’lon qilingan?",
@@ -29,7 +29,7 @@ class WrittenGradingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["score"], 1)
 
     async def test_uncertain_answer_requires_teacher_review(self):
-        fake = {"candidates": [{"content": {"parts": [{"text": '{"correct": true, "confidence": 0.55, "feedback": "Noaniq"}'}]}}]}
+        fake = {"candidates": [{"content": {"parts": [{"text": '{"results": [{"id": "1", "correct": true, "confidence": 0.55, "feedback": "Noaniq"}]}'}]}}]}
         with patch("test_ai.gemini_generate", new=AsyncMock(return_value=(fake, "ok"))):
             result, status = await grade_written_answer("Savol", "Aniq ma’lumot", "Noaniq javob")
         self.assertEqual(status, "needs_review")
