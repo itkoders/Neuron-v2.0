@@ -8201,6 +8201,7 @@ async def api_tests_restart(request):
     new_end=(now+timedelta(seconds=duration)).isoformat()
     # Restart intentionally clears previous attempts and scores so every student can take it again.
     run("DELETE FROM test_attempts WHERE test_id=?", (tid,))
+    run("DELETE FROM test_notification_deliveries WHERE test_id=?", (tid,))
     run("UPDATE tests SET start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
         (new_start,new_end,tid,t["id"]))
     audit(t.get("chat_id"),"test_restart",str(tid),test["title"])
@@ -8242,6 +8243,7 @@ async def api_tests_publish(request):
             return web.json_response({"error":"answer_key_missing","question":q["id"]},status=400)
     run("UPDATE tests SET questions_json=?,answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
         (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
+    run("DELETE FROM test_notification_deliveries WHERE test_id=?", (tid,))
     audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
 
     # Kelajakdagi test xabari boshlanish vaqti yetganda fon vazifasi orqali yuboriladi.
