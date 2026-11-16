@@ -7995,7 +7995,13 @@ async def api_tests_upload(request):
         if group!="*" and group not in groups:return web.json_response({"error":"bad_group"},status=400)
         start,end=_test_datetime(fields.get("start_at")),_test_datetime(fields.get("end_at"))
         if not start or not end or datetime.fromisoformat(end)<=datetime.fromisoformat(start):raise ValueError("bad_time")
-        questions,truncated=_test_extract_file(filename,raw)
+        parser_error=None
+        try:
+            questions,truncated=_test_extract_file(filename,raw)
+        except Exception as parse_exc:
+            # Let Gemini try even when the deterministic parser cannot recognize the layout.
+            logging.warning("Deterministic test parser failed; trying Gemini: %s",type(parse_exc).__name__)
+            questions=[];truncated=False;parser_error=parse_exc
         parser_questions=questions
         ai_questions,ai_status=await extract_questions_with_gemini(filename,raw)
         extraction_method="parser"
@@ -8006,6 +8012,10 @@ async def api_tests_upload(request):
                     q["images"]=(parser_questions[index].get("images") or [])[:2]
             questions=ai_questions[:100]
             extraction_method="gemini"
+        elif not questions:
+            if isinstance(parser_error,ValueError):
+                raise parser_error
+            raise ValueError("questions_not_found")
         truncated=bool(truncated or (ai_questions and len(ai_questions)>100))
         title=(fields.get("title") or filename.rsplit(".",1)[0] or "Yangi test")[:100]
         tid=run("""INSERT INTO tests(teacher_id,subject_id,title,group_name,start_at,end_at,status,questions_json,answer_key_json,created_at)
