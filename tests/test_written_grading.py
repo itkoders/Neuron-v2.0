@@ -33,7 +33,7 @@ class WrittenGradingTests(unittest.IsolatedAsyncioTestCase):
         with patch("test_ai.gemini_generate", new=AsyncMock(return_value=(fake, "ok"))):
             result, status = await grade_written_answer("Savol", "Aniq ma’lumot", "Noaniq javob")
         self.assertEqual(status, "needs_review")
-        self.assertIsNotNone(result)
+        self.assertIsNone(result)
 
     async def test_missing_reference_requires_teacher_review(self):
         result, status = await grade_written_answer("Savol", "", "Javob")
