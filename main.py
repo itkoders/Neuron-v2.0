@@ -7808,6 +7808,10 @@ def _test_parse_text(value,image_tokens=None):
     image_tokens=image_tokens or {}; result=[]; cur=None; opt=None
     qr=re.compile(r"^\s*(?:savol\s*)?(\d{1,3})[\.\):\-]\s*(.*)$",re.I)
     ar=re.compile(r"^\s*([A-FА-Е])[\)\.\:\-]\s*(.*)$",re.I)
+    # PDF/DOCX matnni ba'zan bitta uzun qatorga birlashtiradi.
+    normalized=str(value or "").replace("\r\n","\n").replace("\r","\n")
+    normalized=re.sub(r"(?<=\S)\s+(?=(?:savol\s*)?\d{1,3}\s*[\.\):\-]\s+)", "\n", normalized, flags=re.I)
+    normalized=re.sub(r"(?<=\S)\s+(?=[A-FА-Е][\)\.\:\-]\s+)", "\n", normalized)
     def finish():
         nonlocal cur
         if cur:
@@ -7817,7 +7821,7 @@ def _test_parse_text(value,image_tokens=None):
                 cur["type"]="choice" if len(cur["options"])>=2 else "written"
                 cur["options"]=cur["options"][:6];cur["images"]=cur["images"][:2];result.append(cur)
         cur=None
-    for raw in str(value or "").splitlines():
+    for raw in normalized.splitlines():
         line=raw.strip()
         if not line:continue
         token=re.fullmatch(r"\[\[NEURON_IMAGE_(\d+)\]\]",line)
@@ -7831,7 +7835,9 @@ def _test_parse_text(value,image_tokens=None):
             opt={"key":am.group(1).upper(),"text":am.group(2).strip()};cur["options"].append(opt);continue
         qm=qr.match(line)
         if qm:
-            finish();cur={"id":len(result)+1,"text":qm.group(2).strip(),"options":[],"images":[],"type":"written"};opt=None;continue
+            finish()
+            question_text=re.sub(r"^savol\s*[:.)\-]?\s*","",qm.group(2).strip(),flags=re.I)
+            cur={"id":len(result)+1,"text":question_text,"options":[],"images":[],"type":"written"};opt=None;continue
         if cur:
             if opt is not None:opt["text"]=(opt["text"]+" "+line).strip()
             else:cur["text"]=(cur["text"]+" "+line).strip()
@@ -8023,7 +8029,38 @@ async def api_tests_publish(request):
     run("UPDATE tests SET questions_json=?,answer_key_json=?,start_at=?,end_at=?,status='published' WHERE id=? AND teacher_id=?",
         (json.dumps(test["questions"],ensure_ascii=False),json.dumps(key,ensure_ascii=False),start,end,tid,t["id"]))
     audit(t.get("chat_id"),"test_publish",str(tid),f"{len(test['questions'])} savol")
-    return web.json_response({"ok":True})
+
+    # Test faollashganda shu fan/guruhdagi botga ulangan o'quvchilarga xabar yuboramiz.
+    target_sql="SELECT id FROM students WHERE teacher_id=? AND subject_id=?"
+    target_params=[t["id"],test["subject_id"]]
+    if test["group_name"]!="*":
+        target_sql+=" AND TRIM(COALESCE(group_name,''))=TRIM(?)"
+        target_params.append(test["group_name"])
+    student_ids=[r[0] for r in run(target_sql,target_params,fetch="all")]
+    chat_ids=set()
+    for student_id in student_ids:
+        chat_ids.update(int(cid) for cid in db_student_chat_ids_for_student(student_id) if cid)
+    notified=0; notification_failed=0
+    if bot:
+        message=("🧪 Yangi test sizga biriktirildi!\n"
+                 f"📚 {test['title']}\n"
+                 f"📝 Savollar: {len(test['questions'])} ta\n"
+                 f"⏰ {start} — {end}\n\n"
+                 "Testni NEURON ilovasidagi «Testlar» bo‘limidan oching.")
+        markup=None
+        if MINIAPP_URL:
+            markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="📝 Testni ochish",web_app=WebAppInfo(url=miniapp_role_url("student")))
+            ]])
+        for chat_id in chat_ids:
+            try:
+                await bot.send_message(chat_id,message,reply_markup=markup)
+                notified+=1
+            except Exception:
+                notification_failed+=1
+                logging.info("Test xabari yuborilmadi: test=%s chat=%s",tid,chat_id)
+    return web.json_response({"ok":True,"notified":notified,"notification_failed":notification_failed,
+                              "students_found":len(student_ids)})
 
 async def api_tests_student(request):
     kind,st,err=miniapp_identity(request)
