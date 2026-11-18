@@ -5945,6 +5945,59 @@ async def api_admin_plan_action(request):
     return web.json_response({"ok":True})
 
 
+async def api_admin_uzum_settings(request):
+    """Uzum Checkout sozlamalari. Faqat loyiha egasi ko‘ra oladi va o‘zgartiradi."""
+    uid, err = miniapp_admin(request)
+    if err:
+        return err
+    if not is_super(uid):
+        return web.json_response({"error": "owner_only"}, status=403)
+
+    secret_keys = ("uzum_api_key", "uzum_secret_key")
+    if request.method == "GET":
+        result = {}
+        for key in ("uzum_merchant_id", "uzum_service_id", "uzum_api_base_url",
+                    "uzum_callback_url", "uzum_mode"):
+            result[key] = db_get_setting(key) or ""
+        for key in secret_keys:
+            raw = db_get_setting(key) or ""
+            secret = decrypt_teacher_code(raw[4:]) if raw.startswith("enc:") else ""
+            result[key + "_configured"] = bool(secret)
+        result["checkout_status"] = "not_connected"
+        return web.json_response(result)
+
+    body = await _read_json(request)
+    merchant_id = str(body.get("merchant_id", "")).strip()[:120]
+    service_id = str(body.get("service_id", "")).strip()[:120]
+    api_base_url = str(body.get("api_base_url", "")).strip().rstrip("/")
+    callback_url = str(body.get("callback_url", "")).strip()
+    mode = str(body.get("mode", "sandbox")).strip().lower()
+    if mode not in {"sandbox", "live"}:
+        return web.json_response({"error": "bad_mode"}, status=400)
+    for label, url in (("api_base_url", api_base_url), ("callback_url", callback_url)):
+        if url and (not url.startswith("https://") or len(url) > 500):
+            return web.json_response({"error": "https_required", "field": label}, status=400)
+
+    db_set_setting("uzum_merchant_id", merchant_id)
+    db_set_setting("uzum_service_id", service_id)
+    db_set_setting("uzum_api_base_url", api_base_url)
+    db_set_setting("uzum_callback_url", callback_url)
+    db_set_setting("uzum_mode", mode)
+    for field, key in (("api_key", "uzum_api_key"), ("secret_key", "uzum_secret_key")):
+        value = str(body.get(field, "")).strip()
+        if value:
+            if len(value) > 2048:
+                return web.json_response({"error": "secret_too_long", "field": field}, status=400)
+            db_set_setting(key, "enc:" + encrypt_teacher_code(value))
+    db_set_setting("uzum_checkout_enabled", "0")
+    audit(uid, "uzum_payment_settings_saved", "uzum",
+          json.dumps({"merchant_id": bool(merchant_id), "service_id": bool(service_id),
+                      "api_base_url": bool(api_base_url), "callback_url": bool(callback_url),
+                      "mode": mode, "api_key_updated": bool(body.get("api_key")),
+                      "secret_key_updated": bool(body.get("secret_key"))}, ensure_ascii=False))
+    return web.json_response({"ok": True, "checkout_status": "not_connected"})
+
+
 async def api_admin_settings(request):
     uid, err = miniapp_admin(request)
     if err: return err
@@ -8703,6 +8756,8 @@ async def start_web_server():
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
     app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
     app.router.add_post("/api/settings/payment", api_teacher_payment_save)
+    app.router.add_get("/api/admin/uzum-settings", api_admin_uzum_settings)
+    app.router.add_post("/api/admin/uzum-settings", api_admin_uzum_settings)
     app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_get("/api/admin/admins", api_admin_admins)
     app.router.add_post("/api/admin/admins", api_admin_admins)
