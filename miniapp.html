@@ -2769,7 +2769,12 @@ body.social-open #paxBuddy{display:none}
           (a.is_owner?'<p class="admin-muted">Barcha ruxsatlar egasida.</p>':Object.entries(d.permission_labels||{}).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-existing-admin-perm="'+a.chat_id+'" data-perm-key="'+k+'" '+((a.permissions||[]).includes(k)?'checked':'')+'> '+esc(v)+'</label>').join('')+
           '<div class="admin-actions">'+adminBtn('Ruxsatlarni saqlash','save-admin-perms',a.chat_id)+adminBtn('Olib tashlash','remove-admin',a.chat_id)+'</div>')+'</div>').join('')||'<p class="admin-muted">Adminlar ro‘yxati bo‘sh.</p>')+'</div>';
     } else if(state.adminTab==="payments") {
-      host.innerHTML='<div class="card panel"><h3>💳 To‘lov sozlamalari</h3><p class="admin-muted">Hozircha karta orqali to‘lovlar qo‘lda chek asosida tekshiriladi. Qabul qiluvchi karta ma’lumotlari alohida sozlama sifatida kiritiladi.</p></div>';
+      const p=d.settings||{};
+      host.innerHTML='<div class="card panel"><h3>💳 Qabul qiluvchi karta</h3><p class="admin-muted">O‘qituvchilarning to‘lovlari uchun umumiy karta. Ota-onalar kabinetida ko‘rsatiladi. To‘lovlar chek asosida qo‘lda tasdiqlanadi.</p>'+
+        '<label class="admin-muted">Karta raqami</label><input class="field" id="admPayCard" inputmode="numeric" maxlength="23" placeholder="8600 0000 0000 0000" value="'+esc(p.payment_card_number||'')+'">'+
+        '<label class="admin-muted">Karta egasi</label><input class="field" id="admPayHolder" maxlength="80" placeholder="Karta egasining ism-familiyasi" value="'+esc(p.payment_card_holder||'')+'">'+
+        '<label class="admin-muted">Bank nomi (ixtiyoriy)</label><input class="field" id="admPayBank" maxlength="60" placeholder="Masalan: Uzum Bank" value="'+esc(p.payment_bank_name||'')+'">'+
+        '<div class="admin-actions">'+adminBtn('💾 Kartani saqlash','save-receiving-card')+adminBtn('🗑 Kartani o‘chirish','clear-receiving-card')+'</div><p class="admin-muted">Karta raqami faqat Super Admin sozlamasida saqlanadi.</p></div>';
     } else if(state.adminTab==="settings") {
       const perms=new Set(d.permissions||[]), sections=[];
       if(perms.has("channels")) sections.push('<div class="card panel"><h3>🔔 Majburiy obuna</h3><p class="admin-muted">Har bir qatorga bittadan kanal kiriting. Ko‘pi bilan 30 ta. Bot barcha kanallarda administrator bo‘lishi kerak.</p><textarea class="field" id="admChannel" rows="5" placeholder="@birinchi_kanal&#10;@ikkinchi_kanal">'+esc(s.required_channels||s.required_channel||'')+'</textarea><div class="admin-actions">'+adminBtn('📢 Kanallarni saqlash','save-channel')+adminBtn(s.mandatory_sub?'O‘chirish':'Yoqish','toggle-sub')+'</div></div>');
@@ -2826,6 +2831,20 @@ body.social-open #paxBuddy{display:none}
       else if(a==="save-plan"){const obj={action:"save",key:id};document.querySelectorAll('[data-key="'+id+'"][data-field]').forEach(i=>{obj[i.dataset.field]=i.type==="checkbox"?(i.checked?"1":"0"):i.value;});const bc=document.querySelector('[data-key="'+id+'"][data-field="badge_enabled"]'),bs=document.querySelector('[data-key="'+id+'"][data-field="badge"]');obj.badge=bc&&bc.checked?(bs.value||"verified"):"";await adminPost("/api/admin/plan",obj);}
       else if(a==="toggle-plan"){await adminPost("/api/admin/plan",{action:"toggle_active",key:id});}
       else if(a==="create-plan"){await adminPost("/api/admin/plan",{action:"create",name:$("newPlanName").value,price:$("newPlanPrice").value||0,student_limit:$("newPlanLimit").value||0,duration_days:$("newPlanDays").value||0,badge_enabled:$("newPlanBadgeEnabled").checked?"1":"0",badge:$("newPlanBadge").value});}
+      else if(a==="save-receiving-card"){
+        const card=$("admPayCard").value.replace(/\\s+/g,"");
+        const holder=$("admPayHolder").value.trim();
+        if(!card||holder.length<2) throw new Error("Karta raqami va karta egasini kiriting.");
+        await adminPost("/api/admin/settings",{key:"payment_card_number",value:card});
+        await adminPost("/api/admin/settings",{key:"payment_card_holder",value:holder});
+        await adminPost("/api/admin/settings",{key:"payment_bank_name",value:$("admPayBank").value.trim()});
+      }
+      else if(a==="clear-receiving-card"){
+        if(!confirm("Qabul qiluvchi karta ma’lumotlarini o‘chirasizmi?")) return;
+        await adminPost("/api/admin/settings",{key:"payment_card_number",value:""});
+        await adminPost("/api/admin/settings",{key:"payment_card_holder",value:""});
+        await adminPost("/api/admin/settings",{key:"payment_bank_name",value:""});
+      }
       else if(a==="save-channel"){await adminPost("/api/admin/settings",{key:"required_channels",value:$("admChannel").value});}
       else if(a==="toggle-sub"){await adminPost("/api/admin/settings",{key:"mandatory_sub",value:state.adminData.settings.mandatory_sub?"0":"1"});}
       else if(a==="save-uzum-settings"){
