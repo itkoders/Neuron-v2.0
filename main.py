@@ -5667,7 +5667,10 @@ def _admin_overview_payload():
         "support_contact": db_get_setting("support_contact") or "",
         "support_label": db_get_setting("support_label") or "Yordam",
         "support_enabled": db_get_setting("support_enabled") == "1",
-        "verify_mode": verify_mode(), "ai_primary": ai_primary()
+        "verify_mode": verify_mode(), "ai_primary": ai_primary(),
+        "payment_card_number": db_get_setting("payment_card_number") or "",
+        "payment_card_holder": db_get_setting("payment_card_holder") or "",
+        "payment_bank_name": db_get_setting("payment_bank_name") or ""
     }
     return {"stats": stats, "teachers": items, "plans": plans, "queue": queue,
             "settings": settings, "features": FEATURES}
@@ -5991,6 +5994,18 @@ async def api_admin_settings(request):
             return web.json_response({"error":"channel_required"},status=400)
         db_set_setting(key,value)
         SUB_CACHE.clear()
+    elif key in {"payment_card_number","payment_card_holder","payment_bank_name"}:
+        if key == "payment_card_number":
+            value = re.sub(r"\\D", "", value)[:19]
+            if value and len(value) not in {16, 18, 19}:
+                return web.json_response({"error":"bad_card"},status=400)
+        elif key == "payment_card_holder":
+            value = " ".join(value.split())[:80]
+            if len(value) < 2:
+                return web.json_response({"error":"bad_holder"},status=400)
+        else:
+            value = " ".join(value.split())[:60]
+        db_set_setting(key, value)
     elif key in {"support_contact","support_label","support_enabled","verify_mode","ai_primary"}:
         if key == "support_contact":
             if value and not (re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{4,31}",value) or re.fullmatch(r"\d{5,15}",value)):
@@ -8488,6 +8503,10 @@ async def api_parent_overview(request):
         teacher=db_teacher(st["teacher_id"])
         payments_enabled=bool(teacher and has_feature(teacher,"payments"))
         card=teacher_payment_method(st["teacher_id"]) if payments_enabled else None
+        if payments_enabled and not card and db_get_setting("payment_card_number"):
+            card={"payment_type":"card","card_number":db_get_setting("payment_card_number") or "",
+                  "card_holder":db_get_setting("payment_card_holder") or "",
+                  "bank_name":db_get_setting("payment_bank_name") or "","payment_details":""}
         payment_request=run("SELECT status,method,reference,created_at FROM payment_requests WHERE student_id=? AND parent_chat_id=? ORDER BY id DESC LIMIT 1",(sid,parent_id),fetch="one") if payments_enabled else None
         primary=subjects[0]
         children.append({"id":sid,"fio":st["fio"],"group_name":st["group_name"],"teacher_name":primary["teacher_name"],
