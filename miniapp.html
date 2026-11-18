@@ -2769,22 +2769,7 @@ body.social-open #paxBuddy{display:none}
           (a.is_owner?'<p class="admin-muted">Barcha ruxsatlar egasida.</p>':Object.entries(d.permission_labels||{}).map(([k,v])=>'<label class="admin-feature"><input type="checkbox" data-existing-admin-perm="'+a.chat_id+'" data-perm-key="'+k+'" '+((a.permissions||[]).includes(k)?'checked':'')+'> '+esc(v)+'</label>').join('')+
           '<div class="admin-actions">'+adminBtn('Ruxsatlarni saqlash','save-admin-perms',a.chat_id)+adminBtn('Olib tashlash','remove-admin',a.chat_id)+'</div>')+'</div>').join('')||'<p class="admin-muted">Adminlar ro‘yxati bo‘sh.</p>')+'</div>';
     } else if(state.adminTab==="payments") {
-      host.innerHTML='<div class="card panel"><h3>💳 Uzum Bank — Checkout API</h3><p class="admin-muted">Merchant ma’lumotlari va API kalitlarini shu yerda saqlang. Maxfiy kalitlar serverda shifrlanadi va qayta ko‘rsatilmaydi.</p><div class="loading">To‘lov sozlamalari yuklanmoqda…</div></div>';
-      (async()=>{
-        try{
-          const p=await api("/api/admin/uzum-settings");
-          host.innerHTML='<div class="card panel"><h3>💳 Uzum Bank — Checkout API</h3><p class="admin-muted">Merchant ma’lumotlari va API kalitlarini shu yerda saqlang. Maxfiy kalitlar serverda shifrlanadi va qayta ko‘rsatilmaydi.</p><div class="admin-form">'+
-            '<label class="admin-muted">Merchant ID<input class="field" id="uzumMerchant" maxlength="120" value="'+esc(p.uzum_merchant_id||'')+'" placeholder="Uzum bergan Merchant ID"></label>'+
-            '<label class="admin-muted">Service ID<input class="field" id="uzumService" maxlength="120" value="'+esc(p.uzum_service_id||'')+'" placeholder="Uzum bergan Service ID (agar talab qilinsa)"></label>'+
-            '<label class="admin-muted">API manzili (HTTPS)<input class="field" id="uzumApiUrl" maxlength="500" value="'+esc(p.uzum_api_base_url||'')+'" placeholder="Rasmiy hujjatdagi API manzili"></label>'+
-            '<label class="admin-muted">API Key<input class="field" id="uzumApiKey" type="password" autocomplete="new-password" placeholder="'+(p.uzum_api_key_configured?'Saqlangan — almashtirish uchun yangisini kiriting':'API kalitini kiriting')+'"></label>'+
-            '<label class="admin-muted">Secret Key<input class="field" id="uzumSecretKey" type="password" autocomplete="new-password" placeholder="'+(p.uzum_secret_key_configured?'Saqlangan — almashtirish uchun yangisini kiriting':'Secret key kiriting')+'"></label>'+
-            '<label class="admin-muted">Callback / Webhook URL (HTTPS)<input class="field" id="uzumCallback" maxlength="500" value="'+esc(p.uzum_callback_url||'')+'" placeholder="Uzum hujjatlarida ko‘rsatilgan callback URL"></label>'+
-            '<label class="admin-muted">Ishlash rejimi<select class="field" id="uzumMode"><option value="sandbox" '+(p.uzum_mode!=='live'?'selected':'')+'>Test (Sandbox)</option><option value="live" '+(p.uzum_mode==='live'?'selected':'')+'>Ishchi (Live)</option></select></label></div>'+
-            '<div class="admin-actions">'+adminBtn('💾 Sozlamalarni saqlash','save-uzum-settings')+'</div></div>'+
-            '<div class="card panel"><h3>🔒 Ulanish holati</h3><p class="admin-muted">API kaliti: '+(p.uzum_api_key_configured?'Saqlangan':'Kiritilmagan')+'</p><p class="admin-muted">Secret key: '+(p.uzum_secret_key_configured?'Saqlangan':'Kiritilmagan')+'</p><p class="admin-muted">Checkout: Hozircha ulanmagan — merchant hisob va rasmiy API hujjatlari tasdiqlangach server tomondagi to‘lov oqimi ulanadi.</p><p class="admin-muted">Haqiqiy to‘lovlar hozircha qabul qilinmaydi. Test/Live tanlovi faqat sozlama sifatida saqlanadi.</p></div>';
-        }catch(err){host.innerHTML='<div class="card empty">'+esc(errText(err))+'</div>';}
-      })();
+      host.innerHTML='<div class="card panel"><h3>💳 To‘lov sozlamalari</h3><p class="admin-muted">Hozircha karta orqali to‘lovlar qo‘lda chek asosida tekshiriladi. Qabul qiluvchi karta ma’lumotlari alohida sozlama sifatida kiritiladi.</p></div>';
     } else if(state.adminTab==="settings") {
       const perms=new Set(d.permissions||[]), sections=[];
       if(perms.has("channels")) sections.push('<div class="card panel"><h3>🔔 Majburiy obuna</h3><p class="admin-muted">Har bir qatorga bittadan kanal kiriting. Ko‘pi bilan 30 ta. Bot barcha kanallarda administrator bo‘lishi kerak.</p><textarea class="field" id="admChannel" rows="5" placeholder="@birinchi_kanal&#10;@ikkinchi_kanal">'+esc(s.required_channels||s.required_channel||'')+'</textarea><div class="admin-actions">'+adminBtn('📢 Kanallarni saqlash','save-channel')+adminBtn(s.mandatory_sub?'O‘chirish':'Yoqish','toggle-sub')+'</div></div>');
