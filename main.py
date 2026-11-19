@@ -6187,7 +6187,7 @@ async def api_teacher_phone_save(request):
     if err:
         return err
     body = await _read_json(request)
-    phone = re.sub(r"\\s+", "", str(body.get("phone", "")).strip())[:20]
+    phone = re.sub(r"\s+", "", str(body.get("phone", "")).strip())[:20]
     if phone and not is_valid_phone(phone):
         return web.json_response({"error": "bad_phone"}, status=400)
     run("UPDATE teachers SET phone=? WHERE id=?", (phone or None, t["id"]))
