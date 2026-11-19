@@ -6170,6 +6170,7 @@ async def api_teacher_settings(request):
         (t["id"],), fetch="all"
     )
     return web.json_response({
+        "phone": t.get("phone") or "",
         "channel_id": t.get("channel_id") or "",
         "channel_enabled": has_feature(t, "channel"),
         "payment": (teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}) if payments_enabled else {},
@@ -6179,6 +6180,19 @@ async def api_teacher_settings(request):
                       "payment_amount": (r[6] or 0) if payments_enabled else 0, "teacher_note": r[7] or "",
                       "phone": r[8] or ""} for r in rows]
     })
+
+
+async def api_teacher_phone_save(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    body = await _read_json(request)
+    phone = re.sub(r"\\s+", "", str(body.get("phone", "")).strip())[:20]
+    if phone and not is_valid_phone(phone):
+        return web.json_response({"error": "bad_phone"}, status=400)
+    run("UPDATE teachers SET phone=? WHERE id=?", (phone or None, t["id"]))
+    audit(t["chat_id"], "miniapp_teacher_phone_save", str(t["id"]), phone or "phone_cleared")
+    return web.json_response({"ok": True, "phone": phone})
 
 
 async def api_teacher_student_settings(request):
@@ -8770,6 +8784,7 @@ async def start_web_server():
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/public-settings", api_public_settings)
     app.router.add_get("/api/settings", api_teacher_settings)
+    app.router.add_post("/api/settings/phone", api_teacher_phone_save)
     app.router.add_post("/api/settings/student", api_teacher_student_settings)
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
     app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
