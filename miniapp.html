@@ -1798,7 +1798,7 @@ body.social-open #paxBuddy{display:none}
           <div class="hero-stat"><b id="heroAttendance">—</b><span>BUGUN KELDI</span></div>
         </div>
       </div>
-      <p class="hint" style="margin-top:14px">Katakka ball yozing (0–100). Enter — pastdagi o‘quvchiga o‘tadi. Saqlash avtomatik.</p>
+      <p class="hint" style="margin-top:14px">Katakka ball yozing (0–100). Enter — pastdagi o‘quvchiga o‘tadi. Saqlash avtomatik. Katak bo‘sh qolsa, ball qo‘yilmaydi; 0 ni faqat ataylab kiriting.</p>
       <div class="journal-shell"><div class="grid-wrap" id="grid"></div></div>
       <div id="reportActions" class="report-actions"></div>
     </section>
@@ -3340,7 +3340,15 @@ body.social-open #paxBuddy{display:none}
       const input = row && row.querySelector(`input[data-col="${scoreIndex - 1}"]`);
       if (!input) continue;
       const raw = input.value.trim();
-      const value = raw === "" ? 0 : Math.round(Number(raw));
+      if (raw === "") {
+        const student = state.students.find(s => s.id === studentId);
+        const saved = student && student["s" + scoreIndex + "_scored"];
+        input.value = saved ? String(student["s" + scoreIndex]) : "";
+        input.closest("td").className = saved ? tone(student["s" + scoreIndex]) : "";
+        state.pendingScores.delete(key);
+        continue;
+      }
+      const value = Math.round(Number(raw));
       if (!Number.isFinite(value) || value < 0 || value > 100) return false;
       const job = saveScore(studentId, scoreIndex, value, input);
       pendingScoreJobs[key] = job;
@@ -3358,7 +3366,18 @@ body.social-open #paxBuddy{display:none}
     const raw = inp.value.trim();
     const key = `${id}:${idx}`;
     clearTimeout(pendingTimers[key]);
-    const val = raw === "" ? 0 : Math.round(Number(raw));
+    delete pendingTimers[key];
+    if (raw === "") {
+      const student = state.students.find(s => s.id === id);
+      const saved = student && student["s" + idx + "_scored"];
+      inp.value = saved ? String(student["s" + idx]) : "";
+      inp.closest("td").className = saved ? tone(student["s" + idx]) : "";
+      state.pendingScores.delete(key);
+      renderReportActions();
+      setStatus("Ball kiritilmadi");
+      return;
+    }
+    const val = Math.round(Number(raw));
     if (!Number.isFinite(val) || val < 0 || val > 100) {
       state.pendingScores.delete(key);
       inp.closest("td").className = "cell-err";
