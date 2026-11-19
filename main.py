@@ -7050,7 +7050,38 @@ async def api_teacher_payment_record(request):
     else:
         db_set_payment_status(sid,UNPAID)
     audit(teacher["chat_id"],"monthly_payment_recorded",str(sid),f"{month}; amount={amount}; date={paid_date}")
-    return web.json_response({"ok":True})
+
+    # To‘lov jurnaliga yozilgach, aynan shu o‘quvchining ota-onasiga fan,
+    # qabul qilingan summa va barcha oylar bo‘yicha qolgan qarzni yuboramiz.
+    debt_row = run("""SELECT COALESCE(SUM(c.due_amount - COALESCE(
+        (SELECT SUM(p.amount) FROM student_payment_entries p
+         WHERE p.student_id=c.student_id AND p.month=c.month), 0)), 0)
+        FROM student_monthly_charges c
+        WHERE c.teacher_id=? AND c.student_id=?""",
+        (teacher["id"], sid), fetch="one")
+    remaining_debt = max(0, int(debt_row[0] or 0)) if debt_row else 0
+    subj = db_subject(st["subject_id"])
+    subject_name = md(subj["name"]) if subj else "—"
+    parent_message = (
+        f"💳 **TO‘LOV QABUL QILINDI**\\n"
+        f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
+        f"📚 Fan: **{subject_name}**\\n"
+        f"💰 To‘langan summa: **{amount:,} so‘m**\\n"
+        f"📌 Qolgan qarz: **{remaining_debt:,} so‘m**\\n"
+        f"📅 Sana: **{paid_date}**"
+    )
+    notification = await notify_parents_of(sid, parent_message, "payments")
+    if not notification["total"]:
+        logging.warning("To‘lov xabari yuborilmadi: ota-ona Telegram hisobi ulanmagan; student_id=%s", sid)
+
+    return web.json_response({
+        "ok": True,
+        "parent_notification": {
+            "total": notification["total"],
+            "sent": notification["sent"],
+            "failed": len(notification["failed"])
+        }
+    })
 
 
 async def api_teacher_tools(request):
