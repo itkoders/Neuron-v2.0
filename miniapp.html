@@ -2041,10 +2041,20 @@ body.social-open #paxBuddy{display:none}
       state.settingsStudents = data.students || [];
       state.settingsSubjects = data.subjects || [];
       state.settingsChannel = data.channel_id || "";
+      state.settingsPhone = data.phone || "";
       state.settingsChannelEnabled = !!data.channel_enabled;
       state.settingsPayment = data.payment || {};
       state.settingsLoaded = true;
       host.innerHTML = `
+        <div class="card panel settings-card">
+          <h3>📞 O‘qituvchi telefon raqami</h3>
+          <p class="hint">Bu raqam ota-onalarga yuboriladigan ball, davomat va boshqa bildirishnomalarda ko‘rsatiladi.</p>
+          <div class="admin-form">
+            <input class="field" id="teacherPhoneInput" type="tel" inputmode="tel" maxlength="20" value="${esc(state.settingsPhone)}" placeholder="+998901234567" autocomplete="tel">
+            <button class="btn btn-wide" id="saveTeacherPhone">Telefon raqamini saqlash</button>
+            <p class="hint" id="teacherPhoneStatus"></p>
+          </div>
+        </div>
         <div class="card panel settings-card">
           <h3>📢 Telegram kanalini ulash</h3>
           <p class="hint">Kanal username yoki ID sini kiriting. Bot kanalga administrator qilib qo‘shilgan bo‘lishi kerak.</p>
@@ -2071,6 +2081,23 @@ body.social-open #paxBuddy{display:none}
           </div>
           <div id="studentCodesList" class="codes-list"></div>
         </div>`;
+      $("saveTeacherPhone").onclick = async () => {
+        const button = $("saveTeacherPhone");
+        const phone = $("teacherPhoneInput").value.trim();
+        button.disabled = true; button.textContent = "Saqlanmoqda…";
+        try {
+          const saved = await api("/api/settings/phone", {method:"POST", body:JSON.stringify({phone})});
+          state.settingsPhone = saved.phone || phone;
+          $("teacherPhoneInput").value = state.settingsPhone;
+          $("teacherPhoneStatus").textContent = "✅ Telefon raqami saqlandi.";
+          toast("Telefon raqami saqlandi.");
+        } catch (err) {
+          const code = err.data && err.data.error;
+          $("teacherPhoneStatus").textContent = code === "bad_phone" ? "Telefon raqamini to‘g‘ri kiriting. Masalan: +998901234567" : errText(err);
+        } finally {
+          button.disabled = false; button.textContent = "Telefon raqamini saqlash";
+        }
+      };
       $("saveChannelSetting").onclick = async () => {
         const value = $("channelSettingInput").value.trim();
         const button = $("saveChannelSetting");
