@@ -2056,6 +2056,12 @@ body.social-open #paxBuddy{display:none}
           </div>
         </div>
         <div class="card panel settings-card">
+          <h3>👁 Kabinetga kirishlar tarixi</h3>
+          <p class="hint">O‘quvchi va ota-onalar kabinetga qachon kirganini ko‘ring. Faqat sizga biriktirilgan o‘quvchilar tarixi ko‘rsatiladi.</p>
+          <div id="cabinetAccessList" class="codes-list"><div class="loading">Kirishlar yuklanmoqda…</div></div>
+          <button type="button" class="chip-btn" id="refreshCabinetAccess">🔄 Yangilash</button>
+        </div>
+        <div class="card panel settings-card">
           <h3>📢 Telegram kanalini ulash</h3>
           <p class="hint">Kanal username yoki ID sini kiriting. Bot kanalga administrator qilib qo‘shilgan bo‘lishi kerak.</p>
           <div class="settings-row"><input class="field" id="channelSettingInput" value="${esc(state.settingsChannel)}" placeholder="@kanal yoki -100..."><button class="btn" id="saveChannelSetting" ${state.settingsChannelEnabled?"":"disabled"}>Ulash</button></div>
@@ -2098,6 +2104,30 @@ body.social-open #paxBuddy{display:none}
           button.disabled = false; button.textContent = "Telefon raqamini saqlash";
         }
       };
+      const loadCabinetAccess = async () => {
+        const list = $("cabinetAccessList");
+        if (!list) return;
+        list.innerHTML = '<div class="loading">Kirishlar yuklanmoqda…</div>';
+        try {
+          const result = await api("/api/teacher/access-log");
+          const items = result.items || [];
+          if (!items.length) {
+            list.innerHTML = '<div class="empty">Hozircha o‘quvchi yoki ota-ona kabinetga kirmagan.</div>';
+            return;
+          }
+          list.innerHTML = items.map(item =>
+            '<div class="card panel" style="display:grid;gap:6px">' +
+            '<b>' + esc(item.viewer_name || (item.viewer_role === "parent" ? "Ota-ona" : "O‘quvchi")) + '</b>' +
+            '<small>' + (item.viewer_role === "parent" ? "👨‍👩‍👧 Ota-ona kabineti" : "🎓 O‘quvchi kabineti") + ' · ' + esc(item.student_name) + '</small>' +
+            '<small>📚 ' + esc(item.subject_name || "Fan ko‘rsatilmagan") + '</small>' +
+            '<small>🕒 ' + esc(item.accessed_at) + '</small></div>'
+          ).join("");
+        } catch (err) {
+          list.innerHTML = '<div class="empty">' + esc(errText(err)) + '</div>';
+        }
+      };
+      $("refreshCabinetAccess").onclick = loadCabinetAccess;
+      loadCabinetAccess();
       $("saveChannelSetting").onclick = async () => {
         const value = $("channelSettingInput").value.trim();
         const button = $("saveChannelSetting");
