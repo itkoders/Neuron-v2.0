@@ -2119,6 +2119,7 @@ body.social-open #paxBuddy{display:none}
             '<div class="card panel" style="display:grid;gap:6px">' +
             '<b>' + esc(item.viewer_name || (item.viewer_role === "parent" ? "Ota-ona" : "O‘quvchi")) + '</b>' +
             '<small>' + (item.viewer_role === "parent" ? "👨‍👩‍👧 Ota-ona kabineti" : "🎓 O‘quvchi kabineti") + ' · ' + esc(item.student_name) + '</small>' +
+            (item.is_historical ? '<small>🗂 Oldingi tarixiy qayd</small>' : '') +
             '<small>📚 ' + esc(item.subject_name || "Fan ko‘rsatilmagan") + '</small>' +
             '<small>🕒 ' + esc(item.accessed_at) + '</small></div>'
           ).join("");
