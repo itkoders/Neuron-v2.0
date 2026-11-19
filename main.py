@@ -6202,19 +6202,68 @@ async def api_teacher_access_log(request):
     t, err = miniapp_teacher(request)
     if err:
         return err
-    rows = run("""SELECT l.viewer_role,l.viewer_name,s.fio,COALESCE(sub.name,''),
-                         l.accessed_at,l.viewer_chat_id
-                  FROM cabinet_access_logs l
-                  JOIN students s ON s.id=l.student_id AND s.teacher_id=l.teacher_id
-                  LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
-                  WHERE l.teacher_id=?
-                  ORDER BY l.accessed_at DESC,l.id DESC LIMIT 150""",
-               (t["id"],), fetch="all")
-    return web.json_response({"items":[
-        {"viewer_role":r[0],"viewer_name":r[1] or "","student_name":r[2],
-         "subject_name":r[3] or "","accessed_at":r[4],"viewer_chat_id":int(r[5])}
-        for r in rows
-    ]})
+
+    # Yangi kirishlar: kabinet_access_logs jadvalidan.
+    current_rows = run("""SELECT l.viewer_role,l.viewer_name,s.fio,COALESCE(sub.name,''),
+                                 l.accessed_at,l.viewer_chat_id
+                          FROM cabinet_access_logs l
+                          JOIN students s ON s.id=l.student_id AND s.teacher_id=l.teacher_id
+                          LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
+                          WHERE l.teacher_id=?
+                          ORDER BY l.id DESC LIMIT 300""",
+                       (t["id"],), fetch="all") or []
+
+    # Eski versiyada o'quvchi kirishlari student_logs va audit_log jadvallariga yozilgan.
+    # Audit log orqali eski yozuvga Telegram foydalanuvchi ID sini ham bog'laymiz.
+    legacy_rows = run("""SELECT sl.student_fio,s.fio,COALESCE(sub.name,''),
+                                sl.login_time,
+                                COALESCE((SELECT a.actor FROM audit_log a
+                                          WHERE a.action='miniapp_student_login'
+                                            AND a.target=CAST(sl.student_id AS TEXT)
+                                            AND SUBSTR(a.created_at,1,16)=SUBSTR(sl.login_time,1,16)
+                                          ORDER BY a.id DESC LIMIT 1),0)
+                         FROM student_logs sl
+                         JOIN students s ON s.id=sl.student_id AND s.teacher_id=?
+                         LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
+                         WHERE COALESCE(sl.login_time,'')<>''
+                         ORDER BY sl.id DESC LIMIT 300""",
+                      (t["id"],), fetch="all") or []
+
+    items, seen = [], set()
+    for r in current_rows:
+        key = (r[0], r[1] or "", r[2], r[4])
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({
+            "viewer_role":r[0], "viewer_name":r[1] or "", "student_name":r[2],
+            "subject_name":r[3] or "", "accessed_at":r[4],
+            "viewer_chat_id":int(r[5] or 0), "is_historical":False
+        })
+
+    for r in legacy_rows:
+        key = ("student", r[0] or "", r[1], r[3])
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({
+            "viewer_role":"student", "viewer_name":r[0] or r[1] or "O‘quvchi",
+            "student_name":r[1], "subject_name":r[2] or "",
+            "accessed_at":r[3], "viewer_chat_id":int(r[4] or 0),
+            "is_historical":True
+        })
+
+    def _access_time_key(item):
+        value = str(item.get("accessed_at") or "")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                pass
+        return datetime.min
+
+    items.sort(key=_access_time_key, reverse=True)
+    return web.json_response({"items":items[:300]})
 
 
 async def api_teacher_phone_save(request):
