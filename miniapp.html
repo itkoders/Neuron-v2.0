@@ -2541,10 +2541,22 @@ body.social-open #paxBuddy{display:none}
           switcher.dataset.busy = "1";
           switcher.disabled = true;
           try {
-            sessionStorage.setItem("neuron-force-role-picker", "1");
+            // Chiqishda rolni faqat URL'da emas, qurilma va server xotirasida ham tozalaymiz.
+            try {
+              localStorage.removeItem("neuron-last-role");
+              sessionStorage.setItem("neuron-force-role-picker", "1");
+            } catch (_) {}
             const u = new URL(location.href);
             u.searchParams.set("role", "entry");
             history.replaceState({}, "", u.pathname + u.search);
+            // Serverdagi last_role ham entry bo‘lsin: qayta yuklanganda o‘quvchi kabineti
+            // avtomatik ochilib ketmasligi kerak.
+            try {
+              await api("/api/role/preference", {
+                method: "POST",
+                body: JSON.stringify({ role: "entry" })
+              });
+            } catch (_) {}
             await init();
           } finally {
             switcher.dataset.busy = "0";
