@@ -7063,12 +7063,18 @@ async def api_teacher_payment_record(request):
     subj = db_subject(st["subject_id"])
     subject_name = md(subj["name"]) if subj else "—"
     parent_message = (
-        f"💳 **TO‘LOV QABUL QILINDI**\\n"
-        f"👤 O‘quvchi: **{md(st['fio'])}**\\n"
-        f"📚 Fan: **{subject_name}**\\n"
-        f"💰 To‘langan summa: **{amount:,} so‘m**\\n"
-        f"📌 Qolgan qarz: **{remaining_debt:,} so‘m**\\n"
-        f"📅 Sana: **{paid_date}**"
+        "✅ **NEURON — TO‘LOV TASDIQLANDI**\n\n"
+        "Hurmatli ota-ona!\n\n"
+        "Farzandingiz uchun to‘lov muvaffaqiyatli qabul qilindi.\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **O‘quvchi:** {md(st['fio'])}\n"
+        f"📚 **Fan:** {subject_name}\n"
+        f"💰 **To‘langan summa:** {amount:,} so‘m\n"
+        f"📌 **Qolgan qarzdorlik:** {remaining_debt:,} so‘m\n"
+        f"📅 **To‘lov sanasi:** {paid_date}\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "To‘lov uchun rahmat! Farzandingizning ta’limiga bo‘lgan e’tiboringizni qadrlaymiz.\n\n"
+        "🎓 **NEURON — Ta’lim va nazorat tizimi**"
     )
     notification = await notify_parents_of(sid, parent_message, "payments")
     if not notification["total"]:
