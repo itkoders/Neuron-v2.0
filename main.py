@@ -1299,6 +1299,17 @@ def is_valid_phone(phone):
     return bool(re.fullmatch(r"\+?\d{7,15}", phone.replace(" ", "")))
 
 
+def format_phone_display(phone):
+    """O'zbekiston raqamini ota-onaga tushunarli xalqaro formatda ko'rsatadi."""
+    raw = str(phone or "").strip()
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 9:
+        digits = "998" + digits
+    if len(digits) == 12 and digits.startswith("998"):
+        return f"+998 {digits[3:5]} {digits[5:8]} {digits[8:10]} {digits[10:12]}"
+    return raw
+
+
 def is_valid_name(name):
     return 2 <= len(name) <= 40 and not any(ch.isdigit() for ch in name)
 
@@ -1485,10 +1496,10 @@ async def notify_parents_of(student_id, text, emoji_key="parent_notifications"):
             "━━━━━━━━━━━━━━━━━━",
             f"👨‍🏫 O‘qituvchi: **{md(teacher_name(teacher))}**",
         ]
-        teacher_phone = str(teacher.get("phone") or "").strip()
+        teacher_phone = format_phone_display(teacher.get("phone"))
         if teacher_phone:
             contact_lines.append(f"📞 Telefon: **{md(teacher_phone)}**")
-        text = text.rstrip() + "\\n" + "\\n".join(contact_lines)
+        text = text.rstrip() + "\n" + "\n".join(contact_lines)
 
     sent, failed = [], []
     for p_id in parent_ids:
