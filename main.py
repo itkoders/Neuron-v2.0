@@ -1470,6 +1470,21 @@ async def notify_teacher(t_id, text, reply_markup=None, emoji_key="general"):
 
 async def notify_parents_of(student_id, text, emoji_key="parent_notifications"):
     parent_ids = list(dict.fromkeys(db_parent_chat_ids_for_student(student_id)))
+
+    # Ota-onaga yuboriladigan barcha xabarlarda mas'ul o'qituvchining aloqa ma'lumoti.
+    st = db_student(student_id)
+    teacher = db_teacher(st["teacher_id"]) if st and st.get("teacher_id") else None
+    if teacher:
+        contact_lines = [
+            "",
+            "━━━━━━━━━━━━━━━━━━",
+            f"👨‍🏫 O‘qituvchi: **{md(teacher_name(teacher))}**",
+        ]
+        teacher_phone = str(teacher.get("phone") or "").strip()
+        if teacher_phone:
+            contact_lines.append(f"📞 Telefon: **{md(teacher_phone)}**")
+        text = text.rstrip() + "\\n" + "\\n".join(contact_lines)
+
     sent, failed = [], []
     for p_id in parent_ids:
         try:
