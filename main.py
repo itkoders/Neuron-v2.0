@@ -432,6 +432,11 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, parent_chat_id INTEGER NOT NULL,
         student_id INTEGER NOT NULL, UNIQUE(parent_chat_id, student_id))""")
     run("CREATE TABLE IF NOT EXISTS student_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, student_fio TEXT, login_time TEXT)")
+    run("""CREATE TABLE IF NOT EXISTS cabinet_access_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
+        student_id INTEGER NOT NULL, viewer_chat_id BIGINT NOT NULL,
+        viewer_role TEXT NOT NULL, viewer_name TEXT DEFAULT '',
+        accessed_at TEXT NOT NULL)""")
     run("""CREATE TABLE IF NOT EXISTS attendance_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
@@ -6182,6 +6187,25 @@ async def api_teacher_settings(request):
     })
 
 
+async def api_teacher_access_log(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    rows = run("""SELECT l.viewer_role,l.viewer_name,s.fio,COALESCE(sub.name,''),
+                         l.accessed_at,l.viewer_chat_id
+                  FROM cabinet_access_logs l
+                  JOIN students s ON s.id=l.student_id AND s.teacher_id=l.teacher_id
+                  LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
+                  WHERE l.teacher_id=?
+                  ORDER BY l.accessed_at DESC,l.id DESC LIMIT 150""",
+               (t["id"],), fetch="all")
+    return web.json_response({"items":[
+        {"viewer_role":r[0],"viewer_name":r[1] or "","student_name":r[2],
+         "subject_name":r[3] or "","accessed_at":r[4],"viewer_chat_id":int(r[5])}
+        for r in rows
+    ]})
+
+
 async def api_teacher_phone_save(request):
     t, err = miniapp_teacher(request)
     if err:
@@ -6718,6 +6742,18 @@ async def api_me(request):
     social_uid, social_profile, social_kind, social_err = _social_auth(request)
     if social_err:
         return social_err
+    accessed_at = local_now().strftime("%Y-%m-%d %H:%M:%S")
+    if kind == "student":
+        run("""INSERT INTO cabinet_access_logs
+            (teacher_id,student_id,viewer_chat_id,viewer_role,viewer_name,accessed_at)
+            VALUES (?,?,?,?,?,?)""",
+            (obj["teacher_id"],obj["id"],social_uid,"student",obj.get("fio") or "O‘quvchi",accessed_at))
+    elif kind == "parent":
+        for sid, child in db_parent_miniapp_children(obj):
+            run("""INSERT INTO cabinet_access_logs
+                (teacher_id,student_id,viewer_chat_id,viewer_role,viewer_name,accessed_at)
+                VALUES (?,?,?,?,?,?)""",
+                (child["teacher_id"],sid,social_uid,"parent",social_profile.get("display_name") or "Ota-ona",accessed_at))
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
@@ -8784,6 +8820,7 @@ async def start_web_server():
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/public-settings", api_public_settings)
     app.router.add_get("/api/settings", api_teacher_settings)
+    app.router.add_get("/api/teacher/access-log", api_teacher_access_log)
     app.router.add_post("/api/settings/phone", api_teacher_phone_save)
     app.router.add_post("/api/settings/student", api_teacher_student_settings)
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
