@@ -945,7 +945,8 @@ def db_add_subject(tid, name, labels):
 
 # --- O'quvchilar ---
 STU_COLS = ("id, teacher_id, subject_id, fio, code, s1, s2, s3, davomat, payment_amount, payment_status, "
-            "payment_date, phone, group_name, teacher_note, last_score_date, enrolled_month")
+            "payment_date, phone, group_name, teacher_note, last_score_date, enrolled_month, "
+            "s1_scored, s2_scored, s3_scored")
 
 
 def _student(r):
@@ -956,6 +957,7 @@ def _student(r):
         "payment_status": r[10] or UNPAID, "payment_date": r[11] or "-",
         "phone": r[12] or "Kiritilmagan", "group_name": r[13] or "Guruhsiz",
         "teacher_note": r[14] or "Izoh mavjud emas", "last_score_date": r[15] or "", "enrolled_month": r[16] or "",
+        "s1_scored": bool(r[17]), "s2_scored": bool(r[18]), "s3_scored": bool(r[19]),
     }
 
 
@@ -1877,33 +1879,76 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
 
 
 def create_leaderboard_image(students, subject_name, labels):
-    img = Image.new("RGB", (950, 602), color="#FFFFFF")
+    """O'quvchilarni faqat kiritilgan ballar o'rtachasi bo'yicha reyting qiladi."""
+    img = Image.new("RGB", (1100, 650), color="#FFFFFF")
     draw = ImageDraw.Draw(img)
-    bold_font, title_font = get_font(16, True), get_font(20, True)
-    draw.rectangle([20, 20, 930, 75], fill="#7C3AED")
-    draw.text((475, 47), f"{subject_name}: TOP O'QUVCHILAR (TOP 10)", fill="#FFFFFF", font=title_font, anchor="mm")
-    top = sorted(students.values(), key=total, reverse=True)[:10]
-    widths = [90, 410, 140, 140, 130]
-    headers = ["O'RIN", "O'QUVCHI F.I.O"] + [l.upper()[:12] for l in labels]
+    bold_font, title_font = get_font(15, True), get_font(20, True)
+    draw.rectangle([20, 20, 1080, 75], fill="#7C3AED")
+    draw.text((550, 47), f"{subject_name}: TOP O'QUVCHILAR (TOP 10)", fill="#FFFFFF", font=title_font, anchor="mm")
+
+    label_names = [str(label).strip() for label in (labels or []) if str(label).strip()][:3]
+    while len(label_names) < 3:
+        label_names.append(f"BALL {len(label_names) + 1}")
+    widths = [70, 330, 105, 105, 105, 145]
+    headers = ["O'RIN", "O'QUVCHI F.I.O"] + [name.upper()[:12] for name in label_names] + ["O'RTACHA"]
+
+    ranked = []
+    for student in students.values():
+        values = [
+            int(student.get(f"s{i}", 0) or 0)
+            for i in (1, 2, 3)
+            if bool(student.get(f"s{i}_scored", int(student.get(f"s{i}", 0) or 0) > 0))
+        ]
+        if not values:
+            continue
+        average = sum(values) / len(values)
+        ranked.append((student, values, average))
+    ranked.sort(key=lambda item: item[2], reverse=True)
+    top = ranked[:10]
+
     x = 20
     for title, w in zip(headers, widths):
         draw.rectangle([x, 90, x + w, 125], fill="#EDE9FE", outline="#5B21B6", width=2)
         draw.text((x + w // 2, 107), title, fill="#000000", font=bold_font, anchor="mm")
         x += w
+
     y, row_h = 125, 42
-    for idx, s in enumerate(top, 1):
+    previous_average = None
+    current_rank = 0
+    medal_fills = {1: "#FEF3C7", 2: "#E5E7EB", 3: "#FED7AA"}
+    for index, (student, values, average) in enumerate(top, 1):
+        if previous_average is None or average != previous_average:
+            current_rank = index
+        previous_average = average
+        medal = "🥇" if current_rank == 1 else "🥈" if current_rank == 2 else "🥉" if current_rank == 3 else ""
+        rank_label = f"{current_rank} {medal}".strip()
         x = 20
-        draw.rectangle([x, y, x + 90, y + row_h], outline="#CBD5E1")
-        draw.text((x + 45, y + row_h // 2), str(idx), fill="#000000", font=bold_font, anchor="mm")
-        x += 90
-        draw.rectangle([x, y, x + 410, y + row_h], outline="#CBD5E1")
-        draw.text((x + 15, y + row_h // 2), s["fio"], fill="#000000", font=bold_font, anchor="lm")
-        x += 410
-        for val, w in [(s["s1"], 140), (s["s2"], 140), (s["s3"], 130)]:
-            draw.rectangle([x, y, x + w, y + row_h], fill="#FEF3C7", outline="#CBD5E1")
-            draw.text((x + w // 2, y + row_h // 2), f"{val}%", fill="#D97706", font=bold_font, anchor="mm")
+        rank_fill = medal_fills.get(current_rank, "#FFFFFF")
+        draw.rectangle([x, y, x + widths[0], y + row_h], fill=rank_fill, outline="#CBD5E1")
+        draw.text((x + widths[0] // 2, y + row_h // 2), rank_label, fill="#172B55", font=bold_font, anchor="mm")
+        x += widths[0]
+        draw.rectangle([x, y, x + widths[1], y + row_h], fill="#FFFFFF", outline="#CBD5E1")
+        shown_name = str(student.get("fio", "—"))
+        while draw.textbbox((0, 0), shown_name, font=bold_font)[2] > widths[1] - 24 and len(shown_name) > 4:
+            shown_name = shown_name[:-2] + "…"
+        draw.text((x + 12, y + row_h // 2), shown_name, fill="#000000", font=bold_font, anchor="lm")
+        x += widths[1]
+        for i, w in enumerate(widths[2:5]):
+            scored = bool(student.get(f"s{i + 1}_scored", int(student.get(f"s{i + 1}", 0) or 0) > 0))
+            value = int(student.get(f"s{i + 1}", 0) or 0)
+            cell_text = f"{value}%" if scored else "—"
+            draw.rectangle([x, y, x + w, y + row_h], fill="#FEF3C7" if scored else "#F8FAFC", outline="#CBD5E1")
+            draw.text((x + w // 2, y + row_h // 2), cell_text, fill="#D97706" if scored else "#94A3B8", font=bold_font, anchor="mm")
             x += w
+        avg_text = f"{average:.1f}".rstrip("0").rstrip(".") + "%"
+        draw.rectangle([x, y, x + widths[5], y + row_h], fill=rank_fill, outline="#CBD5E1")
+        draw.text((x + widths[5] // 2, y + row_h // 2), avg_text, fill="#172B55", font=bold_font, anchor="mm")
         y += row_h
+
+    if not top:
+        draw.text((550, 300), "Hozircha baholangan o'quvchilar yo'q", fill="#64748B", font=bold_font, anchor="mm")
+    draw.text((30, 610), "Reyting: faqat ball kiritilgan kataklarning o'rtachasi hisoblanadi",
+              fill="#64748B", font=get_font(13))
     return _png(img)
 
 
