@@ -1763,53 +1763,84 @@ def create_student_card_image(st, rank, labels):
 
 
 def create_daily_report_images(students, subject_name, labels):
+    """Hisobot rasmini faqat kiritilgan ballar o'rtachasi bo'yicha tartiblaydi."""
     items = list(students.values())
     if not items:
-        img = Image.new("RGB", (950, 602), color="#FFFFFF")
+        img = Image.new("RGB", (1050, 602), color="#FFFFFF")
         draw = ImageDraw.Draw(img)
-        draw.rectangle([20, 20, 930, 75], fill="#1E40AF")
-        draw.text((475, 47), f"{subject_name}: KUNLIK HISOBOT", fill="#FFFFFF", font=get_font(20, True), anchor="mm")
-        draw.text((475, 300), "Hozircha o'quvchilar yo'q", fill="#EF4444", font=get_font(20, True), anchor="mm")
+        draw.rectangle([20, 20, 1030, 75], fill="#1E40AF")
+        draw.text((525, 47), f"{subject_name}: KUNLIK HISOBOT", fill="#FFFFFF", font=get_font(20, True), anchor="mm")
+        draw.text((525, 300), "Hozircha o'quvchilar yo'q", fill="#EF4444", font=get_font(20, True), anchor="mm")
         return [_png(img)]
+
+    items.sort(key=lambda st: (score_average(st) is not None, score_average(st) if score_average(st) is not None else -1), reverse=True)
     batch_size, images = 10, []
     for batch_idx in range((len(items) + batch_size - 1) // batch_size):
         chunk = items[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-        img = Image.new("RGB", (950, 602), color="#FFFFFF")
+        img = Image.new("RGB", (1050, 650), color="#FFFFFF")
         draw = ImageDraw.Draw(img)
         font, bold_font, title_font = get_font(14), get_font(14, True), get_font(18, True)
-        draw.rectangle([20, 20, 930, 75], fill="#1E40AF")
+        draw.rectangle([20, 20, 1030, 75], fill="#1E40AF")
         today = local_now().strftime("%d.%m.%Y")
-        draw.text((475, 47), f"{subject_name} ({today}) — {batch_idx + 1}-sahifa", fill="#FFFFFF", font=title_font, anchor="mm")
-        col_tr, col_fio, col_dav, col_sub = 50, 370, 130, 120
-        sub_y = 90
-        headers = [("T/R", col_tr), ("F.I.O", col_fio), ("DAVOMAT", col_dav)] + [(l.upper()[:12], col_sub) for l in labels]
-        x = 20
-        for title, w in headers:
-            draw.rectangle([x, sub_y, x + w, sub_y + 35], fill="#DBEAFE", outline="#1E3A8A", width=2)
-            draw.text((x + w // 2, sub_y + 17), title, fill="#000000", font=bold_font, anchor="mm")
-            x += w
+        draw.text((525, 47), f"{subject_name} ({today}) — {batch_idx + 1}-sahifa", fill="#FFFFFF", font=title_font, anchor="mm")
+
+        widths = [55, 300, 100, 105, 105, 105, 160]
+        headers = ["O'RIN", "O'QUVCHI F.I.O", "DAVOMAT"] + [
+            str(labels[i]).upper()[:12] if i < len(labels) else f"BALL {i + 1}" for i in range(3)
+        ] + ["O'RTACHA"]
+        x, sub_y = 20, 90
+        for title, width in zip(headers, widths):
+            draw.rectangle([x, sub_y, x + width, sub_y + 35], fill="#DBEAFE", outline="#1E3A8A", width=2)
+            draw.text((x + width // 2, sub_y + 17), title, fill="#000000", font=bold_font, anchor="mm")
+            x += width
+
         y, row_h = sub_y + 35, 42
-        for offset, s in enumerate(chunk):
+        previous_avg, rank = None, 0
+        for offset, st in enumerate(chunk):
+            absolute_index = batch_idx * batch_size + offset + 1
+            avg = score_average(st)
+            if avg is None:
+                rank_label = "—"
+            else:
+                if previous_avg is None or avg != previous_avg:
+                    rank = absolute_index
+                rank_label = str(rank)
+                previous_avg = avg
+
+            values = [int(st.get(f"s{i}", 0) or 0) for i in (1, 2, 3)]
+            scored = [bool(st.get(f"s{i}_scored", values[i - 1] > 0)) for i in (1, 2, 3)]
+            row = [rank_label, str(st.get("fio", "—")), str(st.get("davomat", "Kutilmoqda"))]
+            row += [f"{values[i]}%" if scored[i] else "—" for i in range(3)]
+            row += [f"{avg}%" if avg is not None else "—"]
+
             x = 20
-            draw.rectangle([x, y, x + col_tr, y + row_h], outline="#94A3B8")
-            draw.text((x + col_tr // 2, y + row_h // 2), str(batch_idx * batch_size + offset + 1), fill="#000000", font=bold_font, anchor="mm")
-            x += col_tr
-            draw.rectangle([x, y, x + col_fio, y + row_h], outline="#94A3B8")
-            draw.text((x + 15, y + row_h // 2), s["fio"], fill="#000000", font=bold_font, anchor="lm")
-            x += col_fio
-            dav = s["davomat"]
-            bg = "#A7F3D0" if dav == "Keldi" else ("#FECACA" if dav == "Kelmadi" else "#FEF08A")
-            draw.rectangle([x, y, x + col_dav, y + row_h], fill=bg, outline="#94A3B8")
-            draw.text((x + col_dav // 2, y + row_h // 2), dav, fill="#000000", font=bold_font, anchor="mm")
-            x += col_dav
-            for val in [s["s1"], s["s2"], s["s3"]]:
-                draw.rectangle([x, y, x + col_sub, y + row_h], outline="#94A3B8")
-                draw.text((x + col_sub // 2, y + row_h // 2), f"{val}%", fill="#000000", font=font, anchor="mm")
-                x += col_sub
+            for col, (value, width) in enumerate(zip(row, widths)):
+                fill = "#FFFFFF" if absolute_index % 2 else "#F8FAFC"
+                if col == 0:
+                    fill = {1: "#FEF3C7", 2: "#E5E7EB", 3: "#FED7AA"}.get(rank, fill)
+                elif col == 2:
+                    fill = "#A7F3D0" if value == "Keldi" else ("#FECACA" if value == "Kelmadi" else "#FEF08A")
+                elif 3 <= col <= 5 and value != "—":
+                    n = values[col - 3]
+                    fill = "#DCFCE7" if n >= 80 else ("#FEF3C7" if n >= 50 else "#FEE2E2")
+                elif col == 6 and avg is not None:
+                    fill = "#E0E7FF"
+                draw.rectangle([x, y, x + width, y + row_h], fill=fill, outline="#94A3B8")
+                if col == 1:
+                    shown = value
+                    while draw.textbbox((0, 0), shown, font=bold_font)[2] > width - 20 and len(shown) > 4:
+                        shown = shown[:-2] + "…"
+                    draw.text((x + 12, y + row_h // 2), shown, fill="#000000", font=bold_font, anchor="lm")
+                else:
+                    draw.text((x + width // 2, y + row_h // 2), value, fill="#000000",
+                              font=bold_font if col in (0, 6) else font, anchor="mm")
+                x += width
             y += row_h
+
+        draw.text((25, 610), "Tartib: o'rtacha ball bo'yicha. Bo'sh kataklar hisoblanmaydi.",
+                  fill="#64748B", font=get_font(13))
         images.append(_png(img))
     return images
-
 
 
 def create_group_daily_report_images(students, subject_name, labels, report_date):
