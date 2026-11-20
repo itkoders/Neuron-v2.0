@@ -5533,8 +5533,13 @@ async def api_score(request):
     if err:
         return err
     body = await _read_json(request)
+    # Bo'sh katak hech qachon 0 ball sifatida saqlanmasin.
+    # 0 faqat foydalanuvchi qiymatni ataylab kiritganini scored=True bilan bildirsa qabul qilinadi.
+    raw_value = body.get("value")
+    if body.get("scored") is not True or raw_value is None or str(raw_value).strip() == "":
+        return web.json_response({"error": "score_not_entered"}, status=400)
     try:
-        sid, idx, val = int(body.get("student_id")), int(body.get("idx")), int(body.get("value"))
+        sid, idx, val = int(body.get("student_id")), int(body.get("idx")), int(raw_value)
     except (TypeError, ValueError, AttributeError):
         return web.json_response({"error": "bad"}, status=400)
     if not has_feature(t, "scores"):
