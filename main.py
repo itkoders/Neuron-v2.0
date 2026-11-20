@@ -1844,64 +1844,94 @@ def create_daily_report_images(students, subject_name, labels):
 
 
 def create_group_daily_report_images(students, subject_name, labels, report_date):
-    """Guruh uchun NEURON v2.0 uslubidagi jadval-hisobot rasmlari."""
+    """Guruh hisobotini faqat ball kiritilgan kataklar o'rtachasi bo'yicha tartiblaydi."""
     items = list(students)
-    page_size = 10
-    pages = []
-    W, H = 1600, 980
     labels = [x for x in labels if x][:3]
-    widths = [80, 470, 220] + [int(800 / max(1, len(labels)))] * len(labels)
-    headers = ["T/R", "F.I.O", "DAVOMAT"] + [x.upper() for x in labels]
+    items.sort(key=lambda st: (score_average(st) is not None,
+                               score_average(st) if score_average(st) is not None else -1),
+               reverse=True)
+
+    # Teng o'rtacha ball olgan o'quvchilarga bir xil o'rin beriladi.
+    rank_by_id = {}
+    previous_avg, current_rank = None, 0
+    for index, st in enumerate(items, 1):
+        avg = score_average(st)
+        if avg is None:
+            rank_by_id[st.get("id")] = "—"
+            continue
+        if previous_avg is None or avg != previous_avg:
+            current_rank = index
+        rank_by_id[st.get("id")] = str(current_rank)
+        previous_avg = avg
+
+    page_size, pages = 10, []
+    W, H = 1720, 980
+    score_width = int(700 / max(1, len(labels)))
+    widths = [70, 80, 420, 190] + [score_width] * len(labels) + [150]
+    headers = ["T/R", "O'RIN", "F.I.O", "DAVOMAT"] + [x.upper() for x in labels] + ["O'RTACHA"]
+
     for page_idx in range(max(1, (len(items) + page_size - 1) // page_size)):
         chunk = items[page_idx * page_size:(page_idx + 1) * page_size]
         img = Image.new("RGB", (W, H), "#F4F7FC")
         d = ImageDraw.Draw(img)
         title_f, sub_f = get_font(34, True), get_font(21, True)
         head_f, cell_f, small_f = get_font(19, True), get_font(21), get_font(17)
-        # Header
+
         d.rounded_rectangle((28, 24, W - 28, 155), radius=24, fill="#173B8F")
         d.text((W // 2, 66), "NEURON  •  SMART JOURNAL", fill="#DCE8FF", font=sub_f, anchor="mm")
         d.text((W // 2, 115), "KUNLIK GURUH HISOBOTI", fill="#FFFFFF", font=title_f, anchor="mm")
-        # Metadata strip
+
         d.rounded_rectangle((28, 175, W - 28, 255), radius=18, fill="#E5EDFF")
         d.text((55, 215), f"FAN: {subject_name}", fill="#173B8F", font=sub_f, anchor="lm")
         d.text((W // 2, 215), f"SANA: {report_date}", fill="#173B8F", font=sub_f, anchor="mm")
-        d.text((W - 55, 215), f"O‘QUVCHILAR: {len(items)}", fill="#173B8F", font=sub_f, anchor="rm")
-        # Table header
+        d.text((W - 55, 215), f"O'QUVCHILAR: {len(items)}", fill="#173B8F", font=sub_f, anchor="rm")
+
         x0, y0, row_h = 28, 285, 48
         x = x0
         for label, cw in zip(headers, widths):
             d.rectangle((x, y0, x + cw, y0 + row_h), fill="#DCE8FF", outline="#31549B", width=2)
             d.text((x + cw // 2, y0 + row_h // 2), label, fill="#172B55", font=head_f, anchor="mm")
             x += cw
+
         y = y0 + row_h
         for idx, st in enumerate(chunk, page_idx * page_size + 1):
-            scored_today = st.get("last_score_date") == report_date
-            vals = [st.get(f"s{k}", 0) for k in range(1, len(labels) + 1)] if scored_today else [None] * len(labels)
-            row = [str(idx), st.get("fio", "—"), st.get("davomat", "Kutilmoqda"),
-                   *[f"{v}/100" if v is not None else "—" for v in vals]]
+            avg = score_average(st)
+            row = [str(idx), rank_by_id.get(st.get("id"), "—"), st.get("fio", "—"),
+                   st.get("davomat", "Kutilmoqda")]
+            for k in range(1, len(labels) + 1):
+                value = int(st.get(f"s{k}", 0) or 0)
+                scored = bool(st.get(f"s{k}_scored", value > 0))
+                row.append(f"{value}/100" if scored else "—")
+            row.append(f"{avg}%" if avg is not None else "—")
+
             x = x0
             base = "#FFFFFF" if idx % 2 else "#F0F4FB"
             for col, (value, cw) in enumerate(zip(row, widths)):
                 fill = base
-                if col == 2:
-                    fill = "#DDF7E8" if value == "Keldi" else ("#FFE3E3" if value == "Kelmadi" else "#FFF3C4")
-                elif col >= 3 and value != "—":
-                    n = vals[col - 3]
-                    fill = "#DCFCE7" if n >= 80 else ("#FEF3C7" if n >= 50 else "#FEE2E2")
-                d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
                 if col == 1:
-                    shown = value
+                    rank_num = int(value) if str(value).isdigit() else 0
+                    fill = {1: "#FEF3C7", 2: "#E5E7EB", 3: "#FED7AA"}.get(rank_num, base)
+                elif col == 3:
+                    fill = "#DDF7E8" if value == "Keldi" else ("#FFE3E3" if value == "Kelmadi" else "#FFF3C4")
+                elif 4 <= col < len(row) - 1 and value != "—":
+                    score_val = int(str(value).split("/")[0])
+                    fill = "#DCFCE7" if score_val >= 80 else ("#FEF3C7" if score_val >= 50 else "#FEE2E2")
+                elif col == len(row) - 1 and avg is not None:
+                    fill = "#E0E7FF"
+                d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
+                if col == 2:
+                    shown = str(value)
                     while d.textbbox((0, 0), shown, font=cell_f)[2] > cw - 24 and len(shown) > 4:
                         shown = shown[:-2] + "…"
                     d.text((x + 16, y + row_h // 2), shown, fill="#18243A", font=head_f, anchor="lm")
                 else:
-                    d.text((x + cw // 2, y + row_h // 2), value, fill="#18243A", font=cell_f, anchor="mm")
+                    d.text((x + cw // 2, y + row_h // 2), str(value), fill="#18243A",
+                           font=head_f if col in (1, len(row) - 1) else cell_f, anchor="mm")
                 x += cw
             y += row_h
-        # Summary footer
+
         d.rounded_rectangle((28, 930, W - 28, 966), radius=12, fill="#E5EDFF")
-        d.text((48, 948), "NEURON SMART JOURNAL  •  Natijalar o‘qituvchi jurnalidan shakllantirildi",
+        d.text((48, 948), "Reyting: faqat ball kiritilgan kataklar o'rtachasi. Bo'sh kataklar hisoblanmaydi.",
                fill="#31549B", font=small_f, anchor="lm")
         d.text((W - 48, 948), f"{page_idx + 1}-sahifa / {max(1, (len(items) + page_size - 1) // page_size)}",
                fill="#31549B", font=small_f, anchor="rm")
