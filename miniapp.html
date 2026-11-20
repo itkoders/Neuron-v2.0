@@ -1945,7 +1945,7 @@ body.social-open #paxBuddy{display:none}
   const INIT = tg ? tg.initData : "";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const total = (s) => (s.s1 || 0) + (s.s2 || 0) + (s.s3 || 0);
+  const total = (s) => [1,2,3].reduce((sum, i) => sum + (s["s"+i+"_scored"] ? Number(s["s"+i] || 0) : 0), 0);
   const tone = (v) => (v <= 0 ? "" : v >= 85 ? "cell-ok" : v >= 50 ? "cell-warn" : "cell-bad");
   const barColor = (v) => (v >= 85 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
 
@@ -3470,10 +3470,10 @@ body.social-open #paxBuddy{display:none}
     const key = `${id}:${idx}`;
     let saved = false;
     try {
-      const r = await api("/api/score", { method: "POST", body: JSON.stringify({ student_id: id, idx, value: val }) });
+      const r = await api("/api/score", { method: "POST", body: JSON.stringify({ student_id: id, idx, value: val, scored: true }) });
       const s = state.students.find(x => x.id === id);
       const previousValue = s ? Number(s["s" + idx] || 0) : 0;
-      if (s) { s["s" + idx] = val; s.last_score_date = r.last || r.today; }
+      if (s) { s["s" + idx] = val; s["s" + idx + "_scored"] = true; s.last_score_date = r.last || r.today; }
       state.today = r.today || state.today;
       const td = inp.closest("td");
       td.className = tone(val);
@@ -3494,6 +3494,7 @@ body.social-open #paxBuddy{display:none}
         : code === "forbidden" ? "O‘qituvchi yoki Mini App ruxsati tasdiqlanmagan."
         : code === "auth" ? "Telegram tasdiqlashi eskirgan. Mini App'ni botdan qayta oching."
         : code === "not_found" ? "O‘quvchi topilmadi yoki ushbu fanga tegishli emas."
+        : code === "score_not_entered" ? "Bo‘sh katak saqlanmadi. Ballni kiriting." 
         : code === "bad" ? "Ball yoki ustun ma’lumoti noto‘g‘ri."
         : (err.message || "Xato — qayta urining");
       setStatus(message, "err");
@@ -3593,7 +3594,7 @@ body.social-open #paxBuddy{display:none}
     const came = state.students.filter(s => s.davomat === "Keldi").length;
     const absent = state.students.filter(s => s.davomat === "Kelmadi").length;
     const bars = labels.map((l, k) => {
-      const vals = state.students.map(s => s["s" + (k + 1)]).filter(v => v > 0);
+      const vals = state.students.filter(s => s["s" + (k + 1) + "_scored"]).map(s => Number(s["s" + (k + 1)] || 0));
       const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       const low = vals.filter(v => v < 50).length;
       return `<div class="bar-row"><span>${esc(l)}</span><div class="bar"><i style="width:${Math.min(100, avg).toFixed(0)}%;background:${barColor(avg)}"></i></div>
@@ -3839,7 +3840,7 @@ body.social-open #paxBuddy{display:none}
 
   function renderOverview(o) {
     const subjects = o.subjects && o.subjects.length ? o.subjects : [o];
-    const totalScore = subjects.reduce((sum, subject) => sum + (subject.scores || []).reduce((a,b) => a + (Number(b) || 0), 0), 0);
+    const totalScore = subjects.reduce((sum, subject) => sum + (subject.scores || []).reduce((a,b,i) => a + (subject.score_scored && subject.score_scored[i] ? (Number(b) || 0) : 0), 0), 0);
     const scorePanels = subjects.map(subject => {
       const cards = (subject.labels || []).map((label,i) => {
         const scored = !!(subject.score_scored && subject.score_scored[i]);
