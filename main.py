@@ -194,11 +194,22 @@ def run(sql, params=(), fetch="none"):
     # Bu Neon bilan yuzlab ketma-ket TLS ulanishlar ochilishining oldini oladi.
     conn = getattr(_DB_THREAD_LOCAL, "connection", None)
     if conn is None or conn.closed:
-        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        conn = psycopg2.connect(
+            DATABASE_URL, connect_timeout=15,
+            options="-c search_path=neuron_bot,public"
+        )
+        conn.autocommit = True
         _DB_THREAD_LOCAL.connection = conn
+    # Oddiy so'rovlarda autocommit qo'shimcha COMMIT tarmoq safarini yo'q qiladi.
+    # Startap migratsiyasi esa bitta xavfsiz tranzaksiyada bajariladi.
+    defer_commit = bool(getattr(_DB_THREAD_LOCAL, "defer_commit", False))
+    if defer_commit and conn.autocommit:
+        conn.autocommit = False
+    elif not defer_commit and not conn.autocommit:
+        conn.commit()
+        conn.autocommit = True
     try:
         cur = conn.cursor()
-        cur.execute("SET search_path TO neuron_bot, public")
         query = sql.strip()
         pragma = re.match(r"PRAGMA\s+table_info\(([^)]+)\)", query, re.I)
         if pragma:
@@ -229,8 +240,8 @@ def run(sql, params=(), fetch="none"):
             result = row[0] if row else None
         else:
             result = None
-        if not getattr(_DB_THREAD_LOCAL, "defer_commit", False):
-            conn.commit()
+        # Autocommit oddiy so'rovlarni darhol saqlaydi; migratsiya tranzaksiyasi
+        # faqat init_db() ichida commit qilinadi.
         return result
     except Exception:
         try:
@@ -653,8 +664,12 @@ def init_db():
     import psycopg2
     conn = getattr(_DB_THREAD_LOCAL, "connection", None)
     if conn is None or conn.closed:
-        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        conn = psycopg2.connect(
+            DATABASE_URL, connect_timeout=15,
+            options="-c search_path=neuron_bot,public"
+        )
         _DB_THREAD_LOCAL.connection = conn
+    conn.autocommit = False
     _DB_THREAD_LOCAL.defer_commit = True
     try:
         _init_db_impl()
