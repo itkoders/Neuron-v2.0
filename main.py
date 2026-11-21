@@ -7552,24 +7552,37 @@ async def api_teacher_payments(request):
     except ValueError:
         return web.json_response({"error":"bad_month"}, status=400)
     students = list(db_students(teacher["id"]).values())
-    # Har ko'rilgan oy uchun o'quvchining belgilangan oylik summasi avtomatik qarzdorlikka yoziladi.
+    # Har ko'rilgan oy uchun qarzdorlik yozuvlarini har bir o'quvchiga alohida
+    # INSERT qilish o'rniga 100 tadan guruhlab yuboramiz.
     through_month = max(month, local_now().strftime("%Y-%m"))
+    end_month = datetime.strptime(through_month, "%Y-%m")
+    charge_batch = []
+    charge_stamp = local_now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def flush_charge_batch():
+        if not charge_batch:
+            return
+        values_sql = ",".join(["(?,?,?,?,?,?)"] * len(charge_batch))
+        params = tuple(value for item in charge_batch for value in item)
+        run("""INSERT INTO student_monthly_charges
+            (teacher_id,student_id,month,due_amount,created_at,updated_at)
+            VALUES """ + values_sql + " ON CONFLICT(student_id,month) DO NOTHING", params)
+        charge_batch.clear()
+
     for st in students:
         start_month = str(st.get("enrolled_month") or local_now().strftime("%Y-%m"))
         try:
             cursor_month = datetime.strptime(start_month, "%Y-%m")
         except ValueError:
             cursor_month = datetime.strptime(local_now().strftime("%Y-%m"), "%Y-%m")
-        end_month = datetime.strptime(through_month, "%Y-%m")
         while cursor_month <= end_month:
             month_key = cursor_month.strftime("%Y-%m")
-            run("""INSERT INTO student_monthly_charges
-                (teacher_id,student_id,month,due_amount,created_at,updated_at)
-                VALUES (?,?,?,?,?,?)
-                ON CONFLICT(student_id,month) DO NOTHING""",
-                (teacher["id"], st["id"], month_key, int(st.get("payment_amount") or 0),
-                 local_now().strftime("%Y-%m-%d %H:%M:%S"), local_now().strftime("%Y-%m-%d %H:%M:%S")))
+            charge_batch.append((teacher["id"], st["id"], month_key,
+                                 int(st.get("payment_amount") or 0), charge_stamp, charge_stamp))
+            if len(charge_batch) >= 100:
+                flush_charge_batch()
             cursor_month = (cursor_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    flush_charge_batch()
     charge_rows = run("""SELECT c.student_id,c.due_amount,
         COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
           WHERE p.student_id=c.student_id AND p.month=c.month),0)
