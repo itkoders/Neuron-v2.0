@@ -194,11 +194,12 @@ def run(sql, params=(), fetch="none"):
     # Bu Neon bilan yuzlab ketma-ket TLS ulanishlar ochilishining oldini oladi.
     conn = getattr(_DB_THREAD_LOCAL, "connection", None)
     if conn is None or conn.closed:
-        conn = psycopg2.connect(
-            DATABASE_URL, connect_timeout=15,
-            options="-c search_path=neuron_bot,public"
-        )
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
         conn.autocommit = True
+        # Neon pooler startup options ichida search_path ni qabul qilmaydi;
+        # sessiya parametrini ulanish ochilgach bir marta o'rnatamiz.
+        with conn.cursor() as setup_cur:
+            setup_cur.execute("SET search_path TO neuron_bot, public")
         _DB_THREAD_LOCAL.connection = conn
     # Oddiy so'rovlarda autocommit qo'shimcha COMMIT tarmoq safarini yo'q qiladi.
     # Startap migratsiyasi esa bitta xavfsiz tranzaksiyada bajariladi.
@@ -664,10 +665,9 @@ def init_db():
     import psycopg2
     conn = getattr(_DB_THREAD_LOCAL, "connection", None)
     if conn is None or conn.closed:
-        conn = psycopg2.connect(
-            DATABASE_URL, connect_timeout=15,
-            options="-c search_path=neuron_bot,public"
-        )
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        with conn.cursor() as setup_cur:
+            setup_cur.execute("SET search_path TO neuron_bot, public")
         _DB_THREAD_LOCAL.connection = conn
     conn.autocommit = False
     _DB_THREAD_LOCAL.defer_commit = True
