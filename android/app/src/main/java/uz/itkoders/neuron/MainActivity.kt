@@ -60,7 +60,7 @@ class MainActivity : Activity() {
             isFillViewport = true
             clipToPadding = false
             setBackgroundColor(Color.rgb(8, 15, 30))
-            addView(content, android.widget.ScrollView.LayoutParams(-1, -1))
+            addView(content, android.widget.FrameLayout.LayoutParams(-1, -1))
         }
 
         val title = TextView(this).apply {
