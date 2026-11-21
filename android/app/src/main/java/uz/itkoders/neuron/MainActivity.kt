@@ -173,8 +173,29 @@ class MainActivity : Activity() {
         val logout = Button(this).apply {
             text = "Chiqish"
             setOnClickListener {
-                tokenStore.clear()
-                showLogin()
+                val oldToken = tokenStore.read()
+                executor.execute {
+                    try {
+                        if (!oldToken.isNullOrBlank()) {
+                            val connection = (URL(BuildConfig.NEURON_BASE_URL.trimEnd('/') + "/api/android/logout").openConnection() as HttpURLConnection)
+                            connection.requestMethod = "POST"
+                            connection.connectTimeout = 5000
+                            connection.readTimeout = 5000
+                            connection.setRequestProperty("Authorization", "Bearer " + oldToken)
+                            connection.setRequestProperty("Content-Type", "application/json")
+                            connection.doOutput = true
+                            connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
+                            connection.responseCode
+                            connection.disconnect()
+                        }
+                    } catch (_: Exception) {
+                        // Local logout still proceeds when the device is offline.
+                    }
+                    runOnUiThread {
+                        tokenStore.clear()
+                        showLogin()
+                    }
+                }
             }
         }
         top.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
@@ -216,7 +237,11 @@ class MainActivity : Activity() {
                     val sameOrigin = uri.scheme == "https" &&
                         uri.host.equals(baseUri.host, ignoreCase = true) &&
                         (uri.port == -1 || uri.port == baseUri.port || baseUri.port == -1)
-                    return !sameOrigin
+                    if (sameOrigin) return false
+                    if (uri.scheme == "https" || uri.scheme == "tel" || uri.scheme == "mailto") {
+                        try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
+                    }
+                    return true
                 }
             }
             loadUrl("$base/app?platform=android")
