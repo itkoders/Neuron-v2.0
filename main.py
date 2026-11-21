@@ -666,10 +666,12 @@ def init_db():
     conn = getattr(_DB_THREAD_LOCAL, "connection", None)
     if conn is None or conn.closed:
         conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
-        with conn.cursor() as setup_cur:
-            setup_cur.execute("SET search_path TO neuron_bot, public")
         _DB_THREAD_LOCAL.connection = conn
-    conn.autocommit = False
+    # Tranzaksiya rejimini SET search_path so'rovidan oldin tanlaymiz.
+    if conn.autocommit:
+        conn.autocommit = False
+    with conn.cursor() as setup_cur:
+        setup_cur.execute("SET search_path TO neuron_bot, public")
     _DB_THREAD_LOCAL.defer_commit = True
     try:
         _init_db_impl()
