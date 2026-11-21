@@ -2055,6 +2055,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
   const tg = window.Telegram && window.Telegram.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
   const INIT = tg ? tg.initData : "";
+  const ANDROID_TOKEN = window.NeuronAndroid && typeof window.NeuronAndroid.getSessionToken === "function" ? window.NeuronAndroid.getSessionToken() : "";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const total = (s) => [1,2,3].reduce((sum, i) => sum + (s["s"+i+"_scored"] ? Number(s["s"+i] || 0) : 0), 0);
@@ -2391,7 +2392,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
         ? path + (path.includes("?") ? "&" : "?") + "_ts=" + Date.now()
         : path;
       res = await fetch(requestPath, { ...opts, cache: "no-store", signal: controller.signal,
-        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache", "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(opts.headers || {}) } });
+        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache", "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(ANDROID_TOKEN ? { "Authorization": "Bearer " + ANDROID_TOKEN } : {}), ...(opts.headers || {}) } });
     } catch (err) {
       if (err.name === "AbortError") throw new Error("So'rov vaqti tugadi. Qayta urinib ko'ring.");
       throw err;
@@ -2408,7 +2409,8 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
       const res = await fetch(path, { method: "POST", body: form, signal: controller.signal,
         headers: {
           "X-Init-Data": INIT,
-          "X-App-Role": new URLSearchParams(location.search).get("role") || ""
+          "X-App-Role": new URLSearchParams(location.search).get("role") || "",
+          ...(ANDROID_TOKEN ? { "Authorization": "Bearer " + ANDROID_TOKEN } : {})
         }});
       let data = {};
       try { data = await res.json(); } catch (_) {}
@@ -2641,7 +2643,7 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
   /* ---------- Rejim ---------- */
   async function init() {
     loadHelpButton();
-    if (!INIT) {
+    if (!INIT && !ANDROID_TOKEN) {
       hideAllViews();
       $("roleLabel").textContent = "Neuron Jurnal";
       $("who").textContent = "Telegram ichida oching";
