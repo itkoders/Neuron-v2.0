@@ -1010,7 +1010,27 @@ def local_now():
     return datetime.now(timezone(timedelta(hours=5)))
 
 
+_DAILY_RESET_CACHE = {"day": None, "month": None}
+_DAILY_RESET_LOCK = threading.Lock()
+
+
 def check_and_reset_daily_data():
+    """Kunlik reset holatini xotirada tekshiradi; DB sozlamalarini har API so‘rovida qayta o‘qimaydi."""
+    now = local_now()
+    day = now.strftime("%d.%m.%Y")
+    month = now.strftime("%m.%Y")
+    if _DAILY_RESET_CACHE["day"] == day and _DAILY_RESET_CACHE["month"] == month:
+        return
+    with _DAILY_RESET_LOCK:
+        if _DAILY_RESET_CACHE["day"] == day and _DAILY_RESET_CACHE["month"] == month:
+            return
+        _check_and_reset_daily_data_impl()
+        # Faqat reset tekshiruvi muvaffaqiyatli tugagach cache yangilanadi.
+        _DAILY_RESET_CACHE["day"] = day
+        _DAILY_RESET_CACHE["month"] = month
+
+
+def _check_and_reset_daily_data_impl():
     """Jurnalni O‘zbekiston vaqti bilan yangi kalendar kuni boshlanganida bir marta yangilaydi."""
     now = local_now()
     today = now.strftime("%d.%m.%Y")
