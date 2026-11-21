@@ -6095,49 +6095,86 @@ def miniapp_admin(request):
 
 
 def _admin_overview_payload():
+    # Admin bosh sahifasi uchun N+1 so'rovlarni bitta guruhlangan so'rovlarga almashtiramiz.
     teachers = db_all_teachers()
+    plans = db_plans()
+    plan_map = {p["key"]: p for p in plans}
+    fallback = plan_map.get("free") or next((p for p in plans if p["active"]), plans[0] if plans else None)
+
+    student_rows = run(
+        "SELECT teacher_id, COUNT(*) FROM students GROUP BY teacher_id",
+        fetch="all"
+    ) or []
+    student_counts = {int(row[0]): int(row[1] or 0) for row in student_rows}
+
+    device_rows = run(
+        "SELECT teacher_id, COUNT(*) FROM teacher_access GROUP BY teacher_id",
+        fetch="all"
+    ) or []
+    device_counts = {int(row[0]): int(row[1] or 0) for row in device_rows}
+
+    setting_rows = run(
+        "SELECT key, value FROM settings WHERE key IN "
+        "('mandatory_sub','required_channel','required_channels','support_contact',"
+        "'support_label','support_enabled','payment_card_number','payment_card_holder',"
+        "'payment_bank_name') OR key LIKE 'message_emoji_%' OR key LIKE 'ai_allowed_%'",
+        fetch="all"
+    ) or []
+    setting_values = {str(row[0]): row[1] for row in setting_rows}
+
     items = []
     for t in teachers:
-        p, expired_now = effective_plan(t)
+        p = plan_map.get(t["plan_key"]) or fallback
+        if t.get("plan_expires") and expired(t["plan_expires"]) and p and p["key"] != "free":
+            p = fallback
+        if not p:
+            p = {"key":"free","name":"Bepul","student_limit":0,"price":0,"features":set(),"subject_limit":0}
+        tid = int(t["id"])
         items.append({
-            "id": t["id"], "name": teacher_name(t), "phone": t.get("phone") or "",
+            "id": tid, "name": teacher_name(t), "phone": t.get("phone") or "",
             "active": bool(t["active"]), "approved": bool(t.get("admin_approved")),
             "verify_status": t.get("verify_status") or "", "plan_key": p["key"],
             "plan_name": p["name"], "plan_expires": t.get("plan_expires") or "",
-            "students": teacher_student_count(t["id"]), "student_limit": p["student_limit"],
-            "device_count": run("SELECT COUNT(*) FROM teacher_access WHERE teacher_id=?", (t["id"],), fetch="one")[0],
-            "ai_enabled": db_get_setting(f"ai_allowed_{t['id']}") == "1",
+            "students": student_counts.get(tid, 0), "student_limit": p["student_limit"],
+            "device_count": device_counts.get(tid, 0),
+            "ai_enabled": setting_values.get(f"ai_allowed_{tid}") == "1",
             "created_at": t.get("created_at") or ""
         })
-    plans = []
-    for p in db_plans():
-        plans.append({"key": p["key"], "name": p["name"], "price": p["price"],
-            "student_limit": p["student_limit"], "subject_limit": p.get("subject_limit", 0),
-            "duration_days": p["duration_days"], "active": bool(p["active"]),
-            "features": sorted(p["features"]), "badge": p.get("badge", "")})
+
     queue = [x for x in items if not x["approved"] and x["verify_status"] in ("approved", "admin_pending", "doc_pending")]
+    student_total = run("SELECT COUNT(*) FROM students", fetch="one")
     stats = {
         "teachers": len(teachers), "active_teachers": sum(1 for t in teachers if t["active"]),
-        "students": run("SELECT COUNT(*) FROM students", fetch="one")[0],
-        "paid_teachers": sum(1 for t in teachers if effective_plan(t)[0]["price"] > 0),
+        "students": int(student_total[0] or 0) if student_total else 0,
+        "paid_teachers": sum(1 for t in items if (plan_map.get(t["plan_key"]) or fallback or {}).get("price", 0) > 0),
         "admin_users": min(admin_member_count(), MAX_ADMIN_USERS)
     }
+
+    raw_channels = setting_values.get("required_channels") or ""
+    try:
+        parsed_channels = json.loads(raw_channels) if raw_channels else []
+        channels = [str(x).strip() for x in parsed_channels] if isinstance(parsed_channels, list) else []
+    except Exception:
+        channels = [x.strip() for x in str(raw_channels).splitlines() if x.strip()]
+    old_channel = (setting_values.get("required_channel") or "").strip()
+    if old_channel and old_channel not in channels:
+        channels.insert(0, old_channel)
+
     settings = {
-        "message_emojis": {key: db_get_setting("message_emoji_" + key) or "" for key in MESSAGE_EMOJI_KEYS},
-        "mandatory_sub": db_get_setting("mandatory_sub") == "1",
-        "required_channel": db_get_setting("required_channel") or "",
-        "required_channels": "\n".join(required_channels()),
-        "support_contact": db_get_setting("support_contact") or "",
-        "support_label": db_get_setting("support_label") or "Yordam",
-        "support_enabled": db_get_setting("support_enabled") == "1",
+        "message_emojis": {key: setting_values.get("message_emoji_" + key) or "" for key in MESSAGE_EMOJI_KEYS},
+        "mandatory_sub": setting_values.get("mandatory_sub") == "1",
+        "required_channel": setting_values.get("required_channel") or "",
+        "required_channels": "\\n".join(dict.fromkeys(x for x in channels if x)),
+        "support_contact": setting_values.get("support_contact") or "",
+        "support_label": setting_values.get("support_label") or "Yordam",
+        "support_enabled": setting_values.get("support_enabled") == "1",
         "verify_mode": verify_mode(), "ai_primary": ai_primary(),
-        "payment_card_number": db_get_setting("payment_card_number") or "",
-        "payment_card_holder": db_get_setting("payment_card_holder") or "",
-        "payment_bank_name": db_get_setting("payment_bank_name") or ""
+        "payment_card_number": setting_values.get("payment_card_number") or "",
+        "payment_card_holder": setting_values.get("payment_card_holder") or "",
+        "payment_bank_name": setting_values.get("payment_bank_name") or ""
     }
     return {"stats": stats, "teachers": items, "plans": plans, "queue": queue,
             "settings": settings, "features": FEATURES}
-
 
 async def api_admin_overview(request):
     uid, err = miniapp_admin(request)
@@ -6522,7 +6559,7 @@ async def api_admin_audit(request):
                   FROM audit_log a
                   LEFT JOIN user_profiles p ON p.chat_id=a.actor
                   LEFT JOIN teachers t ON t.chat_id=a.actor
-                  ORDER BY a.id DESC LIMIT 200""",fetch="all")
+                  ORDER BY a.id DESC LIMIT 100""",fetch="all")
     labels = {
         "teacher_register":"O‘qituvchi ro‘yxatdan o‘tdi",
         "admin_setting":"Tizim sozlamasi o‘zgartirildi",
@@ -6642,7 +6679,7 @@ async def api_teacher_access_log(request):
                           JOIN students s ON s.id=l.student_id AND s.teacher_id=l.teacher_id
                           LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
                           WHERE l.teacher_id=?
-                          ORDER BY l.id DESC LIMIT 300""",
+                          ORDER BY l.id DESC LIMIT 100""",
                        (t["id"],), fetch="all") or []
 
     # Eski versiyada o'quvchi kirishlari student_logs va audit_log jadvallariga yozilgan.
@@ -6658,7 +6695,7 @@ async def api_teacher_access_log(request):
                          JOIN students s ON s.id=sl.student_id AND s.teacher_id=?
                          LEFT JOIN subjects sub ON sub.id=s.subject_id AND sub.teacher_id=s.teacher_id
                          WHERE COALESCE(sl.login_time,'')<>''
-                         ORDER BY sl.id DESC LIMIT 300""",
+                         ORDER BY sl.id DESC LIMIT 100""",
                       (t["id"],), fetch="all") or []
 
     items, seen = [], set()
@@ -6695,7 +6732,7 @@ async def api_teacher_access_log(request):
         return datetime.min
 
     items.sort(key=_access_time_key, reverse=True)
-    return web.json_response({"items":items[:300]})
+    return web.json_response({"items":items[:100]})
 
 
 async def api_teacher_phone_save(request):
