@@ -2708,8 +2708,8 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
         const message = $("androidLoginStatus");
         form.onsubmit = async (event) => {
           event.preventDefault();
-          const code = codeInput.value.replace(/\\D/g, "").slice(0, 10);
-          if (!/^\\d{10}$/.test(code)) {
+          const code = codeInput.value.replace(/\D/g, "").slice(0, 10);
+          if (!/^\d{10}$/.test(code)) {
             message.textContent = "10 xonali kodni to‘liq kiriting.";
             message.className = "android-login-status error";
             return;
