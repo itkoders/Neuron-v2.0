@@ -229,7 +229,8 @@ def run(sql, params=(), fetch="none"):
             result = row[0] if row else None
         else:
             result = None
-        conn.commit()
+        if not getattr(_DB_THREAD_LOCAL, "defer_commit", False):
+            conn.commit()
         return result
     except Exception:
         try:
@@ -325,7 +326,7 @@ def migrate_telegram_id_columns():
             logging.info("Migrated neuron_bot.%s.%s to BIGINT", table, column)
 
 
-def init_db():
+def _init_db_impl():
     logging.info("DB INIT STEP 1: creating core tables")
     # Android APK uchun alohida, Telegram Mini App autentifikatsiyasiga tegmaydigan sessiyalar.
     run("""CREATE TABLE IF NOT EXISTS android_login_codes (
@@ -420,20 +421,33 @@ def init_db():
         identity_id INTEGER NOT NULL, date_str TEXT NOT NULL, status TEXT NOT NULL,
         updated_at TEXT, PRIMARY KEY(identity_id,date_str))""")
     logging.info("DB INIT STEP 2: core tables ready; migrating student identities")
-    # Eski fan qatorlarini bitta o‘quvchi profiliga bog‘laymiz; mavjud kodlar saqlanadi.
-    for legacy in run("SELECT id,teacher_id,fio,group_name,code FROM students ORDER BY id", fetch="all"):
-        sid, tid, fio, group_name, old_code = legacy
-        fio_key = " ".join(str(fio or "").casefold().split())
-        identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? ORDER BY id LIMIT 1",
-                       (tid,fio_key), fetch="one")
-        if not identity:
-            group_key = str(group_name or "Guruhsiz").strip()
-            run("INSERT INTO student_identities (teacher_id,fio_key,group_name,code,created_at) VALUES (?,?,?,?,?)",
-                (tid,fio_key,group_key,old_code,local_now().isoformat()))
-            identity = run("SELECT id FROM student_identities WHERE teacher_id=? AND fio_key=? ORDER BY id LIMIT 1",
-                           (tid,fio_key), fetch="one")
-        run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?) ON CONFLICT(student_id) DO NOTHING",
-            (identity[0],sid))
+    # Eski fan qatorlarini o‘quvchi profillariga ommaviy SQL orqali bog‘laymiz.
+    # Avvalgi Python sikli har bir o‘quvchi uchun 2-3 ta Neon so‘rovi yuborar edi.
+    logging.info("DB INIT STEP 2.1: bulk creating student identities")
+    run("""INSERT INTO student_identities
+        (teacher_id,fio_key,group_name,code,created_at)
+        SELECT DISTINCT ON (
+            teacher_id,
+            lower(regexp_replace(trim(COALESCE(fio,'')), '\\s+', ' ', 'g'))
+        )
+            teacher_id,
+            lower(regexp_replace(trim(COALESCE(fio,'')), '\\s+', ' ', 'g')),
+            COALESCE(NULLIF(trim(group_name),''),'Guruhsiz'),
+            code,
+            CURRENT_TIMESTAMP::text
+        FROM students
+        ORDER BY teacher_id,
+            lower(regexp_replace(trim(COALESCE(fio,'')), '\\s+', ' ', 'g')),
+            id
+        ON CONFLICT (teacher_id,fio_key,group_name) DO NOTHING""")
+    logging.info("DB INIT STEP 2.2: bulk linking student rows")
+    run("""INSERT INTO student_identity_members (identity_id,student_id)
+        SELECT i.id,s.id
+        FROM students s
+        JOIN student_identities i
+          ON i.teacher_id=s.teacher_id
+         AND i.fio_key=lower(regexp_replace(trim(COALESCE(s.fio,'')), '\\s+', ' ', 'g'))
+        ON CONFLICT (student_id) DO NOTHING""")
     # Bir xil ism-familiyali o‘quvchining turli guruh/fan yozuvlarini bitta profilga
     # bitta SQL so‘rovida birlashtiramiz. Oldingi kod har bir profil uchun alohida
     # SELECT va UPDATE yuborib, Neon tarmoq kechikishi sabab startni cho‘zardi.
@@ -627,6 +641,34 @@ def init_db():
         PRIMARY KEY(test_id,chat_id))""")
 
     logging.info("DB INIT STEP 7: all database initialization steps completed")
+
+
+def init_db():
+    """Run all schema migrations in one Neon transaction to avoid per-query commits."""
+    if not DATABASE_URL:
+        return _init_db_impl()
+    import psycopg2
+    conn = getattr(_DB_THREAD_LOCAL, "connection", None)
+    if conn is None or conn.closed:
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        _DB_THREAD_LOCAL.connection = conn
+    _DB_THREAD_LOCAL.defer_commit = True
+    try:
+        _init_db_impl()
+        conn.commit()
+        logging.info("Startup: database migration transaction committed")
+    except Exception:
+        try:
+            conn.rollback()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            _DB_THREAD_LOCAL.connection = None
+        raise
+    finally:
+        _DB_THREAD_LOCAL.defer_commit = False
 
 
 MESSAGE_EMOJI_KEYS = {
