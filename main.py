@@ -224,7 +224,13 @@ def run(sql, params=(), fetch="none"):
             query = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "INSERT INTO", query, flags=re.I)
             if fetch == "lastid" and query.lstrip().upper().startswith("INSERT") and "RETURNING" not in query.upper():
                 query += " RETURNING id"
-            cur.execute(query, params)
+            # Parametrsiz SQL da literal LIKE foiz belgilarini o'z ichiga olishi mumkin.
+            # Psycopg2 bo'sh tuple bilan execute(query, ()) chaqirilganda % belgilarini
+            # formatlash belgisi deb talqin qiladi va IndexError berishi mumkin.
+            if params:
+                cur.execute(query, params)
+            else:
+                cur.execute(query)
 
         if fetch == "all":
             result = cur.fetchall()
