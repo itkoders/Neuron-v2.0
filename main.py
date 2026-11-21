@@ -2370,6 +2370,35 @@ async def t_reg_contact_fallback(message: types.Message, state: FSMContext):
     await message.answer("📱 Iltimos, \"Raqamni tasdiqlash\" tugmasidan foydalaning.")
 
 
+@dp.message(Command("sharecontact"), F.chat.type == "private")
+async def android_teacher_share_contact(message: types.Message):
+    """Android APK dagi kutilayotgan o'qituvchi ro'yxatidan o'tish uchun o'z kontaktini so'rash."""
+    uid = message.from_user.id
+    raw = db_get_setting(f"mini_teacher_reg_{uid}")
+    if not raw:
+        await message.answer("Avval NEURON ilovasida o‘qituvchi ro‘yxatdan o‘tish formasini yuboring.")
+        return
+    try:
+        data = json.loads(raw)
+    except Exception:
+        db_set_setting(f"mini_teacher_reg_{uid}", "")
+        await message.answer("Ro‘yxatdan o‘tish ma’lumoti eskirgan. Ilovada qayta urinib ko‘ring.")
+        return
+    if not isinstance(data, dict) or not data.get("phone"):
+        await message.answer("Telefon raqami topilmadi. Ilovada qayta ro‘yxatdan o‘ting.")
+        return
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 O‘z raqamimni tasdiqlash", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(
+        "Telefon raqamingizni tasdiqlash uchun quyidagi tugmani bosing. "
+        "Faqat Telegram akkauntingizga tegishli kontakt qabul qilinadi.",
+        reply_markup=keyboard
+    )
+
+
 @dp.message(F.contact, F.chat.type == "private")
 async def miniapp_teacher_contact(message: types.Message):
     """Complete Mini App teacher registration only after Telegram contact confirmation."""
