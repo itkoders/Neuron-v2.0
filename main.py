@@ -326,6 +326,7 @@ def migrate_telegram_id_columns():
 
 
 def init_db():
+    logging.info("DB INIT STEP 1: creating core tables")
     # Android APK uchun alohida, Telegram Mini App autentifikatsiyasiga tegmaydigan sessiyalar.
     run("""CREATE TABLE IF NOT EXISTS android_login_codes (
         code_hash TEXT PRIMARY KEY, chat_id BIGINT NOT NULL,
@@ -418,6 +419,7 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS identity_attendance (
         identity_id INTEGER NOT NULL, date_str TEXT NOT NULL, status TEXT NOT NULL,
         updated_at TEXT, PRIMARY KEY(identity_id,date_str))""")
+    logging.info("DB INIT STEP 2: core tables ready; migrating student identities")
     # Eski fan qatorlarini bitta o‘quvchi profiliga bog‘laymiz; mavjud kodlar saqlanadi.
     for legacy in run("SELECT id,teacher_id,fio,group_name,code FROM students ORDER BY id", fetch="all"):
         sid, tid, fio, group_name, old_code = legacy
@@ -441,6 +443,7 @@ def init_db():
         for member in members:
             run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
                 (canonical_id,member[0]))
+    logging.info("DB INIT STEP 3: student identity migration completed")
     # attendance_history jadvali quyida yaratiladi, lekin eski yozuvlarni
     # ko'chirish undan oldin bajariladi. Shu sababli avval xavfsiz yaratamiz.
     # CREATE TABLE IF NOT EXISTS mavjud yozuvlarga tegmaydi.
@@ -548,9 +551,11 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER, text TEXT,
         send_at TEXT, sent INTEGER DEFAULT 0)""")
     run("CREATE TABLE IF NOT EXISTS student_links (chat_id BIGINT PRIMARY KEY, student_id INTEGER)")
+    logging.info("DB INIT STEP 4: attendance/payment tables ready; migrating Telegram IDs")
     # Telegram ID lar 32-bit INTEGER ga sig'maydi; eski Neon sxemasini ham kengaytiramiz.
     migrate_telegram_id_columns()
 
+    logging.info("DB INIT STEP 5: schema migrations completed; checking legacy SQLite and profiles")
     # Legacy bazadan dublikat username larni ko‘chirishga to‘sqinlik qilmasin.
     run("DROP INDEX IF EXISTS ux_user_profiles_username_lower")
     # Eski Render SQLite bazasi mavjud bo'lsa, seed ma'lumotlaridan oldin ko'chiramiz.
@@ -599,6 +604,7 @@ def init_db():
             features.add("mini_app")
             run("UPDATE plans SET features=? WHERE key=?",(",".join(sorted(features)),row[0]))
         db_set_setting("mini_app_all_plans_v1","1")
+    logging.info("DB INIT STEP 6: settings and plans ready; creating test tables")
     run("""CREATE TABLE IF NOT EXISTS tests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL, subject_id INTEGER NOT NULL,
         title TEXT NOT NULL, group_name TEXT DEFAULT '*', start_at TEXT NOT NULL, end_at TEXT NOT NULL,
@@ -611,6 +617,8 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS test_notification_deliveries (
         test_id INTEGER NOT NULL, chat_id BIGINT NOT NULL, sent_at TEXT NOT NULL,
         PRIMARY KEY(test_id,chat_id))""")
+
+    logging.info("DB INIT STEP 7: all database initialization steps completed")
 
 
 MESSAGE_EMOJI_KEYS = {
