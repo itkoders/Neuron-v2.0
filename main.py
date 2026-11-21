@@ -93,6 +93,9 @@ SEED_PLANS = [
 bot = Bot(token=TOKEN) if TOKEN else None
 dp = Dispatcher()
 
+# HTTP port bazadagi migratsiyalar tugashini kutib qolmasligi uchun readiness holati.
+STARTUP_READY = False
+
 # PostgreSQL advisory lock prevents overlapping Render deploy instances from
 # polling Telegram simultaneously. Keep this connection open while polling.
 _BOT_POLLING_LOCK_CONN = None
@@ -9235,6 +9238,8 @@ async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
     @web.middleware
     async def miniapp_subscription_guard(request, handler):
+        if not STARTUP_READY and request.path not in {"/", "/health"}:
+            return web.json_response({"status": "starting", "message": "NEURON ishga tushmoqda"}, status=503)
         if not request.path.startswith("/api/") or request.path in {
             "/api/public-settings", "/api/android/login", "/api/android/logout"
         }:
@@ -9345,8 +9350,18 @@ async def start_web_server():
 
 
 async def main():
-    init_db()
+    global STARTUP_READY
+    # Render portni darhol ko'rishi uchun HTTP serverni avval bog'laymiz.
     runner = await start_web_server()
+    try:
+        logging.info("Startup: database initialization started")
+        await asyncio.to_thread(init_db)
+        STARTUP_READY = True
+        logging.info("Startup: database initialization completed; service is ready")
+    except Exception:
+        logging.exception("Startup: database initialization failed")
+        await runner.cleanup()
+        raise
     if bot:
         # Deploy paytida eski va yangi Render instance ustma-ust ishlashi mumkin.
         # Faqat lock egasi Telegram polling va fon vazifalarini ishga tushiradi.
