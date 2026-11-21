@@ -247,7 +247,7 @@ class MainActivity : Activity() {
                     return true
                 }
             }
-            loadUrl("$base/app?platform=android")
+            loadUrl("$base/app?platform=android&role=entry")
         }
         webView = browser
         page.addView(top, LinearLayout.LayoutParams(-1, -2))
