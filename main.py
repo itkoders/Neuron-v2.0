@@ -9196,7 +9196,9 @@ async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
     @web.middleware
     async def miniapp_subscription_guard(request, handler):
-        if not request.path.startswith("/api/") or request.path == "/api/public-settings":
+        if not request.path.startswith("/api/") or request.path in {
+            "/api/public-settings", "/api/android/login", "/api/android/logout"
+        }:
             return await handler(request)
         uid = miniapp_request_uid(request)
         if uid and request.path == "/api/me":
