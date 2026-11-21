@@ -6206,7 +6206,10 @@ def _admin_overview_payload():
         "payment_card_holder": setting_values.get("payment_card_holder") or "",
         "payment_bank_name": setting_values.get("payment_bank_name") or ""
     }
-    return {"stats": stats, "teachers": items, "plans": plans, "queue": queue,
+    # JSON API uchun set qiymatlarini tartibli listga aylantiramiz;
+    # ichki tarif logikasida db_plans() qaytaradigan set o'zgarmaydi.
+    api_plans = [dict(p, features=sorted(p.get("features") or set())) for p in plans]
+    return {"stats": stats, "teachers": items, "plans": api_plans, "queue": queue,
             "settings": settings, "features": FEATURES}
 
 async def api_admin_overview(request):
