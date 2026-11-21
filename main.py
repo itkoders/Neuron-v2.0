@@ -5480,7 +5480,7 @@ async def api_android_login(request):
     state = _ANDROID_LOGIN_ATTEMPTS.get(ip, [0, now])
     if now - state[1] >= 900:
         state = [0, now]
-    if state[0] >= 10:
+    if state[0] >= 30:
         return web.json_response({"error": "too_many_attempts"}, status=429)
     body = await _read_json(request)
     code = str(body.get("code", "")).strip()
