@@ -6906,9 +6906,15 @@ def _social_avatar_thumb(data_uri):
         return ""
 
 
-def _social_auth(request):
-    kind,obj,err = miniapp_identity(request)
-    if err: return None,None,None,err
+def _social_auth(request, identity=None):
+    # api_me already authenticated this request; reuse that verified identity
+    # instead of repeating the same database lookups a second time.
+    if identity is None:
+        kind,obj,err = miniapp_identity(request)
+        if err: return None,None,None,err
+    else:
+        kind,obj = identity
+        err = None
     if kind == "entry":
         return None,None,None,web.json_response({"error":"role_required"},status=403)
     uid = miniapp_request_uid(request)
@@ -6932,7 +6938,7 @@ def _social_auth(request):
     current_plan = None
     if kind == "teacher":
         # Mini App dagi role obyektiga emas, bazadagi faol o‘qituvchi yozuviga tayanamiz.
-        teacher_record = teacher_by_chat(uid) or obj
+        teacher_record = obj
         if teacher_record:
             current_plan, _ = effective_plan(teacher_record)
             plan_badge = str((current_plan or {}).get("badge") or "").strip()
@@ -7295,7 +7301,7 @@ async def api_me(request):
             "last_role":db_get_setting(f"last_role_{obj}") or ""
         })
     # Tizimga kirgan barcha haqiqiy rollar Jamiyat foydalanuvchilari ro‘yxatida avtomatik paydo bo‘ladi.
-    social_uid, social_profile, social_kind, social_err = _social_auth(request)
+    social_uid, social_profile, social_kind, social_err = _social_auth(request, identity=(kind, obj))
     if social_err:
         return social_err
     accessed_at = local_now().strftime("%Y-%m-%d %H:%M:%S")
