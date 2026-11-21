@@ -1801,6 +1801,13 @@ class SubGuard(BaseMiddleware):
             await event.answer()
             return None
         user = getattr(event, "from_user", None)
+        # Tariflar ochiq ma'lumot: kanal tekshiruvi sabab callback eskirib qolmasin.
+        if isinstance(event, types.CallbackQuery) and event.data == "public_plans":
+            return await handler(event, data)
+        if isinstance(event, types.Message) and event.text:
+            command = event.text.split(maxsplit=1)[0].split("@", 1)[0]
+            if command == "/tarif":
+                return await handler(event, data)
         if user is None or await is_subscribed(user.id):
             return await handler(event, data)
         if isinstance(event, types.CallbackQuery) and event.data == "check_sub":
@@ -9377,8 +9384,6 @@ async def start_web_server():
         }:
             return await handler(request)
         uid = miniapp_request_uid(request)
-        if uid and request.path == "/api/me":
-            SUB_CACHE.pop(uid, None)
         if uid and not await is_subscribed(uid):
             channel = db_get_setting("required_channel") or ""
             join_url = db_get_setting("required_channel_url") or ""
