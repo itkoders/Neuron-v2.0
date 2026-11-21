@@ -1864,12 +1864,12 @@ def create_daily_report_images(students, subject_name, labels):
 def create_group_daily_report_images(students, subject_name, labels, report_date):
     """Guruh hisobotini faqat ball kiritilgan kataklar o'rtachasi bo'yicha tartiblaydi."""
     items = list(students)
-    labels = [x for x in labels if x][:3]
+    labels = [str(x).strip() for x in (labels or []) if str(x).strip()][:3]
     items.sort(key=lambda st: (score_average(st) is not None,
                                score_average(st) if score_average(st) is not None else -1),
                reverse=True)
 
-    # Teng o'rtacha ball olgan o'quvchilarga bir xil o'rin beriladi.
+    # Reyting hisoblash tartibi avvalgidek: teng o'rtacha ballga teng o'rin.
     rank_by_id = {}
     previous_avg, current_rank = None, 0
     for index, st in enumerate(items, 1):
@@ -1884,38 +1884,68 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
 
     page_size, pages = 10, []
     W, H = 1720, 980
-    score_width = int(700 / max(1, len(labels)))
-    widths = [70, 80, 420, 190] + [score_width] * len(labels) + [150]
-    headers = ["T/R", "O'RIN", "F.I.O", "DAVOMAT"] + [x.upper() for x in labels] + ["O'RTACHA"]
+    score_width = 700 // max(1, len(labels))
+    widths = [64, 86, 450, 190] + [score_width] * len(labels) + [160]
+    headers = ["№", "O'RIN", "O'QUVCHI F.I.O", "DAVOMAT"] + [x.upper() for x in labels] + ["O'RTACHA"]
+    page_count = max(1, (len(items) + page_size - 1) // page_size)
 
-    for page_idx in range(max(1, (len(items) + page_size - 1) // page_size)):
+    def fit_text(value, font, max_width):
+        shown = str(value)
+        if d.textbbox((0, 0), shown, font=font)[2] <= max_width:
+            return shown
+        while len(shown) > 4 and d.textbbox((0, 0), shown + "…", font=font)[2] > max_width:
+            shown = shown[:-1]
+        return shown.rstrip() + "…"
+
+    for page_idx in range(page_count):
         chunk = items[page_idx * page_size:(page_idx + 1) * page_size]
-        img = Image.new("RGB", (W, H), "#F4F7FC")
+        img = Image.new("RGB", (W, H), "#081426")
         d = ImageDraw.Draw(img)
-        title_f, sub_f = get_font(34, True), get_font(21, True)
-        head_f, cell_f, small_f = get_font(19, True), get_font(21), get_font(17)
+        title_f = get_font(36, True)
+        sub_f = get_font(20, True)
+        head_f = get_font(18, True)
+        cell_f = get_font(21)
+        name_f = get_font(22, True)
+        small_f = get_font(16)
 
-        d.rounded_rectangle((28, 24, W - 28, 155), radius=24, fill="#173B8F")
-        d.text((W // 2, 66), "NEURON  •  SMART JOURNAL", fill="#DCE8FF", font=sub_f, anchor="mm")
-        d.text((W // 2, 115), "KUNLIK GURUH HISOBOTI", fill="#FFFFFF", font=title_f, anchor="mm")
+        # Brendli sarlavha va hisobot metama'lumotlari.
+        d.rounded_rectangle((30, 24, W - 30, 160), radius=26, fill="#102B50",
+                            outline="#2365A5", width=2)
+        d.rounded_rectangle((52, 48, 64, 136), radius=6, fill="#22D3EE")
+        d.text((88, 67), "NEURON  /  SMART JOURNAL", fill="#7DD3FC", font=sub_f, anchor="lm")
+        d.text((88, 116), "KUNLIK GURUH HISOBOTI", fill="#FFFFFF", font=title_f, anchor="lm")
+        d.rounded_rectangle((W - 300, 58, W - 58, 126), radius=18, fill="#173B68")
+        d.text((W - 179, 92), f"{page_idx + 1:02d}  /  {page_count:02d}",
+               fill="#BAE6FD", font=sub_f, anchor="mm")
 
-        d.rounded_rectangle((28, 175, W - 28, 255), radius=18, fill="#E5EDFF")
-        d.text((55, 215), f"FAN: {subject_name}", fill="#173B8F", font=sub_f, anchor="lm")
-        d.text((W // 2, 215), f"SANA: {report_date}", fill="#173B8F", font=sub_f, anchor="mm")
-        d.text((W - 55, 215), f"O'QUVCHILAR: {len(items)}", fill="#173B8F", font=sub_f, anchor="rm")
+        d.rounded_rectangle((30, 178, W - 30, 260), radius=18, fill="#10223B",
+                            outline="#1E426B", width=1)
+        d.text((58, 219), "FAN", fill="#7DD3FC", font=small_f, anchor="lm")
+        d.text((58, 242), fit_text(subject_name, sub_f, 500), fill="#F8FAFC", font=sub_f, anchor="lm")
+        d.text((W // 2, 219), "HISOBOT SANASI", fill="#7DD3FC", font=small_f, anchor="mm")
+        d.text((W // 2, 242), str(report_date), fill="#F8FAFC", font=sub_f, anchor="mm")
+        d.text((W - 58, 219), "O'QUVCHILAR", fill="#7DD3FC", font=small_f, anchor="rm")
+        d.text((W - 58, 242), str(len(items)), fill="#F8FAFC", font=sub_f, anchor="rm")
 
-        x0, y0, row_h = 28, 285, 48
+        x0, y0, row_h = 36, 286, 53
         x = x0
         for label, cw in zip(headers, widths):
-            d.rectangle((x, y0, x + cw, y0 + row_h), fill="#DCE8FF", outline="#31549B", width=2)
-            d.text((x + cw // 2, y0 + row_h // 2), label, fill="#172B55", font=head_f, anchor="mm")
+            d.rounded_rectangle((x, y0, x + cw, y0 + row_h), radius=7,
+                                fill="#174477", outline="#3676B5", width=1)
+            d.text((x + cw // 2, y0 + row_h // 2), fit_text(label, head_f, cw - 12),
+                   fill="#E0F2FE", font=head_f, anchor="mm")
             x += cw
 
         y = y0 + row_h
+        if not chunk:
+            d.rounded_rectangle((36, y + 35, W - 36, y + 210), radius=20, fill="#10223B",
+                                outline="#1E426B", width=1)
+            d.text((W // 2, y + 105), "Hozircha ushbu guruhda o'quvchilar yo'q",
+                   fill="#CBD5E1", font=title_f, anchor="mm")
         for idx, st in enumerate(chunk, page_idx * page_size + 1):
             avg = score_average(st)
-            row = [str(idx), rank_by_id.get(st.get("id"), "—"), st.get("fio", "—"),
-                   st.get("davomat", "Kutilmoqda")]
+            row = [str(idx), rank_by_id.get(st.get("id"), "—"),
+                   st.get("fio", "—"), st.get("davomat", "Kutilmoqda")]
             for k in range(1, len(labels) + 1):
                 value = int(st.get(f"s{k}", 0) or 0)
                 scored = bool(st.get(f"s{k}_scored", value > 0))
@@ -1923,39 +1953,49 @@ def create_group_daily_report_images(students, subject_name, labels, report_date
             row.append(f"{avg}%" if avg is not None else "—")
 
             x = x0
-            base = "#FFFFFF" if idx % 2 else "#F0F4FB"
+            base = "#10233C" if idx % 2 else "#142A46"
             for col, (value, cw) in enumerate(zip(row, widths)):
-                fill = base
-                if col == 1:
+                fill, ink = base, "#E5EEF9"
+                if col == 0:
+                    ink = "#8FB5D8"
+                elif col == 1:
                     rank_num = int(value) if str(value).isdigit() else 0
-                    fill = {1: "#FEF3C7", 2: "#E5E7EB", 3: "#FED7AA"}.get(rank_num, base)
+                    fill = {1: "#57451C", 2: "#34445A", 3: "#563A2A"}.get(rank_num, "#173451")
+                    ink = "#FDE68A" if rank_num == 1 else "#E2E8F0"
                 elif col == 3:
-                    fill = "#DDF7E8" if value == "Keldi" else ("#FFE3E3" if value == "Kelmadi" else "#FFF3C4")
+                    fill, ink = {
+                        "Keldi": ("#123E36", "#6EE7B7"),
+                        "Kelmadi": ("#4A222B", "#FDA4AF"),
+                        "Sababli": ("#43351A", "#FDE68A"),
+                    }.get(str(value), ("#26364A", "#CBD5E1"))
                 elif 4 <= col < len(row) - 1 and value != "—":
                     score_val = int(str(value).split("/")[0])
-                    fill = "#DCFCE7" if score_val >= 80 else ("#FEF3C7" if score_val >= 50 else "#FEE2E2")
+                    fill, ink = ("#123E36", "#6EE7B7") if score_val >= 80 else (
+                        ("#43351A", "#FDE68A") if score_val >= 50 else ("#4A222B", "#FDA4AF"))
                 elif col == len(row) - 1 and avg is not None:
-                    fill = "#E0E7FF"
-                d.rectangle((x, y, x + cw, y + row_h), fill=fill, outline="#C7D2E4", width=1)
+                    fill, ink = "#183C68", "#BAE6FD"
+
+                d.rounded_rectangle((x, y, x + cw, y + row_h - 2), radius=6,
+                                    fill=fill, outline="#294563", width=1)
                 if col == 2:
-                    shown = str(value)
-                    while d.textbbox((0, 0), shown, font=cell_f)[2] > cw - 24 and len(shown) > 4:
-                        shown = shown[:-2] + "…"
-                    d.text((x + 16, y + row_h // 2), shown, fill="#18243A", font=head_f, anchor="lm")
+                    shown = fit_text(value, name_f, cw - 28)
+                    d.text((x + 15, y + row_h // 2), shown, fill=ink, font=name_f, anchor="lm")
                 else:
-                    d.text((x + cw // 2, y + row_h // 2), str(value), fill="#18243A",
+                    d.text((x + cw // 2, y + row_h // 2), str(value), fill=ink,
                            font=head_f if col in (1, len(row) - 1) else cell_f, anchor="mm")
                 x += cw
-            y += row_h
+            y += row_h + 3
 
-        d.rounded_rectangle((28, 930, W - 28, 966), radius=12, fill="#E5EDFF")
-        d.text((48, 948), "Reyting: faqat ball kiritilgan kataklar o'rtachasi. Bo'sh kataklar hisoblanmaydi.",
-               fill="#31549B", font=small_f, anchor="lm")
-        d.text((W - 48, 948), f"{page_idx + 1}-sahifa / {max(1, (len(items) + page_size - 1) // page_size)}",
-               fill="#31549B", font=small_f, anchor="rm")
+        # Pastki izoh va sahifa ko'rsatkichi.
+        d.rounded_rectangle((36, 916, W - 36, 958), radius=12, fill="#10223B",
+                            outline="#1E426B", width=1)
+        d.text((54, 937),
+               "Reyting faqat ball kiritilgan kataklar o'rtachasi bo'yicha. Bo'sh kataklar hisoblanmaydi.",
+               fill="#9FB8D3", font=small_f, anchor="lm")
+        d.text((W - 54, 937), f"{page_idx + 1}-sahifa / {page_count}",
+               fill="#7DD3FC", font=small_f, anchor="rm")
         pages.append(_png(img))
     return pages
-
 
 def create_leaderboard_image(students, subject_name, labels):
     """O'quvchilarni faqat kiritilgan ballar o'rtachasi bo'yicha reyting qiladi."""
