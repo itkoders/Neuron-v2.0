@@ -2274,7 +2274,11 @@ async def public_plans_command(message: types.Message):
 
 @dp.callback_query(F.data == "public_plans")
 async def public_plans(call: types.CallbackQuery):
-    await call.answer()
+    # Callback tasdig‘i tarmoq sekinligida eskirsa ham tarif oynasini ko‘rsatishni davom ettiramiz.
+    try:
+        await call.answer()
+    except Exception as exc:
+        logging.warning("Tarif callback tasdig‘i yuborilmadi; oynani ko‘rsatish davom etadi: %s", exc)
     lines, rows = [], []
     for p in db_plans():
         if not p["active"]:
