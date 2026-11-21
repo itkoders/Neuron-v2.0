@@ -110,11 +110,14 @@ _BOT_POLLING_LOCK_CONN = None
 
 def acquire_bot_polling_lock():
     global _BOT_POLLING_LOCK_CONN
-    if not DATABASE_URL:
+    # Session advisory lock transaction-pooler orqali ishlatilmaydi:
+    # alohida direct Neon ulanishi lockni aniq bir server sessiyasiga bog'laydi.
+    lock_database_url = os.environ.get("BOT_LOCK_DATABASE_URL", "").strip() or DATABASE_URL
+    if not lock_database_url:
         logging.warning("DATABASE_URL yo'q: Telegram polling uchun serverlararo lock ishlamaydi.")
         return True
     import psycopg2
-    conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+    conn = psycopg2.connect(lock_database_url, connect_timeout=15, application_name="neuron-v2-bot-lock")
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
@@ -132,7 +135,7 @@ def acquire_bot_polling_lock():
 
 
 async def wait_for_bot_polling_lock():
-    if not DATABASE_URL:
+    if not (os.environ.get("BOT_LOCK_DATABASE_URL", "").strip() or DATABASE_URL):
         acquire_bot_polling_lock()
         return
     while not acquire_bot_polling_lock():
