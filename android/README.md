@@ -11,6 +11,7 @@ Android client for the existing NEURON service. All Android work stays on the is
 5. The server returns a random bearer session token with a 30-day expiry. Only its hash is stored server-side.
 6. The app encrypts the token using a non-exportable AES-GCM key in Android Keystore.
 7. The Mini App's normal API requests carry the bearer token only when opened inside the Android app. Telegram requests continue to use signed Telegram initData.
+8. Android teacher registration uses the existing Telegram self-contact verification: after submitting the form in the APK, send `/sharecontact` to the same bot chat and tap its own-contact button. The bot checks both Telegram ownership and the submitted phone number.
 
 The backend validates the Telegram user ID against the existing role/account tables for every protected request. A client cannot choose or grant itself a teacher, student, parent, or admin role.
 
@@ -27,7 +28,7 @@ No APK can be guaranteed to pass every third-party antivirus or Play Protect dec
 
 ## Build from GitHub Actions
 
-Open **Actions → Build NEURON Android APK → Run workflow** on the `android-apk` branch.
+Every push to the isolated `android-apk` branch automatically starts a debug APK build and stores its artifact for 14 days. For a manual build, open **Actions → Build NEURON Android APK → Run workflow** on the `android-apk` branch.
 
 - Enter only the Render HTTPS root URL, e.g. `https://your-service.onrender.com` (no `/app` suffix).
 - Choose `debug` for a first installation/test. Debug builds are not suitable for seamless future updates because CI debug signing is not a permanent release identity.
