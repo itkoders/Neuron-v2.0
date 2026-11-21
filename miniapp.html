@@ -2858,7 +2858,11 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
         const out = await api("/api/onboard/teacher/register",{method:"POST",body:JSON.stringify({first_name:fd.get("first_name"),last_name:fd.get("last_name"),phone:fd.get("phone")})});
         if (!out.contact_required) throw new Error("contact_confirmation_required");
         if (!tg || typeof tg.requestContact !== "function") {
-          setEntryMessage("Telegram kontakt tasdiqlash funksiyasi mavjud emas. Ilovani Telegram ichida qayta oching.");
+          if (ANDROID_TOKEN) {
+            setEntryMessage("Telefon raqamini xavfsiz tasdiqlash Telegram bot orqali bajariladi. Telegramda NEURON botini oching, /start buyrug‘i bilan o‘qituvchi sifatida ro‘yxatdan o‘ting. Hisob tasdiqlangach, APKga qaytib kiring.");
+          } else {
+            setEntryMessage("Telegram kontakt tasdiqlash funksiyasi mavjud emas. Ilovani Telegram ichida qayta oching.");
+          }
           return;
         }
         tg.requestContact(sent => {
