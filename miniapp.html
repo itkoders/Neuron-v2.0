@@ -3305,7 +3305,8 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
     try {
       const res=await fetch("/api/teacher/payment/"+id+"/receipt",{headers:{
         "X-Init-Data":INIT,
-        "X-App-Role":new URLSearchParams(location.search).get("role")||""
+        "X-App-Role":new URLSearchParams(location.search).get("role")||"",
+        ...(ANDROID_TOKEN ? { "Authorization":"Bearer "+ANDROID_TOKEN } : {})
       }});
       if(!res.ok){let data={};try{data=await res.json();}catch(_){}throw Object.assign(new Error(data.error||"receipt_unavailable"),{data});}
       const blob=await res.blob(),url=URL.createObjectURL(blob);
