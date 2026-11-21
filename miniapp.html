@@ -4496,20 +4496,8 @@ button:focus-visible,[role="button"]:focus-visible{outline:2px solid #65cfff;out
     document.addEventListener("visibilitychange",() => { if (document.hidden) resetCards(); });
   })();
 
-  const switchCabinet = $("switchCabinetBtn");
-  if (switchCabinet) switchCabinet.addEventListener("click", async () => {
-    switchCabinet.disabled = true;
-    setStatus("Kabinetlar ochilmoqda…", "saving");
-    try { localStorage.removeItem("neuron-last-role"); } catch (_) {}
-    try {
-      await api("/api/role/preference", {method:"POST", body:JSON.stringify({role:"entry"}), headers:{"X-App-Role":"entry"}});
-    } catch (_) {}
-    const u = new URL(location.href);
-    u.searchParams.set("role", "entry");
-    history.replaceState({}, "", u.pathname + u.search);
-    await init();
-    switchCabinet.disabled = false;
-  });
+  // Kabinet almashtirish hodisasi init() ichida yagona marta biriktiriladi.
+  // Pastda takroriy click listener qo‘shilmaydi: ikki marta init() chaqirilishining oldi olinadi.
 
   /* ===== NEYRON performance layer: preserve effects, pause only off-screen work ===== */
   (() => {
