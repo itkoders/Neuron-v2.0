@@ -663,13 +663,16 @@ def init_db():
     if not DATABASE_URL:
         return _init_db_impl()
     import psycopg2
-    conn = getattr(_DB_THREAD_LOCAL, "connection", None)
-    if conn is None or conn.closed:
-        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
-        _DB_THREAD_LOCAL.connection = conn
-    # Tranzaksiya rejimini SET search_path so'rovidan oldin tanlaymiz.
-    if conn.autocommit:
-        conn.autocommit = False
+    # Migratsiya uchun alohida, yangi ulanish: avvalgi ishchi ulanishdagi
+    # ochiq tranzaksiya autocommit rejimini almashtirishga xalaqit bermasin.
+    previous_conn = getattr(_DB_THREAD_LOCAL, "connection", None)
+    if previous_conn is not None and not previous_conn.closed:
+        try:
+            previous_conn.close()
+        except Exception:
+            logging.warning("Old database connection could not be closed before migration")
+    conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+    _DB_THREAD_LOCAL.connection = conn
     with conn.cursor() as setup_cur:
         setup_cur.execute("SET search_path TO neuron_bot, public")
     _DB_THREAD_LOCAL.defer_commit = True
