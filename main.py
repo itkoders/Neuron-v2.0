@@ -5456,6 +5456,10 @@ def _android_code_hash(code):
 
 def issue_android_login_code(chat_id):
     now = int(time.time())
+    # Eski ishlatilgan kodlar va muddati tugagan sessiyalarni vaqti-vaqti bilan tozalaymiz.
+    run("DELETE FROM android_login_codes WHERE expires_at<? OR used_at IS NOT NULL", (now - 86400,))
+    run("DELETE FROM android_sessions WHERE (expires_at<? OR revoked_at IS NOT NULL) AND created_at<?",
+        (now, now - 86400))
     code = f"{secrets.randbelow(10**10):010d}"
     run("DELETE FROM android_login_codes WHERE chat_id=? AND used_at IS NULL", (int(chat_id),))
     run("INSERT INTO android_login_codes (code_hash,chat_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)",
