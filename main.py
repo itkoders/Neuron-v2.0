@@ -440,6 +440,12 @@ def init_db():
     run("""CREATE TABLE IF NOT EXISTS attendance_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
+    # Ball o'zgargan sanani alohida saqlaymiz: kunlik attendance snapshot
+    # yo'qolgan yoki eski formatda bo'lgan taqdirda ham Excel ballni topa oladi.
+    run("""CREATE TABLE IF NOT EXISTS student_score_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+        date_str TEXT NOT NULL, score_idx INTEGER NOT NULL, score_value INTEGER NOT NULL,
+        updated_at TEXT, UNIQUE(student_id,date_str,score_idx))""")
     run("CREATE TABLE IF NOT EXISTS super_admins (chat_id BIGINT PRIMARY KEY)")
     run("""CREATE TABLE IF NOT EXISTS admin_permission_profiles (
         chat_id BIGINT PRIMARY KEY, updated_at TEXT)""")
@@ -1106,7 +1112,16 @@ SCORE_SQL = {
 
 
 def db_set_score(s_id, idx, value):
-    run(SCORE_SQL[idx], (max(0, min(100, value)), local_now().strftime("%d.%m.%Y"), s_id))
+    today = local_now().strftime("%d.%m.%Y")
+    score_value = max(0, min(100, value))
+    run(SCORE_SQL[idx], (score_value, today, s_id))
+    # Har bir fan ustunidagi ballni aynan kiritilgan sanaga bog'lab saqlaymiz.
+    run("""INSERT INTO student_score_history
+        (student_id,date_str,score_idx,score_value,updated_at)
+        VALUES(?,?,?,?,?)
+        ON CONFLICT(student_id,date_str,score_idx) DO UPDATE SET
+        score_value=excluded.score_value,updated_at=excluded.updated_at""",
+        (s_id, today, idx, score_value, local_now().isoformat()))
     st = db_student(s_id)
     if st:
         db_save_daily_history(s_id, st)
@@ -7528,6 +7543,39 @@ async def api_teacher_export(request):
                 continue
         history[(row[0], history_date)] = row[2:6]
 
+    # Har bir ballning alohida kiritilgan sanasi attendance snapshotdan mustaqil.
+    score_history_rows = run(
+        """SELECT sh.student_id, sh.date_str, sh.score_idx, sh.score_value
+           FROM student_score_history sh
+           JOIN students s ON s.id = sh.student_id
+           WHERE s.teacher_id = ?
+           ORDER BY sh.id""",
+        (teacher["id"],), fetch="all"
+    )
+    score_history = {}
+    for sid, raw_date, score_idx, score_value in score_history_rows:
+        parsed_date = None
+        raw_date = str(raw_date or "").strip()
+        for date_format in ("%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y",
+                            "%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M:%S"):
+            try:
+                parsed_date = datetime.strptime(raw_date, date_format).date()
+                break
+            except (TypeError, ValueError):
+                continue
+        if parsed_date is None:
+            try:
+                parsed_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).date()
+            except (TypeError, ValueError):
+                continue
+        try:
+            idx = int(score_idx)
+            if idx not in (1, 2, 3):
+                continue
+            score_history.setdefault((sid, parsed_date), {})[idx - 1] = int(score_value)
+        except (TypeError, ValueError):
+            continue
+
     wb = Workbook()
     summary = wb.active
     summary.title = "Umumiy hisobot"
@@ -7607,8 +7655,18 @@ async def api_teacher_export(request):
         complete = 0
         for st in students:
             saved = history.get((st["id"], day))
+            day_scores = score_history.get((st["id"], day), {})
             if saved is not None:
                 attendance, s1, s2, s3 = saved
+                s1 = day_scores.get(0, s1)
+                s2 = day_scores.get(1, s2)
+                s3 = day_scores.get(2, s3)
+                complete += 1
+            elif day_scores:
+                attendance, s1, s2, s3 = "", None, None, None
+                s1 = day_scores.get(0)
+                s2 = day_scores.get(1)
+                s3 = day_scores.get(2)
                 complete += 1
             elif str(st.get("last_score_date") or "").strip() == date_label:
                 # Ayrim eski yozuvlarda tarix satri yo‘q, ammo shu sanada ball
@@ -7842,9 +7900,19 @@ async def api_teacher_export(request):
         marked = present = absent = excused = 0
         for ridx, st in enumerate(students, 1):
             saved = history.get((st["id"], day))
+            day_scores = score_history.get((st["id"], day), {})
             if saved is not None:
                 attendance, s1, s2, s3 = saved
+                s1 = day_scores.get(0, s1)
+                s2 = day_scores.get(1, s2)
+                s3 = day_scores.get(2, s3)
                 record_status = "Tarixdan olindi"
+            elif day_scores:
+                attendance, s1, s2, s3 = "", None, None, None
+                s1 = day_scores.get(0)
+                s2 = day_scores.get(1)
+                s3 = day_scores.get(2)
+                record_status = "Ball tarixi bo‘yicha"
             elif str(st.get("last_score_date") or "").strip() == date_label:
                 # Tarix satri yetishmagan eski yozuvda ham ball sanasini yo‘qotmaymiz.
                 attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
