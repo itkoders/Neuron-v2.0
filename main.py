@@ -902,8 +902,11 @@ def check_and_reset_daily_data():
             db_save_daily_history(student["id"], student, previous_day)
         # Faqat kunlik ball/davomat maydonlari tozalanadi. O‘quvchi,
         # to‘lov, oylik va boshqa yozuvlar saqlanib qoladi.
-        run("UPDATE students SET s1 = 0, s2 = 0, s3 = 0, davomat = ?, last_score_date = ''",
-            ("Kutilmoqda",))
+        # Yangi kun uchun ball qiymatlari bilan birga kiritilganlik belgilarini ham tozalaymiz.
+        # Aks holda eski s*_scored=1 belgisi bo‘sh katakni 0 ball qilib ko‘rsatadi.
+        run("UPDATE students SET s1 = 0, s2 = 0, s3 = 0, "
+            "s1_scored = 0, s2_scored = 0, s3_scored = 0, "
+            "davomat = ?, last_score_date = ''", ("Kutilmoqda",))
         db_set_setting("last_daily_reset", today)
         db_set_setting("last_noon_reset", today)
 
