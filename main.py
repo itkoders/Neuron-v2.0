@@ -290,6 +290,14 @@ def migrate_telegram_id_columns():
 
 
 def init_db():
+    # Android APK uchun alohida, Telegram Mini App autentifikatsiyasiga tegmaydigan sessiyalar.
+    run("""CREATE TABLE IF NOT EXISTS android_login_codes (
+        code_hash TEXT PRIMARY KEY, chat_id BIGINT NOT NULL,
+        created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, used_at BIGINT)""")
+    run("""CREATE TABLE IF NOT EXISTS android_sessions (
+        token_hash TEXT PRIMARY KEY, chat_id BIGINT NOT NULL,
+        created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL,
+        revoked_at BIGINT, last_used_at BIGINT)""")
     run("""CREATE TABLE IF NOT EXISTS plans (
         key TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0,
         student_limit INTEGER DEFAULT 0, duration_days INTEGER DEFAULT 0,
@@ -2360,6 +2368,35 @@ async def t_reg_contact(message: types.Message, state: FSMContext):
 @dp.message(TeacherStates.reg_contact, F.chat.type == "private")
 async def t_reg_contact_fallback(message: types.Message, state: FSMContext):
     await message.answer("📱 Iltimos, \"Raqamni tasdiqlash\" tugmasidan foydalaning.")
+
+
+@dp.message(Command("sharecontact"), F.chat.type == "private")
+async def android_teacher_share_contact(message: types.Message):
+    """Android APK dagi kutilayotgan o'qituvchi ro'yxatidan o'tish uchun o'z kontaktini so'rash."""
+    uid = message.from_user.id
+    raw = db_get_setting(f"mini_teacher_reg_{uid}")
+    if not raw:
+        await message.answer("Avval NEURON ilovasida o‘qituvchi ro‘yxatdan o‘tish formasini yuboring.")
+        return
+    try:
+        data = json.loads(raw)
+    except Exception:
+        db_set_setting(f"mini_teacher_reg_{uid}", "")
+        await message.answer("Ro‘yxatdan o‘tish ma’lumoti eskirgan. Ilovada qayta urinib ko‘ring.")
+        return
+    if not isinstance(data, dict) or not data.get("phone"):
+        await message.answer("Telefon raqami topilmadi. Ilovada qayta ro‘yxatdan o‘ting.")
+        return
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 O‘z raqamimni tasdiqlash", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(
+        "Telefon raqamingizni tasdiqlash uchun quyidagi tugmani bosing. "
+        "Faqat Telegram akkauntingizga tegishli kontakt qabul qilinadi.",
+        reply_markup=keyboard
+    )
 
 
 @dp.message(F.contact, F.chat.type == "private")
@@ -5433,8 +5470,98 @@ def verify_init_data(init_data):
         return None
 
 
-def miniapp_teacher(request):
+def _android_token_hash(token):
+    return hashlib.sha256(f"{PEPPER}:android-session:{token}".encode()).hexdigest()
+
+
+ANDROID_CODE_TTL = 300
+ANDROID_SESSION_TTL = 30 * 24 * 60 * 60
+_ANDROID_LOGIN_ATTEMPTS = {}
+
+
+def _android_code_hash(code):
+    return hashlib.sha256(f"{PEPPER}:android-code:{code}".encode()).hexdigest()
+
+
+def issue_android_login_code(chat_id):
+    now = int(time.time())
+    # Eski ishlatilgan kodlar va muddati tugagan sessiyalarni vaqti-vaqti bilan tozalaymiz.
+    run("DELETE FROM android_login_codes WHERE expires_at<? OR used_at IS NOT NULL", (now - 86400,))
+    run("DELETE FROM android_sessions WHERE (expires_at<? OR revoked_at IS NOT NULL) AND created_at<?",
+        (now, now - 86400))
+    code = f"{secrets.randbelow(10**10):010d}"
+    run("DELETE FROM android_login_codes WHERE chat_id=? AND used_at IS NULL", (int(chat_id),))
+    run("INSERT INTO android_login_codes (code_hash,chat_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)",
+        (_android_code_hash(code), int(chat_id), now, now + ANDROID_CODE_TTL))
+    return code
+
+
+@dp.message(Command("apk"), F.chat.type == "private")
+async def android_apk_code_command(message: types.Message):
+    code = issue_android_login_code(message.from_user.id)
+    await message.answer(
+        "NEURON Android uchun kirish kodi:\n\n"
+        f"{code}\n\n"
+        "Kod 5 daqiqa amal qiladi va faqat bir marta ishlaydi. Uni hech kimga yubormang. "
+        "Agar siz bu so‘rovni boshlamagan bo‘lsangiz, xabarni e’tiborsiz qoldiring."
+    )
+
+
+async def api_android_login(request):
+    now = int(time.time())
+    ip = request.remote or "unknown"
+    state = _ANDROID_LOGIN_ATTEMPTS.get(ip, [0, now])
+    if now - state[1] >= 900:
+        state = [0, now]
+    if state[0] >= 30:
+        return web.json_response({"error": "too_many_attempts"}, status=429)
+    body = await _read_json(request)
+    code = str(body.get("code", "")).strip()
+    if not re.fullmatch(r"\d{10}", code):
+        state[0] += 1
+        _ANDROID_LOGIN_ATTEMPTS[ip] = state
+        return web.json_response({"error": "invalid_or_expired_code"}, status=401)
+
+    row = run("UPDATE android_login_codes SET used_at=? WHERE code_hash=? AND used_at IS NULL AND expires_at>? RETURNING chat_id",
+              (now, _android_code_hash(code), now), fetch="one")
+    if not row:
+        state[0] += 1
+        _ANDROID_LOGIN_ATTEMPTS[ip] = state
+        return web.json_response({"error": "invalid_or_expired_code"}, status=401)
+
+    _ANDROID_LOGIN_ATTEMPTS.pop(ip, None)
+    token = secrets.token_urlsafe(48)
+    token_hash = _android_token_hash(token)
+    run("INSERT INTO android_sessions (token_hash,chat_id,created_at,expires_at,revoked_at,last_used_at) VALUES (?,?,?,?,NULL,?)",
+        (token_hash, int(row[0]), now, now + ANDROID_SESSION_TTL, now))
+    return web.json_response({"session_token": token, "expires_in": ANDROID_SESSION_TTL})
+
+
+async def api_android_logout(request):
+    authorization = str(request.headers.get("Authorization", "") or "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() == "bearer" and token:
+        run("UPDATE android_sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL",
+            (int(time.time()), _android_token_hash(token)))
+    return web.json_response({"ok": True})
+
+
+def miniapp_request_uid(request):
+    # Avval Telegram initData tekshiriladi; faqat yo‘q bo‘lsa Android bearer token ko‘riladi.
     uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    if uid:
+        return uid
+    authorization = str(request.headers.get("Authorization", "") or "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token or len(token) > 512:
+        return None
+    row = run("SELECT chat_id FROM android_sessions WHERE token_hash=? AND expires_at>? AND revoked_at IS NULL",
+              (_android_token_hash(token), int(time.time())), fetch="one")
+    return int(row[0]) if row else None
+
+
+def miniapp_teacher(request):
+    uid = miniapp_request_uid(request)
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
     if request.headers.get("X-App-Role", "").strip().lower() == "student":
@@ -5764,7 +5891,7 @@ AI_SESSIONS = {}  # student_id -> MemState (bot qayta ishga tushsa, tozalanadi)
 def miniapp_identity(request):
     """Telegram WebApp imzosini tekshiradi va faqat kerakli rol uchun DB tekshiruvini bajaradi."""
     check_and_reset_daily_data()
-    uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    uid = miniapp_request_uid(request)
     if not uid:
         return None, None, web.json_response({"error": "auth"}, status=401)
 
@@ -5823,7 +5950,7 @@ def miniapp_identity(request):
 
 
 def miniapp_admin(request):
-    uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    uid = miniapp_request_uid(request)
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
     if not is_admin_member(uid) or request.headers.get("X-App-Role", "").strip().lower() != "admin":
@@ -6584,7 +6711,7 @@ def _social_auth(request):
     if err: return None,None,None,err
     if kind == "entry":
         return None,None,None,web.json_response({"error":"role_required"},status=403)
-    uid = verify_init_data(request.headers.get("X-Init-Data",""))
+    uid = miniapp_request_uid(request)
     if not uid: return None,None,None,web.json_response({"error":"auth"},status=401)
     user = _social_tg_user(request)
     telegram_username = str(user.get("username") or "").strip().lstrip("@")[:64]
@@ -7007,7 +7134,7 @@ async def api_me(request):
 def miniapp_entry_uid(request):
     if request.headers.get("X-App-Role", "").strip().lower() != "entry":
         return None, web.json_response({"error": "forbidden"}, status=403)
-    uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+    uid = miniapp_request_uid(request)
     if not uid:
         return None, web.json_response({"error": "auth"}, status=401)
     return uid, None
@@ -7170,7 +7297,7 @@ async def api_teacher_unlink_account(request):
     kind, teacher, err = miniapp_identity(request)
     if err or kind != "teacher":
         return err or web.json_response({"error": "forbidden"}, status=403)
-    uid = int(verify_init_data(request.headers.get("X-Init-Data", "")) or 0)
+    uid = int(miniapp_request_uid(request) or 0)
     if not uid:
         return web.json_response({"error": "auth"}, status=401)
     # Asosiy chat_id va qo‘shimcha qurilma bog‘lanishi faqat joriy Telegram ID uchun uziladi.
@@ -7524,7 +7651,7 @@ async def api_teacher_export(request):
         # Joriy Mini Appni ochgan, imzosi tekshirilgan Telegram akkaunti.
         # teacher["chat_id"] asosiy akkaunt bo‘lishi mumkin; qo‘shimcha qurilmada
         # hisobot aynan hozir kirgan akkauntga yuborilishi kerak.
-        telegram_target = int(verify_init_data(request.headers.get("X-Init-Data", "")) or teacher.get("chat_id") or 0)
+        telegram_target = int(miniapp_request_uid(request) or teacher.get("chat_id") or 0)
     if not has_feature(teacher, "export"):
         return web.json_response({"error": "feature_locked"}, status=403)
 
@@ -9102,9 +9229,11 @@ async def start_web_server():
     port = int(os.environ.get("PORT", "8080"))
     @web.middleware
     async def miniapp_subscription_guard(request, handler):
-        if not request.path.startswith("/api/") or request.path == "/api/public-settings":
+        if not request.path.startswith("/api/") or request.path in {
+            "/api/public-settings", "/api/android/login", "/api/android/logout"
+        }:
             return await handler(request)
-        uid = verify_init_data(request.headers.get("X-Init-Data", ""))
+        uid = miniapp_request_uid(request)
         if uid and request.path == "/api/me":
             SUB_CACHE.pop(uid, None)
         if uid and not await is_subscribed(uid):
@@ -9120,6 +9249,8 @@ async def start_web_server():
     app.router.add_get("/health", health)
     app.router.add_get("/app", miniapp_page)
     app.router.add_get("/api/public-settings", api_public_settings)
+    app.router.add_post("/api/android/login", api_android_login)
+    app.router.add_post("/api/android/logout", api_android_logout)
     app.router.add_get("/api/settings", api_teacher_settings)
     app.router.add_get("/api/teacher/access-log", api_teacher_access_log)
     app.router.add_post("/api/settings/phone", api_teacher_phone_save)
