@@ -90,7 +90,7 @@ jobs:
         run: rm -f android/release.keystore
 
       - name: Upload debug APK
-        if: ${{ inputs.build_type == 'debug' }}
+        if: ${{ github.event_name == 'push' || inputs.build_type == 'debug' }}
         uses: actions/upload-artifact@v4
         with:
           name: NEURON-Android-Debug-${{ github.run_number }}
