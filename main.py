@@ -849,12 +849,29 @@ def _plan(row):
 PLAN_COLS = "key, name, price, student_limit, duration_days, features, active, subject_limit, badge"
 
 
-def db_plan(key):
-    return _plan(run(f"SELECT {PLAN_COLS} FROM plans WHERE key = ?", (key,), fetch="one"))
+_PLAN_CACHE = {"at": 0.0, "items": None}
+_PLAN_CACHE_TTL = 5.0
 
 
 def db_plans():
-    return [_plan(r) for r in run(f"SELECT {PLAN_COLS} FROM plans ORDER BY price, student_limit", fetch="all")]
+    # Tariflar kam o'zgaradi; har bir API so'rovida Neon'ga takroriy SELECT yubormaymiz.
+    # Cache nusxasi qaytariladi, shuning uchun ichki set qiymatlari tasodifan o'zgarmaydi.
+    now = time.monotonic()
+    cached = _PLAN_CACHE["items"]
+    if cached is None or now - _PLAN_CACHE["at"] >= _PLAN_CACHE_TTL:
+        loaded = [_plan(r) for r in run(
+            f"SELECT {PLAN_COLS} FROM plans ORDER BY price, student_limit", fetch="all"
+        )]
+        _PLAN_CACHE["items"] = [
+            dict(p, features=frozenset(p.get("features") or set())) for p in loaded
+        ]
+        _PLAN_CACHE["at"] = now
+        cached = _PLAN_CACHE["items"]
+    return [dict(p, features=set(p["features"])) for p in cached]
+
+
+def db_plan(key):
+    return next((p for p in db_plans() if p["key"] == key), None)
 
 
 def save_plan_field(key, field, value):
@@ -912,11 +929,18 @@ def db_teacher(tid):
 
 
 def teacher_by_chat(chat_id):
-    row = run(f"SELECT {TEACHER_COLS} FROM teachers WHERE chat_id = ? AND active = 1", (chat_id,), fetch="one")
-    if row:
-        return _teacher(row)
-    row = run(f"SELECT {TEACHER_COLS} FROM teachers WHERE id = (SELECT teacher_id FROM teacher_access WHERE chat_id = ? LIMIT 1) AND active = 1",
-              (chat_id,), fetch="one")
+    # To'g'ridan-to'g'ri chat_id va qo'shimcha qurilma bog'lanishini bitta so'rovda tekshiramiz.
+    row = run(
+        f"""SELECT {TEACHER_COLS} FROM teachers
+            WHERE active = 1 AND (
+                chat_id = ? OR id = (
+                    SELECT teacher_id FROM teacher_access WHERE chat_id = ? LIMIT 1
+                )
+            )
+            ORDER BY CASE WHEN chat_id = ? THEN 0 ELSE 1 END
+            LIMIT 1""",
+        (chat_id, chat_id, chat_id), fetch="one"
+    )
     return _teacher(row)
 
 
@@ -6682,22 +6706,26 @@ async def api_teacher_settings(request):
     t, err = miniapp_teacher(request)
     if err:
         return err
-    payments_enabled = has_feature(t, "payments")
+    plan, _ = effective_plan(t)
+    features = plan["features"] if plan else set()
+    payments_enabled = "payments" in features
     rows = run(
-        "SELECT s.id, s.fio, s.group_name, s.code, s.subject_id, sub.name, "
+        "SELECT s.id, s.fio, s.group_name, COALESCE(i.code, s.code), s.subject_id, sub.name, "
         "s.payment_amount, s.teacher_note, s.phone "
         "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
+        "LEFT JOIN student_identity_members m ON m.student_id = s.id "
+        "LEFT JOIN student_identities i ON i.id = m.identity_id "
         "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
         (t["id"],), fetch="all"
     )
     return web.json_response({
         "phone": t.get("phone") or "",
         "channel_id": t.get("channel_id") or "",
-        "channel_enabled": has_feature(t, "channel"),
+        "channel_enabled": "channel" in features,
         "payment": (teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}) if payments_enabled else {},
         "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
-                      "code": student_public_code(r[0]), "subject_id": r[4], "subject_name": r[5],
+                      "code": r[3], "subject_id": r[4], "subject_name": r[5],
                       "payment_amount": (r[6] or 0) if payments_enabled else 0, "teacher_note": r[7] or "",
                       "phone": r[8] or ""} for r in rows]
     })
@@ -7567,6 +7595,12 @@ async def api_teacher_payments(request):
     end_month = datetime.strptime(through_month, "%Y-%m")
     charge_batch = []
     charge_stamp = local_now().strftime("%Y-%m-%d %H:%M:%S")
+    # Oldin yaratilgan oylar uchun har safar qayta INSERT/commit qilmaymiz.
+    existing_rows = run(
+        "SELECT student_id, month FROM student_monthly_charges WHERE teacher_id=? AND month<=?",
+        (teacher["id"], through_month), fetch="all"
+    ) or []
+    existing_charges = {(int(r[0]), str(r[1])) for r in existing_rows}
 
     def flush_charge_batch():
         if not charge_batch:
@@ -7586,9 +7620,10 @@ async def api_teacher_payments(request):
             cursor_month = datetime.strptime(local_now().strftime("%Y-%m"), "%Y-%m")
         while cursor_month <= end_month:
             month_key = cursor_month.strftime("%Y-%m")
-            charge_batch.append((teacher["id"], st["id"], month_key,
-                                 int(st.get("payment_amount") or 0), charge_stamp, charge_stamp))
-            if len(charge_batch) >= 100:
+            if (int(st["id"]), month_key) not in existing_charges:
+                charge_batch.append((teacher["id"], st["id"], month_key,
+                                     int(st.get("payment_amount") or 0), charge_stamp, charge_stamp))
+            if len(charge_batch) >= 500:
                 flush_charge_batch()
             cursor_month = (cursor_month.replace(day=28) + timedelta(days=4)).replace(day=1)
     flush_charge_batch()
