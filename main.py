@@ -405,6 +405,12 @@ def init_db():
         for member in members:
             run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
                 (canonical_id,member[0]))
+    # attendance_history jadvali quyida yaratiladi, lekin eski yozuvlarni
+    # ko'chirish undan oldin bajariladi. Shu sababli avval xavfsiz yaratamiz.
+    # CREATE TABLE IF NOT EXISTS mavjud yozuvlarga tegmaydi.
+    run("""CREATE TABLE IF NOT EXISTS attendance_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
+        davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
     legacy_attendance = run("""SELECT m.identity_id,h.date_str,h.davomat,h.id
         FROM attendance_history h JOIN student_identity_members m ON m.student_id=h.student_id
         WHERE h.davomat IS NOT NULL AND h.davomat <> '' ORDER BY h.id""",fetch="all")
