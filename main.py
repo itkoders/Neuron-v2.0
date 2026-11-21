@@ -474,10 +474,12 @@ def _init_db_impl():
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
     logging.info("DB INIT STEP 3A: bulk migrating legacy attendance")
     run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
-        SELECT m.identity_id,h.date_str,h.davomat,CURRENT_TIMESTAMP::text
+        SELECT DISTINCT ON (m.identity_id,h.date_str)
+            m.identity_id,h.date_str,h.davomat,CURRENT_TIMESTAMP::text
         FROM attendance_history h
         JOIN student_identity_members m ON m.student_id=h.student_id
         WHERE h.davomat IS NOT NULL AND h.davomat <> ''
+        ORDER BY m.identity_id,h.date_str,h.id DESC
         ON CONFLICT(identity_id,date_str) DO UPDATE SET
             status=excluded.status,updated_at=excluded.updated_at""")
     logging.info("DB INIT STEP 3B: legacy attendance migration completed")
@@ -660,12 +662,12 @@ def init_db():
         logging.info("Startup: database migration transaction committed")
     except Exception:
         try:
-            conn.rollback()
-        finally:
-            try:
+            if not conn.closed:
+                conn.rollback()
                 conn.close()
-            except Exception:
-                pass
+        except Exception:
+            logging.exception("Database migration rollback/close failed")
+        finally:
             _DB_THREAD_LOCAL.connection = None
         raise
     finally:
