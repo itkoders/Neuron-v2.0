@@ -7512,10 +7512,20 @@ async def api_teacher_export(request):
     )
     history = {}
     for row in history_rows:
-        try:
-            history_date = datetime.strptime(str(row[1]), "%d.%m.%Y").date()
-        except (TypeError, ValueError):
-            continue
+        raw_date = str(row[1] or "").strip()
+        history_date = None
+        for date_format in ("%d.%m.%Y", "%Y-%m-%d", "%d-%m-%Y",
+                            "%Y-%m-%d %H:%M:%S", "%d.%m.%Y %H:%M:%S"):
+            try:
+                history_date = datetime.strptime(raw_date, date_format).date()
+                break
+            except (TypeError, ValueError):
+                continue
+        if history_date is None:
+            try:
+                history_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).date()
+            except (TypeError, ValueError):
+                continue
         history[(row[0], history_date)] = row[2:6]
 
     wb = Workbook()
@@ -7599,6 +7609,11 @@ async def api_teacher_export(request):
             saved = history.get((st["id"], day))
             if saved is not None:
                 attendance, s1, s2, s3 = saved
+                complete += 1
+            elif str(st.get("last_score_date") or "").strip() == date_label:
+                # Ayrim eski yozuvlarda tarix satri yo‘q, ammo shu sanada ball
+                # kiritilgani students.last_score_date orqali tasdiqlanadi.
+                attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
                 complete += 1
             elif day == today:
                 attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
@@ -7830,6 +7845,10 @@ async def api_teacher_export(request):
             if saved is not None:
                 attendance, s1, s2, s3 = saved
                 record_status = "Tarixdan olindi"
+            elif str(st.get("last_score_date") or "").strip() == date_label:
+                # Tarix satri yetishmagan eski yozuvda ham ball sanasini yo‘qotmaymiz.
+                attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
+                record_status = "Ball sanasi bo‘yicha tiklandi"
             elif day == today:
                 attendance, s1, s2, s3 = st["davomat"], st["s1"], st["s2"], st["s3"]
                 record_status = "Bugungi holat"
