@@ -434,15 +434,23 @@ def init_db():
                            (tid,fio_key), fetch="one")
         run("INSERT INTO student_identity_members (identity_id,student_id) VALUES (?,?) ON CONFLICT(student_id) DO NOTHING",
             (identity[0],sid))
-    # Bir xil ism-familiyali o‘quvchining turli guruh/fan yozuvlarini bitta kodga birlashtiramiz.
-    for tid, fio_key, canonical_id in run(
-        "SELECT teacher_id,fio_key,MIN(id) FROM student_identities GROUP BY teacher_id,fio_key",fetch="all"):
-        members = run("""SELECT m.student_id FROM student_identity_members m
-            JOIN student_identities i ON i.id=m.identity_id
-            WHERE i.teacher_id=? AND i.fio_key=?""",(tid,fio_key),fetch="all")
-        for member in members:
-            run("UPDATE student_identity_members SET identity_id=? WHERE student_id=?",
-                (canonical_id,member[0]))
+    # Bir xil ism-familiyali o‘quvchining turli guruh/fan yozuvlarini bitta profilga
+    # bitta SQL so‘rovida birlashtiramiz. Oldingi kod har bir profil uchun alohida
+    # SELECT va UPDATE yuborib, Neon tarmoq kechikishi sabab startni cho‘zardi.
+    logging.info("DB INIT STEP 2A: merging student identities in one query")
+    run("""UPDATE student_identity_members AS m
+        SET identity_id = (
+            SELECT MIN(i2.id)
+            FROM student_identities AS i1
+            JOIN student_identities AS i2
+              ON i2.teacher_id = i1.teacher_id AND i2.fio_key = i1.fio_key
+            WHERE i1.id = m.identity_id
+        )
+        WHERE EXISTS (
+            SELECT 1 FROM student_identities AS i
+            WHERE i.id = m.identity_id
+        )""")
+    logging.info("DB INIT STEP 2B: student identity merge completed")
     logging.info("DB INIT STEP 3: student identity migration completed")
     # attendance_history jadvali quyida yaratiladi, lekin eski yozuvlarni
     # ko'chirish undan oldin bajariladi. Shu sababli avval xavfsiz yaratamiz.
