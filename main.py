@@ -3,6 +3,7 @@ import io
 import re
 import base64
 import time
+import threading
 import hmac
 import hashlib
 import asyncio
@@ -96,6 +97,12 @@ dp = Dispatcher()
 # HTTP port bazadagi migratsiyalar tugashini kutib qolmasligi uchun readiness holati.
 STARTUP_READY = False
 
+# Reuse database connections per worker thread. Opening a new Neon connection
+# for every SQL statement made startup migrations extremely slow.
+_DB_THREAD_LOCAL = threading.local()
+_SQLITE_MEMORY_CONN = None
+_SQLITE_MEMORY_LOCK = threading.RLock()
+
 # PostgreSQL advisory lock prevents overlapping Render deploy instances from
 # polling Telegram simultaneously. Keep this connection open while polling.
 _BOT_POLLING_LOCK_CONN = None
@@ -148,8 +155,27 @@ def release_bot_polling_lock():
 # 1. MA'LUMOTLAR BAZASI
 # ============================================================
 def run(sql, params=(), fetch="none"):
-    # Neon PostgreSQL asosiy baza; DATABASE_URL bo'lmasa eski SQLite fallback ishlaydi.
+    # Neon PostgreSQL asosiy baza; DATABASE_URL bo'lmasa SQLite fallback ishlaydi.
+    # :memory: SQLite har ulanishda yangi baza yaratadi, shuning uchun bitta
+    # umumiy ulanishdan foydalanamiz.
+    global _SQLITE_MEMORY_CONN
     if not DATABASE_URL:
+        if DB_NAME == ":memory:":
+            with _SQLITE_MEMORY_LOCK:
+                if _SQLITE_MEMORY_CONN is None:
+                    _SQLITE_MEMORY_CONN = sqlite3.connect(":memory:", check_same_thread=False)
+                conn = _SQLITE_MEMORY_CONN
+                cur = conn.execute(sql, params)
+                if fetch == "all":
+                    result = cur.fetchall()
+                elif fetch == "one":
+                    result = cur.fetchone()
+                elif fetch == "lastid":
+                    result = cur.lastrowid
+                else:
+                    result = None
+                conn.commit()
+                return result
         with closing(sqlite3.connect(DB_NAME)) as conn:
             cur = conn.execute(sql, params)
             if fetch == "all":
@@ -164,7 +190,12 @@ def run(sql, params=(), fetch="none"):
             return result
 
     import psycopg2
-    conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+    # Har bir worker thread o'z PostgreSQL ulanishini qayta ishlatadi.
+    # Bu Neon bilan yuzlab ketma-ket TLS ulanishlar ochilishining oldini oladi.
+    conn = getattr(_DB_THREAD_LOCAL, "connection", None)
+    if conn is None or conn.closed:
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
+        _DB_THREAD_LOCAL.connection = conn
     try:
         cur = conn.cursor()
         cur.execute("SET search_path TO neuron_bot, public")
@@ -201,10 +232,12 @@ def run(sql, params=(), fetch="none"):
         conn.commit()
         return result
     except Exception:
-        conn.rollback()
+        try:
+            conn.rollback()
+        finally:
+            conn.close()
+            _DB_THREAD_LOCAL.connection = None
         raise
-    finally:
-        conn.close()
 
 
 def migrate_sqlite_to_neon():
