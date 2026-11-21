@@ -2308,7 +2308,13 @@ async def public_plans(call: types.CallbackQuery):
     text = "💎 **NEURON V2 — TARIFLAR**\n\n" + ("\n\n".join(lines) if lines else "Hozircha faol tarif mavjud emas.")
     text += "\n\n_Tarifni tanlasangiz, so‘rovingiz Super Adminga yuboriladi. Tarif faqat tasdiqlangandan keyin faollashadi._"
     rows.append([btn("⬅️ Orqaga", "back_home")])
-    await call.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="Markdown")
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    try:
+        await call.message.edit_text(text, reply_markup=markup, parse_mode="Markdown")
+    except Exception as exc:
+        # Eski xabar o'chirilgan yoki tahrirlab bo'lmaydigan bo'lsa, yangi xabar yuboramiz.
+        logging.warning("Tarif oynasi eski xabarda yangilanmadi; yangi xabar yuboriladi: %s", exc)
+        await call.message.answer(text, reply_markup=markup, parse_mode="Markdown")
 
 
 @dp.callback_query(F.data.startswith("plan_request:"))
