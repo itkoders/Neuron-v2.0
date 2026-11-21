@@ -47,51 +47,89 @@ class MainActivity : Activity() {
     private fun showLogin() {
         webView?.destroy()
         webView = null
-        root = LinearLayout(this).apply {
+
+        // ScrollView keeps the login screen usable with large system fonts
+        // and on short displays; controls use content-driven heights.
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(32, 36, 32, 36)
+            setPadding(dp(24), dp(28), dp(24), dp(28))
             setBackgroundColor(Color.rgb(8, 15, 30))
         }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setBackgroundColor(Color.rgb(8, 15, 30))
+            addView(content, android.widget.ScrollView.LayoutParams(-1, -1))
+        }
+
         val title = TextView(this).apply {
             text = "NEURON"
-            textSize = 32f
+            textSize = 34f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            includeFontPadding = true
         }
         val subtitle = TextView(this).apply {
             text = "Ta’lim boshqaruv tizimi"
-            textSize = 15f
+            textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
+            includeFontPadding = true
         }
         codeInput = EditText(this).apply {
             hint = "Telegram botdan olingan 10 xonali kod"
             setSingleLine(true)
-            textSize = 17f
+            textSize = 16f
             setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
+            setHintTextColor(Color.rgb(165, 178, 198))
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             filters = arrayOf(android.text.InputFilter.LengthFilter(10))
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = true
+            minHeight = dp(68)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(17, 29, 49))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(58, 75, 100))
+            }
         }
         val button = Button(this).apply {
             text = "Xavfsiz kirish"
+            isAllCaps = false
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            minHeight = dp(60)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            backgroundTintList = null
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(13, 148, 136))
+                cornerRadius = dp(14).toFloat()
+            }
             setOnClickListener { exchangeCode() }
         }
         status = TextView(this).apply {
             text = "Telegram botda /apk buyrug‘ini yuboring. Kod 5 daqiqa amal qiladi."
+            textSize = 14f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
+            includeFontPadding = true
+            setPadding(dp(4), dp(4), dp(4), dp(4))
         }
         progress = ProgressBar(this).apply { visibility = View.GONE }
-        root.addView(title, matchWrap())
-        root.addView(subtitle, matchWrap())
-        root.addView(codeInput, LinearLayout.LayoutParams(-1, 58).apply { topMargin = 28 })
-        root.addView(button, LinearLayout.LayoutParams(-1, 52).apply { topMargin = 12 })
-        root.addView(progress, matchWrap())
-        root.addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 16 })
-        setContentView(root)
+
+        content.addView(title, matchWrap())
+        content.addView(subtitle, matchWrap())
+        content.addView(codeInput, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(32) })
+        content.addView(button, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        content.addView(progress, matchWrap())
+        content.addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        setContentView(scroll)
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun matchWrap() = LinearLayout.LayoutParams(-1, -2)
 
