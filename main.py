@@ -196,9 +196,15 @@ def run(sql, params=(), fetch="none"):
     if conn is None or conn.closed:
         conn = psycopg2.connect(DATABASE_URL, connect_timeout=15)
         _DB_THREAD_LOCAL.connection = conn
+        _DB_THREAD_LOCAL.search_path_ready = False
     try:
         cur = conn.cursor()
-        cur.execute("SET search_path TO neuron_bot, public")
+        # SET search_path har bir SQL oldidan yuborilsa, har bir API amali
+        # uchun qo'shimcha Neon tarmoq kechikishi paydo bo'ladi. Session
+        # darajasida bir marta o'rnatish commitlardan keyin ham saqlanadi.
+        if not getattr(_DB_THREAD_LOCAL, "search_path_ready", False):
+            cur.execute("SET search_path TO neuron_bot, public")
+            _DB_THREAD_LOCAL.search_path_ready = True
         query = sql.strip()
         pragma = re.match(r"PRAGMA\s+table_info\(([^)]+)\)", query, re.I)
         if pragma:
@@ -238,6 +244,7 @@ def run(sql, params=(), fetch="none"):
         finally:
             conn.close()
             _DB_THREAD_LOCAL.connection = None
+            _DB_THREAD_LOCAL.search_path_ready = False
         raise
 
 
