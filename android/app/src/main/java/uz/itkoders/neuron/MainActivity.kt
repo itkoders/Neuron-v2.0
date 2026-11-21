@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.webkit.JavascriptInterface
@@ -208,7 +209,7 @@ class MainActivity : Activity() {
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            settings.safeBrowsingEnabled = true
+            if (Build.VERSION.SDK_INT >= 26) settings.safeBrowsingEnabled = true
             addJavascriptInterface(SessionBridge(), "NeuronAndroid")
             webChromeClient = object : WebChromeClient() {
                 override fun onShowFileChooser(
@@ -234,9 +235,11 @@ class MainActivity : Activity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val uri = request.url
+                    val uriPort = if (uri.port == -1) 443 else uri.port
+                    val basePort = if (baseUri.port == -1) 443 else baseUri.port
                     val sameOrigin = uri.scheme == "https" &&
                         uri.host.equals(baseUri.host, ignoreCase = true) &&
-                        (uri.port == -1 || uri.port == baseUri.port || baseUri.port == -1)
+                        uriPort == basePort
                     if (sameOrigin) return false
                     if (uri.scheme == "https" || uri.scheme == "tel" || uri.scheme == "mailto") {
                         try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) {}
