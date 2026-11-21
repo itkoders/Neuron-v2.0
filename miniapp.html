@@ -2854,7 +2854,15 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
       else if (me.role === "teacher") initTeacher(me);
       else if (me.role === "parent") initParent(me.parent);
       else initStudent(me.student);
-      try { const topProfile = await api("/api/social/profile"); const topAvatar = $("topUserAvatar"); if (topAvatar) topAvatar.innerHTML = avatarHTML(topProfile.profile); $("who").textContent = topProfile.profile.display_name; } catch (_) {}
+      // Kirish tanlash oynasida ijtimoiy profil so'rovi kerak emas; 403 va ortiqcha DB yukini oldini olamiz.
+      if (me.role !== "entry") {
+        try {
+          const topProfile = await api("/api/social/profile");
+          const topAvatar = $("topUserAvatar");
+          if (topAvatar) topAvatar.innerHTML = avatarHTML(topProfile.profile);
+          $("who").textContent = topProfile.profile.display_name;
+        } catch (_) {}
+      }
     } catch (err) {
       if (err.data && err.data.error === "subscription_required") {
         showSubscriptionRequired(err.data.join_url || "");
