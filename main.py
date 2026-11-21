@@ -472,14 +472,15 @@ def _init_db_impl():
     run("""CREATE TABLE IF NOT EXISTS attendance_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER, date_str TEXT,
         davomat TEXT, s1 INTEGER, s2 INTEGER, s3 INTEGER)""")
-    legacy_attendance = run("""SELECT m.identity_id,h.date_str,h.davomat,h.id
-        FROM attendance_history h JOIN student_identity_members m ON m.student_id=h.student_id
-        WHERE h.davomat IS NOT NULL AND h.davomat <> '' ORDER BY h.id""",fetch="all")
-    for identity_id,date_str,status,_ in legacy_attendance:
-        run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
-            VALUES(?,?,?,?) ON CONFLICT(identity_id,date_str) DO UPDATE SET
-            status=excluded.status,updated_at=excluded.updated_at""",
-            (identity_id,date_str,status,local_now().isoformat()))
+    logging.info("DB INIT STEP 3A: bulk migrating legacy attendance")
+    run("""INSERT INTO identity_attendance(identity_id,date_str,status,updated_at)
+        SELECT m.identity_id,h.date_str,h.davomat,CURRENT_TIMESTAMP::text
+        FROM attendance_history h
+        JOIN student_identity_members m ON m.student_id=h.student_id
+        WHERE h.davomat IS NOT NULL AND h.davomat <> ''
+        ON CONFLICT(identity_id,date_str) DO UPDATE SET
+            status=excluded.status,updated_at=excluded.updated_at""")
+    logging.info("DB INIT STEP 3B: legacy attendance migration completed")
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_schedules (
         teacher_id INTEGER PRIMARY KEY, due_day INTEGER NOT NULL DEFAULT 5,
         reminder_interval_days INTEGER NOT NULL DEFAULT 2, enabled INTEGER DEFAULT 0,
