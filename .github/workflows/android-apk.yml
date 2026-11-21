@@ -1,6 +1,9 @@
 name: Build NEURON Android APK
 
 on:
+  push:
+    branches:
+      - android-apk
   workflow_dispatch:
     inputs:
       neuron_base_url:
@@ -24,7 +27,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      NEURON_BASE_URL: ${{ inputs.neuron_base_url }}
+      NEURON_BASE_URL: ${{ inputs.neuron_base_url || 'https://neuron-v2.onrender.com' }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -62,7 +65,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: Prepare permanent Android signing key
-        if: ${{ inputs.build_type == 'release' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type == 'release' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -75,7 +78,7 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/release.keystore" >> "$GITHUB_ENV"
 
       - name: Build debug APK
-        if: ${{ inputs.build_type == 'debug' }}
+        if: ${{ github.event_name == 'push' || inputs.build_type == 'debug' }}
         run: gradle -p android assembleDebug -PNEURON_BASE_URL="$NEURON_BASE_URL" -PVERSION_CODE="$GITHUB_RUN_NUMBER" -PVERSION_NAME="1.0.$GITHUB_RUN_NUMBER"
 
       - name: Build signed release APK
