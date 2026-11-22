@@ -2438,22 +2438,31 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
   async function api(path, opts = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
-    let res;
+    let res, data = {};
     try {
       const method = String(opts.method || "GET").toUpperCase();
       // Telegram WebView eski GET javoblarini keshlab qolmasligi uchun API javoblarini keshlamaymiz.
       const requestPath = method === "GET"
         ? path + (path.includes("?") ? "&" : "?") + "_ts=" + Date.now()
         : path;
-      res = await fetch(requestPath, { ...opts, cache: "no-store", signal: controller.signal,
-        headers: { "Cache-Control": "no-cache", "Pragma": "no-cache", "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(ANDROID_TOKEN ? { "Authorization": "Bearer " + ANDROID_TOKEN } : {}), ...(opts.headers || {}) } });
+      const headers = { "Cache-Control": "no-cache", "Pragma": "no-cache", "Content-Type": "application/json", "X-Init-Data": INIT, "X-App-Role": new URLSearchParams(location.search).get("role") || "", ...(ANDROID_TOKEN ? { "Authorization": "Bearer " + ANDROID_TOKEN } : {}), ...(opts.headers || {}) };
+      // Render/Neon start-up migratsiyasi vaqtida API 503 qaytaradi.
+      // Bu ruxsat xatosi emas: tayyor bo'lguncha qisqa kutib qayta urinib ko'ramiz.
+      for (let attempt = 0; attempt < 24; attempt++) {
+        res = await fetch(requestPath, { ...opts, cache: "no-store", signal: controller.signal, headers });
+        data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (res.status === 503 && data.status === "starting" && attempt < 23) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+          continue;
+        }
+        break;
+      }
     } catch (err) {
       if (err.name === "AbortError") throw new Error("So'rov vaqti tugadi. Qayta urinib ko'ring.");
       throw err;
     } finally { clearTimeout(timeout); }
-    let data = {};
-    try { data = await res.json(); } catch (_) {}
-    if (!res.ok) throw Object.assign(new Error(data.error || "http " + res.status), { status: res.status, data });
+    if (!res.ok) throw Object.assign(new Error(data.error || data.message || "http " + res.status), { status: res.status, data });
     return data;
   }
   async function apiUpload(path, form) {
