@@ -7330,19 +7330,26 @@ async def api_me(request):
     if err:
         return err
     if kind == "entry":
-        teacher = teacher_by_chat(obj)
+        # Kirish ekranida 6 ta mustaqil DB tekshiruvini ketma-ket emas, parallel bajaramiz.
+        teacher, student_link, parent_ids, parent_pending_row, admin_flag, last_role = await asyncio.gather(
+            asyncio.to_thread(teacher_by_chat, obj),
+            asyncio.to_thread(run, "SELECT student_id FROM student_links WHERE chat_id=?", (obj,), fetch="one"),
+            asyncio.to_thread(db_parent_miniapp_student_ids, obj),
+            asyncio.to_thread(run, "SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"),
+            asyncio.to_thread(is_admin_member, obj),
+            asyncio.to_thread(db_get_setting, f"last_role_{obj}")
+        )
         pending = bool(teacher and (not teacher.get("admin_approved") or teacher.get("verify_status") != "approved"))
-        student_link = run("SELECT student_id FROM student_links WHERE chat_id=?", (obj,), fetch="one")
-        parent_linked = bool(db_parent_miniapp_student_ids(obj))
-        parent_pending = bool(run("SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"))
-        teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved" and has_feature(teacher, "mini_app"))
-        available_roles = (["admin"] if is_admin_member(obj) else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
+        parent_linked = bool(parent_ids)
+        teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved"
+                             and await asyncio.to_thread(has_feature, teacher, "mini_app"))
+        available_roles = (["admin"] if admin_flag else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
         return web.json_response({
-            "role":"entry", "is_admin":is_admin_member(obj), "teacher_pending":pending, "teacher_ready":teacher_ready,
+            "role":"entry", "is_admin":bool(admin_flag), "teacher_pending":pending, "teacher_ready":teacher_ready,
             "teacher_name":teacher_name(teacher) if teacher else "",
             "student_linked":bool(student_link), "parent_linked":parent_linked,
-            "parent_pending":parent_pending, "available_roles":available_roles,
-            "last_role":db_get_setting(f"last_role_{obj}") or ""
+            "parent_pending":bool(parent_pending_row), "available_roles":available_roles,
+            "last_role":last_role or ""
         })
     # Tizimga kirgan barcha haqiqiy rollar Jamiyat foydalanuvchilari ro‘yxatida avtomatik paydo bo‘ladi.
     social_uid, social_profile, social_kind, social_err = _social_auth(request, identity=(kind, obj))
