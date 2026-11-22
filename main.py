@@ -1375,7 +1375,7 @@ def _parent_miniapp_student_rows(parent_chat_id):
         JOIN students s ON s.id=member.student_id
         JOIN teachers t ON t.id=s.teacher_id
         WHERE pc.parent_chat_id=? AND t.active=1
-          AND t.verify_status='approved' AND t.admin_approved=TRUE
+          AND t.verify_status='approved' AND t.admin_approved=1
         ORDER BY s.fio""", (parent_chat_id,), fetch="all") or []
     plans = {plan["key"]: plan for plan in db_plans()}
     fallback = plans.get("free")
