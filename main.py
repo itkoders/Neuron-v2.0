@@ -7646,7 +7646,7 @@ def _teacher_payments_payload(teacher_id, month):
         FROM student_payment_entries p JOIN students s ON s.id=p.student_id
         WHERE p.teacher_id=? AND p.month=? ORDER BY p.paid_date DESC,p.id DESC LIMIT 150""",
         (teacher_id, month), fetch="all")
-    return web.json_response({
+    return {
         "month":month,
         "schedule":teacher_payment_schedule(teacher_id),
         "students":[{"id":st["id"],"fio":st["fio"],"group_name":st.get("group_name") or "Guruhsiz",
