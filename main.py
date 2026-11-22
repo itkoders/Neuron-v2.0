@@ -7345,31 +7345,51 @@ async def api_admin_chat_moderate(request):
     return web.json_response({"ok":True})
 
 
+def _entry_core_snapshot(chat_id):
+    # Kirish sahifasi uchun bir nechta mustaqil tekshiruvni bitta Neon so'roviga birlashtiramiz.
+    row = run(f"""
+        SELECT t.id, t.first_name, t.last_name, t.phone, t.plan_key, t.plan_expires,
+               t.active, t.channel_id, t.chat_id, t.created_at, t.verify_status,
+               t.doc_file_id, t.verify_note, t.admin_approved,
+               EXISTS(SELECT 1 FROM student_links sl WHERE sl.chat_id=%s),
+               EXISTS(SELECT 1 FROM pending_requests pr WHERE pr.parent_chat_id=%s),
+               (%s = %s OR EXISTS(SELECT 1 FROM super_admins sa WHERE sa.chat_id=%s)),
+               (SELECT value FROM settings WHERE key=%s)
+        FROM (SELECT 1) seed
+        LEFT JOIN LATERAL (
+            SELECT {TEACHER_COLS} FROM teachers
+            WHERE active=1 AND (chat_id=%s OR id=(
+                SELECT teacher_id FROM teacher_access WHERE chat_id=%s LIMIT 1
+            ))
+            ORDER BY CASE WHEN chat_id=%s THEN 0 ELSE 1 END
+            LIMIT 1
+        ) t ON TRUE
+    """, (chat_id, chat_id, int(chat_id), OWNER_TELEGRAM_ID, chat_id,
+          f"last_role_{chat_id}", chat_id, chat_id, chat_id), fetch="one")
+    if not row:
+        return None, False, False, False, ""
+    teacher = _teacher(row[:14])
+    return teacher, bool(row[14]), bool(row[15]), bool(row[16]), row[17] or ""
+
+
 async def api_me(request):
 
     kind, obj, err = miniapp_identity(request)
     if err:
         return err
     if kind == "entry":
-        # Kirish ekranida 6 ta mustaqil DB tekshiruvini ketma-ket emas, parallel bajaramiz.
-        teacher, student_link, parent_ids, parent_pending_row, admin_flag, last_role = await asyncio.gather(
-            asyncio.to_thread(teacher_by_chat, obj),
-            asyncio.to_thread(run, "SELECT student_id FROM student_links WHERE chat_id=?", (obj,), fetch="one"),
-            asyncio.to_thread(db_parent_miniapp_student_ids, obj),
-            asyncio.to_thread(run, "SELECT id FROM pending_requests WHERE parent_chat_id=? LIMIT 1", (obj,), fetch="one"),
-            asyncio.to_thread(is_admin_member, obj),
-            asyncio.to_thread(db_get_setting, f"last_role_{obj}")
-        )
-        pending = bool(teacher and (not teacher.get("admin_approved") or teacher.get("verify_status") != "approved"))
+        teacher, student_link, parent_pending, admin_flag, last_role = await asyncio.to_thread(_entry_core_snapshot, obj)
+        parent_ids = await asyncio.to_thread(db_parent_miniapp_student_ids, obj)
         parent_linked = bool(parent_ids)
         teacher_ready = bool(teacher and teacher.get("admin_approved") and teacher.get("verify_status") == "approved"
                              and await asyncio.to_thread(has_feature, teacher, "mini_app"))
+        pending = bool(teacher and (not teacher.get("admin_approved") or teacher.get("verify_status") != "approved"))
         available_roles = (["admin"] if admin_flag else []) + (["teacher"] if teacher_ready else []) + (["student"] if student_link else []) + (["parent"] if parent_linked else [])
         return web.json_response({
             "role":"entry", "is_admin":bool(admin_flag), "teacher_pending":pending, "teacher_ready":teacher_ready,
             "teacher_name":teacher_name(teacher) if teacher else "",
             "student_linked":bool(student_link), "parent_linked":parent_linked,
-            "parent_pending":bool(parent_pending_row), "available_roles":available_roles,
+            "parent_pending":bool(parent_pending), "available_roles":available_roles,
             "last_role":last_role or ""
         })
     # Tizimga kirgan barcha haqiqiy rollar Jamiyat foydalanuvchilari ro‘yxatida avtomatik paydo bo‘ladi.
