@@ -1821,7 +1821,7 @@ async def is_subscribed(uid):
     if not channels:
         return True
     cached = SUB_CACHE.get(uid)
-    if cached and time.time() - cached[1] < 60:
+    if cached and time.time() - cached[1] < 120:
         return cached[0]
     # Barcha kanallarni tekshiramiz; bittasida obuna bo'lmasa hammasi talab qilinadi.
     ok = True
@@ -5903,7 +5903,8 @@ async def api_subject(request):
     subj = owned_subject(t, sid)
     if not subj:
         return web.json_response({"error": "not_found"}, status=404)
-    students = db_students(t["id"], sid)
+    # Ma'lumotlar bazasi so'rovi event loopni band qilmasin.
+    students = await asyncio.to_thread(db_students, t["id"], sid)
     return web.json_response({"subject": _subj_payload(subj),
                               "students": [_stu_payload(s) for s in students.values()],
                               "today": local_now().strftime("%d.%m.%Y")})
@@ -6712,21 +6713,24 @@ async def api_teacher_settings(request):
     plan, _ = effective_plan(t)
     features = plan["features"] if plan else set()
     payments_enabled = "payments" in features
-    rows = run(
-        "SELECT s.id, s.fio, s.group_name, COALESCE(i.code, s.code), s.subject_id, sub.name, "
-        "s.payment_amount, s.teacher_note, s.phone "
-        "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
-        "LEFT JOIN student_identity_members m ON m.student_id = s.id "
-        "LEFT JOIN student_identities i ON i.id = m.identity_id "
-        "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
-        (t["id"],), fetch="all"
+    rows, subjects, payment = await asyncio.gather(
+        asyncio.to_thread(run,
+            "SELECT s.id, s.fio, s.group_name, COALESCE(i.code, s.code), s.subject_id, sub.name, "
+            "s.payment_amount, s.teacher_note, s.phone "
+            "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
+            "LEFT JOIN student_identity_members m ON m.student_id = s.id "
+            "LEFT JOIN student_identities i ON i.id = m.identity_id "
+            "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
+            (t["id"],), fetch="all"),
+        asyncio.to_thread(db_subjects, t["id"]),
+        asyncio.to_thread(teacher_payment_method, t["id"]) if payments_enabled else asyncio.sleep(0, result=None)
     )
     return web.json_response({
         "phone": t.get("phone") or "",
         "channel_id": t.get("channel_id") or "",
         "channel_enabled": "channel" in features,
-        "payment": (teacher_payment_method(t["id"]) or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}) if payments_enabled else {},
-        "subjects": [{"id": s["id"], "name": s["name"]} for s in db_subjects(t["id"])],
+        "payment": (payment or {"card_number":"","card_holder":"","bank_name":"","payment_type":"card","payment_details":""}) if payments_enabled else {},
+        "subjects": [{"id": s["id"], "name": s["name"]} for s in subjects],
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
                       "code": r[3], "subject_id": r[4], "subject_name": r[5],
                       "payment_amount": (r[6] or 0) if payments_enabled else 0, "teacher_note": r[7] or "",
@@ -7359,13 +7363,19 @@ async def api_me(request):
     if kind == "admin":
         return web.json_response({"role":"admin", "admin":{"name":"Super Admin"}})
     if kind == "teacher":
+        subject_rows, student_count, subject_count = await asyncio.gather(
+            asyncio.to_thread(db_subjects, obj["id"]),
+            asyncio.to_thread(teacher_student_count, obj["id"]),
+            asyncio.to_thread(teacher_subject_count, obj["id"])
+        )
+        plan_data = effective_plan(obj)[0]
         return web.json_response({"role": "teacher", "teacher": {"name": teacher_name(obj)},
-                                  "subjects": [_subj_payload(s) for s in db_subjects(obj["id"])],
-                                  "plan": (lambda p: {"key": p["key"], "name": p["name"],
-                                      "student_limit": p["student_limit"], "subject_limit": p["subject_limit"],
-                                      "features": sorted(p["features"]) })(effective_plan(obj)[0]),
-                                  "student_count": teacher_student_count(obj["id"]),
-                                  "subject_count": teacher_subject_count(obj["id"])})
+                                  "subjects": [_subj_payload(s) for s in subject_rows],
+                                  "plan": {"key": plan_data["key"], "name": plan_data["name"],
+                                      "student_limit": plan_data["student_limit"], "subject_limit": plan_data["subject_limit"],
+                                      "features": sorted(plan_data["features"])},
+                                  "student_count": student_count,
+                                  "subject_count": subject_count})
     if kind == "parent":
         children = [{"id": sid, "fio": child["fio"], "group_name": child["group_name"]}
                     for sid, child in db_parent_miniapp_children(obj)]
