@@ -518,6 +518,14 @@ def _init_db_impl():
         month TEXT NOT NULL, amount INTEGER NOT NULL,
         paid_date TEXT NOT NULL, note TEXT DEFAULT '',
         created_at TEXT)""")
+    # To'lov jurnali va qarzdorlik kabinetlarida tez-tez teacher/student/month
+    # bo'yicha qidiriladi. Eski Neon jadvallarida bu ustunlar uchun indeks yo'q edi.
+    # IF NOT EXISTS mavjud ma'lumotlarga tegmaydi va deploylarda xavfsiz qayta ishlaydi.
+    run("CREATE INDEX IF NOT EXISTS student_payment_entries_student_month_idx ON student_payment_entries (student_id, month) INCLUDE (amount)")
+    run("CREATE INDEX IF NOT EXISTS student_payment_entries_teacher_month_paid_idx ON student_payment_entries (teacher_id, month, paid_date DESC, id DESC) INCLUDE (student_id, amount, note)")
+    run("CREATE INDEX IF NOT EXISTS student_payment_entries_teacher_student_month_idx ON student_payment_entries (teacher_id, student_id, month) INCLUDE (amount, paid_date, note)")
+    run("CREATE INDEX IF NOT EXISTS student_monthly_charges_teacher_month_student_idx ON student_monthly_charges (teacher_id, month, student_id) INCLUDE (due_amount)")
+    run("CREATE INDEX IF NOT EXISTS student_monthly_charges_teacher_student_month_idx ON student_monthly_charges (teacher_id, student_id, month) INCLUDE (due_amount)")
     run("""CREATE TABLE IF NOT EXISTS payment_requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL, parent_chat_id BIGINT NOT NULL,
         amount INTEGER NOT NULL, method TEXT NOT NULL, reference TEXT DEFAULT '', status TEXT DEFAULT 'pending',
