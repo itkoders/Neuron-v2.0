@@ -1365,16 +1365,37 @@ def db_parent_student_ids(parent_chat_id):
             if active and verify_status == "approved" and admin_approved}
 
 
-def db_parent_miniapp_student_ids(parent_chat_id):
-    """Mini ilova uchun ota-ona farzandlari: tasdiq + o'qituvchi tarifida mini_app."""
-    allowed = set()
-    for sid in db_parent_student_ids(parent_chat_id):
-        st = db_student(sid)
-        teacher = db_teacher(st["teacher_id"]) if st else None
-        if teacher and has_feature(teacher, "mini_app"):
-            allowed.add(sid)
-    return allowed
+def _parent_miniapp_student_rows(parent_chat_id):
+    """Ota-ona uchun ruxsatli farzandlarni bitta JOIN bilan oladi (N+1 so'rovlarsiz)."""
+    student_columns = ", ".join("s." + column.strip() for column in STU_COLS.split(","))
+    rows = run(f"""SELECT DISTINCT {student_columns}, t.plan_key, t.plan_expires
+        FROM parent_children pc
+        JOIN student_identity_members root_member ON root_member.student_id=pc.student_id
+        JOIN student_identity_members member ON member.identity_id=root_member.identity_id
+        JOIN students s ON s.id=member.student_id
+        JOIN teachers t ON t.id=s.teacher_id
+        WHERE pc.parent_chat_id=? AND t.active=1
+          AND t.verify_status='approved' AND t.admin_approved=TRUE
+        ORDER BY s.fio""", (parent_chat_id,), fetch="all") or []
+    plans = {plan["key"]: plan for plan in db_plans()}
+    fallback = plans.get("free")
+    items = []
+    for row in rows:
+        plan = plans.get(row[20]) or fallback
+        if row[21] and plan and plan["key"] != "free" and expired(row[21]):
+            plan = fallback
+        if plan and "mini_app" in plan["features"]:
+            student = _student(row[:20])
+            items.append((student["id"], student))
+    return items
 
+
+def db_parent_miniapp_student_ids(parent_chat_id):
+    return {sid for sid, _ in _parent_miniapp_student_rows(parent_chat_id)}
+
+
+def db_parent_miniapp_children(parent_chat_id):
+    return _parent_miniapp_student_rows(parent_chat_id)
 
 def db_parent_children(parent_chat_id):
     items = []
