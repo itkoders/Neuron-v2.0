@@ -7590,18 +7590,8 @@ async def api_teacher_payment_schedule(request):
     return web.json_response({"schedule":teacher_payment_schedule(teacher["id"])})
 
 
-async def api_teacher_payments(request):
-    kind, teacher, err = miniapp_identity(request)
-    if err or kind != "teacher":
-        return err or web.json_response({"error":"forbidden"}, status=403)
-    if not has_feature(teacher, "payments"):
-        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
-    month = str(request.query.get("month", local_now().strftime("%Y-%m"))).strip()
-    try:
-        datetime.strptime(month, "%Y-%m")
-    except ValueError:
-        return web.json_response({"error":"bad_month"}, status=400)
-    students = list(db_students(teacher["id"]).values())
+def _teacher_payments_payload(teacher_id, month):
+    students = list(db_students(teacher_id).values())
     # Har ko'rilgan oy uchun qarzdorlik yozuvlarini har bir o'quvchiga alohida
     # INSERT qilish o'rniga 100 tadan guruhlab yuboramiz.
     through_month = max(month, local_now().strftime("%Y-%m"))
@@ -7611,7 +7601,7 @@ async def api_teacher_payments(request):
     # Oldin yaratilgan oylar uchun har safar qayta INSERT/commit qilmaymiz.
     existing_rows = run(
         "SELECT student_id, month FROM student_monthly_charges WHERE teacher_id=? AND month<=?",
-        (teacher["id"], through_month), fetch="all"
+        (teacher_id, through_month), fetch="all"
     ) or []
     existing_charges = {(int(r[0]), str(r[1])) for r in existing_rows}
 
@@ -7634,7 +7624,7 @@ async def api_teacher_payments(request):
         while cursor_month <= end_month:
             month_key = cursor_month.strftime("%Y-%m")
             if (int(st["id"]), month_key) not in existing_charges:
-                charge_batch.append((teacher["id"], st["id"], month_key,
+                charge_batch.append((teacher_id, st["id"], month_key,
                                      int(st.get("payment_amount") or 0), charge_stamp, charge_stamp))
             if len(charge_batch) >= 500:
                 flush_charge_batch()
@@ -7644,21 +7634,21 @@ async def api_teacher_payments(request):
         COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
           WHERE p.student_id=c.student_id AND p.month=c.month),0)
         FROM student_monthly_charges c WHERE c.teacher_id=? AND c.month=?""",
-        (teacher["id"], month), fetch="all")
+        (teacher_id, month), fetch="all")
     month_map = {int(r[0]): {"due":int(r[1] or 0),"paid":int(r[2] or 0)} for r in charge_rows}
     debt_rows = run("""SELECT c.student_id,
         SUM(c.due_amount-COALESCE((SELECT SUM(p.amount) FROM student_payment_entries p
           WHERE p.student_id=c.student_id AND p.month=c.month),0))
         FROM student_monthly_charges c WHERE c.teacher_id=? GROUP BY c.student_id""",
-        (teacher["id"],), fetch="all")
+        (teacher_id,), fetch="all")
     total_debt = {int(r[0]): max(0,int(r[1] or 0)) for r in debt_rows}
     history = run("""SELECT p.id,p.student_id,p.month,p.amount,p.paid_date,p.note,s.fio
         FROM student_payment_entries p JOIN students s ON s.id=p.student_id
         WHERE p.teacher_id=? AND p.month=? ORDER BY p.paid_date DESC,p.id DESC LIMIT 150""",
-        (teacher["id"], month), fetch="all")
+        (teacher_id, month), fetch="all")
     return web.json_response({
         "month":month,
-        "schedule":teacher_payment_schedule(teacher["id"]),
+        "schedule":teacher_payment_schedule(teacher_id),
         "students":[{"id":st["id"],"fio":st["fio"],"group_name":st.get("group_name") or "Guruhsiz",
             "monthly_fee":int(st.get("payment_amount") or 0),
             "due":month_map.get(st["id"],{}).get("due",0),
@@ -7667,7 +7657,22 @@ async def api_teacher_payments(request):
             "total_debt":total_debt.get(st["id"],0)} for st in students],
         "history":[{"id":r[0],"student_id":r[1],"month":r[2],"amount":int(r[3] or 0),
             "paid_date":r[4],"note":r[5] or "","fio":r[6]} for r in history]
-    })
+    }
+
+
+async def api_teacher_payments(request):
+    kind, teacher, err = miniapp_identity(request)
+    if err or kind != "teacher":
+        return err or web.json_response({"error":"forbidden"}, status=403)
+    if not has_feature(teacher, "payments"):
+        return web.json_response({"error":"feature_locked","feature":"payments"}, status=403)
+    month = str(request.query.get("month", local_now().strftime("%Y-%m"))).strip()
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return web.json_response({"error":"bad_month"}, status=400)
+    payload = await asyncio.to_thread(_teacher_payments_payload, teacher["id"], month)
+    return web.json_response(payload)
 
 
 async def api_teacher_payment_charge(request):
