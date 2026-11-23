@@ -1926,6 +1926,22 @@ dp.callback_query.outer_middleware(SubGuard())
 dp.callback_query.outer_middleware(CallbackGuard())
 
 
+def start_welcome_text(first_name):
+    """Telegram profilidagi ism bilan shaxsiylashtirilgan start xabari."""
+    display_name = md((first_name or "").strip() or "foydalanuvchi")
+    return (
+        "🧠 **NEURON V2 — TA’LIMNI BOSHQARISHNING YANGI AVLODI**\n\n"
+        f"👋 Assalomu alaykum, **{display_name}!**\n\n"
+        "🚀 NEURON V2 platformasiga xush kelibsiz!\n\n"
+        "📚 Ta’lim jarayonini boshqaring.\n"
+        "📊 O‘quv natijalari va ballarni kuzating.\n"
+        "📅 Davomatni nazorat qiling.\n"
+        "🔔 Ota-onalarni natijalardan xabardor qiling.\n\n"
+        "💎 Tariflar bilan tanishish: /tarif\n\n"
+        "👇 **Boshlash uchun kerakli bo‘limni tanlang:**"
+    )
+
+
 @dp.callback_query(F.data == "check_sub")
 async def check_sub(call: types.CallbackQuery):
     SUB_CACHE.pop(call.from_user.id, None)
@@ -1934,7 +1950,7 @@ async def check_sub(call: types.CallbackQuery):
         return
     await call.answer("✅ Rahmat! Endi botdan foydalanishingiz mumkin.", show_alert=True)
     try:
-        await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n💎 Tariflarni ko‘rish uchun /tarif buyrug‘ini yuboring.\n\n👇 **Kerakli bo‘limni tanlang:**",
+    await call.message.edit_text(start_welcome_text(call.from_user.first_name),
                                      reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
     except Exception:
         pass
@@ -2338,7 +2354,7 @@ async def save_start_rocket_sticker(message: types.Message):
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await send_start_rocket(message.chat.id)
-    await send_and_clean_both(message, "🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
+    await send_and_clean_both(message, start_welcome_text(message.from_user.first_name),
                               reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
 
@@ -2346,7 +2362,7 @@ async def start_cmd(message: types.Message, state: FSMContext):
 async def back_home(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
     await state.clear()
-    await call.message.edit_text("🚀 **NEURON V2 — TA’LIMNING YANGI BOSQICHI**\n\n✨ **Xush kelibsiz!**\n\n📚 Barcha fanlar bo‘yicha ta’lim jarayonini boshqaring.\n📊 O‘quv natijalari, ballar va davomatni kuzating.\n\n👇 **Kerakli bo‘limni tanlang:**",
+    await call.message.edit_text(start_welcome_text(call.from_user.first_name),
                                  reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
 
 
