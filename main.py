@@ -5370,6 +5370,16 @@ async def payment_reminders_once():
                                     f"🗓 Oy: **{month_key}** · To‘lov sanasi: **{schedule['due_day']}-sana**\n"
                                     f"💳 Qolgan qarz: **{due:,} so‘m**\n\n"
                                     "Iltimos, to‘lovni amalga oshiring yoki o‘qituvchi bilan bog‘laning.")
+                        # Oylik eslatmada ham kunlik xabardagi kabi o‘qituvchi aloqasi ko‘rsatiladi.
+                        contact_lines = [
+                            "",
+                            "━━━━━━━━━━━━━━━━━━",
+                            f"👨‍🏫 O‘qituvchi: **{md(teacher_name(teacher))}**",
+                        ]
+                        teacher_phone = format_phone_display(teacher.get("phone"))
+                        if teacher_phone and re.search(r"\\d", teacher_phone):
+                            contact_lines.append(f"📞 Telefon: **{md(teacher_phone)}**")
+                        text_msg = text_msg.rstrip() + "\\n" + "\\n".join(contact_lines)
                         targets = set(db_parent_chat_ids_for_student(st["id"]))
                         targets.update(int(x) for x in db_student_chat_ids_for_student(st["id"]) if x)
                         sent = 0
