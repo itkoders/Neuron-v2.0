@@ -1950,7 +1950,7 @@ async def check_sub(call: types.CallbackQuery):
         return
     await call.answer("✅ Rahmat! Endi botdan foydalanishingiz mumkin.", show_alert=True)
     try:
-    await call.message.edit_text(start_welcome_text(call.from_user.first_name),
+        await call.message.edit_text(start_welcome_text(call.from_user.first_name),
                                      reply_markup=main_menu_kb(call.from_user.id), parse_mode="Markdown")
     except Exception:
         pass
