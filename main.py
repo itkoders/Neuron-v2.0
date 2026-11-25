@@ -414,11 +414,31 @@ def _init_db_impl():
         group_name TEXT DEFAULT 'Guruhsiz',
         teacher_note TEXT DEFAULT 'Izoh mavjud emas',
         last_score_date TEXT DEFAULT '')""")
-    # PostgreSQL'da PRAGMA faqat neuron_bot schema'sini ko'radi;
-    # migratsiyani metadata tekshiruviga bog'lamaymiz, IF NOT EXISTS xavfsiz.
-    for score_col in ("s1", "s2", "s3"):
-        run(f"ALTER TABLE students ADD COLUMN IF NOT EXISTS {score_col} INTEGER DEFAULT 0")
-    run("ALTER TABLE students ADD COLUMN IF NOT EXISTS enrolled_month TEXT DEFAULT ''")
+    # PostgreSQL'dagi mavjud (qisman yaratilgan) bazalarni ham to'liq
+    # STU_COLS sxemasiga keltiramiz. IF NOT EXISTS takroriy deployda xavfsiz.
+    student_migrations = (
+        ("teacher_id", "BIGINT"),
+        ("subject_id", "BIGINT"),
+        ("fio", "TEXT DEFAULT ''"),
+        ("code", "TEXT DEFAULT ''"),
+        ("s1", "INTEGER DEFAULT 0"),
+        ("s2", "INTEGER DEFAULT 0"),
+        ("s3", "INTEGER DEFAULT 0"),
+        ("davomat", "TEXT DEFAULT 'Kutilmoqda'"),
+        ("payment_amount", "BIGINT DEFAULT 0"),
+        ("payment_status", "TEXT DEFAULT 'To''lanmagan'"),
+        ("payment_date", "TEXT DEFAULT '-'"),
+        ("phone", "TEXT DEFAULT 'Kiritilmagan'"),
+        ("group_name", "TEXT DEFAULT 'Guruhsiz'"),
+        ("teacher_note", "TEXT DEFAULT 'Izoh mavjud emas'"),
+        ("last_score_date", "TEXT DEFAULT ''"),
+        ("enrolled_month", "TEXT DEFAULT ''"),
+        ("s1_scored", "INTEGER DEFAULT 0"),
+        ("s2_scored", "INTEGER DEFAULT 0"),
+        ("s3_scored", "INTEGER DEFAULT 0"),
+    )
+    for column, definition in student_migrations:
+        run(f"ALTER TABLE students ADD COLUMN IF NOT EXISTS {column} {definition}")
     student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
     current_month = local_now().strftime("%Y-%m")
     run("UPDATE students SET enrolled_month=? WHERE enrolled_month IS NULL OR enrolled_month=''", (current_month,))
@@ -1053,8 +1073,11 @@ def teacher_limit_reached(t):
 
 
 def has_feature(t, feat):
+    # Loyiha egasi tarif cheklovlaridan mustasno; o'qituvchilar esa o'z tarifiga bo'ysunadi.
+    if t and (t.get("_super_admin_access") or is_super(t.get("chat_id"))):
+        return True
     p, _ = effective_plan(t)
-    return feat in p["features"]
+    return bool(p and feat in p["features"])
 
 
 # --- Kunlik va oylik yangilanish ---
@@ -5822,7 +5845,11 @@ def miniapp_teacher(request):
     if request.headers.get("X-App-Role", "").strip().lower() == "student":
         return None, web.json_response({"error": "forbidden"}, status=403)
     t = teacher_by_chat(uid)
-    if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved") or not has_feature(t, "mini_app"):
+    if not t or not t["active"] or t["verify_status"] != "approved" or not t.get("admin_approved"):
+        return None, web.json_response({"error": "forbidden"}, status=403)
+    if is_super(uid):
+        t["_super_admin_access"] = True
+    elif not has_feature(t, "mini_app"):
         return None, web.json_response({"error": "forbidden"}, status=403)
     return t, None
 
@@ -6173,7 +6200,9 @@ def miniapp_identity(request):
     # Bot havolasida rol aniq berilgan bo'lsa, boshqa rollar bazasini tekshirmaymiz.
     if requested_role == "teacher":
         t = teacher_by_chat(uid)
-        if t and t["active"] and t["verify_status"] == "approved" and t.get("admin_approved") and has_feature(t, "mini_app"):
+        if t and t["active"] and t["verify_status"] == "approved" and t.get("admin_approved") and (is_super(uid) or has_feature(t, "mini_app")):
+            if is_super(uid):
+                t["_super_admin_access"] = True
             return "teacher", t, None
         return None, None, web.json_response({"error": "forbidden"}, status=403)
 
