@@ -407,16 +407,12 @@ def _init_db_impl():
         group_name TEXT DEFAULT 'Guruhsiz',
         teacher_note TEXT DEFAULT 'Izoh mavjud emas',
         last_score_date TEXT DEFAULT '')""")
-    student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
-    # Eski/yangi bazalarda students jadvali turlicha bo‘lishi mumkin.
-    # Ball ustunlarini CREATE TABLE IF NOT EXISTS mavjud jadvalga qo‘shmaydi,
-    # shuning uchun har birini alohida va xavfsiz qo‘shamiz.
+    # PostgreSQL'da PRAGMA faqat neuron_bot schema'sini ko'radi;
+    # migratsiyani metadata tekshiruviga bog'lamaymiz, IF NOT EXISTS xavfsiz.
     for score_col in ("s1", "s2", "s3"):
-        if score_col not in student_cols:
-            run(f"ALTER TABLE students ADD COLUMN {score_col} INTEGER DEFAULT 0")
+        run(f"ALTER TABLE students ADD COLUMN IF NOT EXISTS {score_col} INTEGER DEFAULT 0")
+    run("ALTER TABLE students ADD COLUMN IF NOT EXISTS enrolled_month TEXT DEFAULT ''")
     student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
-    if "enrolled_month" not in student_cols:
-        run("ALTER TABLE students ADD COLUMN enrolled_month TEXT DEFAULT ''")
     current_month = local_now().strftime("%Y-%m")
     run("UPDATE students SET enrolled_month=? WHERE enrolled_month IS NULL OR enrolled_month=''", (current_month,))
     for score_idx in (1, 2, 3):
@@ -589,9 +585,9 @@ def _init_db_impl():
         scope TEXT DEFAULT 'general', subject_id INTEGER)""")
     community_cols = {r[1] for r in run("PRAGMA table_info(community_messages)", fetch="all")}
     if "scope" not in community_cols:
-        run("ALTER TABLE community_messages ADD COLUMN scope TEXT DEFAULT 'general'")
+        run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'general'")
     if "subject_id" not in community_cols:
-        run("ALTER TABLE community_messages ADD COLUMN subject_id INTEGER")
+        run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS subject_id INTEGER")
     run("CREATE INDEX IF NOT EXISTS idx_community_scope_subject ON community_messages(scope,subject_id,id)")
     run("""CREATE TABLE IF NOT EXISTS community_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
