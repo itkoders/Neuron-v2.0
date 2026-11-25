@@ -433,12 +433,15 @@ def _init_db_impl():
     if "payment_details" not in payment_cols:
         run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_details TEXT DEFAULT ''")
     run("""CREATE TABLE IF NOT EXISTS student_identities (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, teacher_id INTEGER NOT NULL,
+        id BIGSERIAL PRIMARY KEY, teacher_id BIGINT NOT NULL,
         fio_key TEXT NOT NULL, group_name TEXT NOT NULL, code TEXT UNIQUE NOT NULL,
         created_at TEXT, UNIQUE(teacher_id,fio_key,group_name))""")
+    # Telegram ID va eski teacher_id qiymatlari 32-bit INTEGER chegarasidan katta bo‘lishi mumkin.
+    run("ALTER TABLE student_identities ALTER COLUMN teacher_id TYPE BIGINT")
     run("""CREATE TABLE IF NOT EXISTS student_identity_members (
-        identity_id INTEGER NOT NULL, student_id INTEGER NOT NULL UNIQUE,
+        identity_id BIGINT NOT NULL, student_id BIGINT NOT NULL UNIQUE,
         PRIMARY KEY(identity_id,student_id))""")
+    run("ALTER TABLE student_identity_members ALTER COLUMN student_id TYPE BIGINT")
     run("""CREATE TABLE IF NOT EXISTS identity_attendance (
         identity_id INTEGER NOT NULL, date_str TEXT NOT NULL, status TEXT NOT NULL,
         updated_at TEXT, PRIMARY KEY(identity_id,date_str))""")
