@@ -358,9 +358,9 @@ def _init_db_impl():
         features TEXT DEFAULT '', active INTEGER DEFAULT 1, subject_limit INTEGER DEFAULT 0, badge TEXT DEFAULT '')""")
     plan_columns = {r[1] for r in run("PRAGMA table_info(plans)", fetch="all")}
     if "subject_limit" not in plan_columns:
-        run("ALTER TABLE plans ADD COLUMN subject_limit INTEGER DEFAULT 0")
+        run("ALTER TABLE plans ADD COLUMN IF NOT EXISTS subject_limit INTEGER DEFAULT 0")
     if "badge" not in plan_columns:
-        run("ALTER TABLE plans ADD COLUMN badge TEXT DEFAULT ''")
+        run("ALTER TABLE plans ADD COLUMN IF NOT EXISTS badge TEXT DEFAULT ''")
     run("""CREATE TABLE IF NOT EXISTS teachers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id BIGINT UNIQUE,
