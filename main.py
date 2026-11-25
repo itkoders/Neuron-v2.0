@@ -1490,6 +1490,7 @@ class TeacherStates(StatesGroup):
     subj_labels = State()
     stu_name = State()
     stu_group = State()
+    stu_telegram_id = State()
     custom_score = State()
     custom_pay = State()
     note_text = State()
@@ -2383,6 +2384,20 @@ async def save_start_rocket_sticker(message: types.Message):
 async def start_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await send_start_rocket(message.chat.id)
+    # O'qituvchi oldindan Telegram ID biriktirgan bo'lsa, o'quvchi /start bilan darhol kabinetiga kiradi.
+    linked = run("SELECT student_id FROM student_links WHERE chat_id = ?", (message.from_user.id,), fetch="one")
+    st = db_student(linked[0]) if linked else None
+    if st:
+        teacher = db_teacher(st["teacher_id"])
+        if teacher and teacher["active"] and teacher["verify_status"] == "approved" and teacher.get("admin_approved"):
+            await state.update_data(student_id=st["id"])
+            db_log_student_login(st["id"], st["fio"])
+            subj = db_subject(st["subject_id"])
+            await send_and_clean_both(message, cabinet_text(st, subj, db_students(st["teacher_id"], st["subject_id"]), "🎓 **O'QUVCHI SHAXSIY KABINETI**"),
+                                      reply_markup=student_cabinet_kb(st["id"]), delay=300)
+            return
+        await send_and_clean_both(message, "⛔ O'qituvchi hisobi hozircha faol emas yoki Super Admin tasdig'idan o'tmagan.", delay=60)
+        return
     await send_and_clean_both(message, start_welcome_text(message.from_user.first_name),
                               reply_markup=main_menu_kb(message.from_user.id), delay=120)
 
@@ -3015,12 +3030,58 @@ async def tp_student_card(call: types.CallbackQuery):
         await call.answer("O'quvchi topilmadi.", show_alert=True)
         return
     subj = db_subject(st["subject_id"])
+    linked = run("SELECT chat_id FROM student_links WHERE student_id=? ORDER BY chat_id LIMIT 1", (st["id"],), fetch="one")
+    link_line = f"\n🔗 Telegram ID: `{linked[0]}`" if linked else "\n🔗 Telegram: biriktirilmagan"
     await call.message.edit_text(
         f"👤 **{md(st['fio'])}**\n📚 Fan: {md(subj['name'])}\n🏫 Guruh: {md(st['group_name'])}\n"
         f"🔑 Kod: `{st['code']}`\n📞 Tel: {md(st['phone'])}\n📌 Davomat: {st['davomat']}\n"
-        f"💳 To'lov: {st['payment_status']}\n\n{score_text(st, subj['labels'])}",
-        reply_markup=kb([[btn("🗑 O'chirish", f"tp_del_{st['id']}")], [btn("⬅️ Orqaga", f"tp_list_stu_{subj['id']}")]]),
+        f"💳 To'lov: {st['payment_status']}{link_line}\n\n{score_text(st, subj['labels'])}",
+        reply_markup=kb([[btn("🔗 Telegram ID biriktirish", f"tp_stulink_{st['id']}")],
+                         [btn("🗑 O'chirish", f"tp_del_{st['id']}")],
+                         [btn("⬅️ Orqaga", f"tp_list_stu_{subj['id']}")]]),
         parse_mode="Markdown")
+
+
+@dp.callback_query(F.data.startswith("tp_stulink_"))
+async def tp_student_link_start(call: types.CallbackQuery, state: FSMContext):
+    t = _me(call)
+    st = owned_student(t, int(call.data.split("_")[2])) if t else None
+    if not st:
+        await call.answer("O'quvchi topilmadi.", show_alert=True)
+        return
+    await call.answer()
+    await state.clear()
+    await state.update_data(link_student_id=st["id"])
+    await state.set_state(TeacherStates.stu_telegram_id)
+    await call.message.edit_text(
+        f"🔗 **{md(st['fio'])}** uchun Telegram foydalanuvchi ID raqamini yuboring.\n\n"
+        "O'quvchi Telegram'da @userinfobot orqali o'z ID raqamini bilib olishi mumkin. "
+        "Faqat raqam yuboring. ID biriktirilgach, o'quvchi botda /start bossa kabineti ochiladi.",
+        reply_markup=kb([[btn("❌ Bekor qilish", f"tp_stu_{st['id']}")]]), parse_mode="Markdown")
+
+
+@dp.message(TeacherStates.stu_telegram_id, F.chat.type == "private")
+async def tp_student_link_save(message: types.Message, state: FSMContext):
+    raw = (message.text or "").strip()
+    if not raw.isdigit() or len(raw) < 5 or len(raw) > 15:
+        await send_and_clean_both(message, "❌ Telegram ID faqat 5–15 xonali raqam bo'lishi kerak. Qayta yuboring.", delay=30)
+        return
+    chat_id = int(raw)
+    data = await state.get_data()
+    t = _me(message)
+    st = owned_student(t, data.get("link_student_id")) if t else None
+    if not st:
+        await state.clear()
+        await send_and_clean_both(message, "❌ O'quvchi topilmadi yoki bu o'quvchi sizga tegishli emas.", delay=30)
+        return
+    existing = run("SELECT student_id FROM student_links WHERE chat_id=?", (chat_id,), fetch="one")
+    if existing and int(existing[0]) != int(st["id"]):
+        await send_and_clean_both(message, "⛔ Bu Telegram ID boshqa o'quvchiga biriktirilgan. Avval eski bog'lanishni admin orqali tekshiring.", delay=45)
+        return
+    run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id", (chat_id, st["id"]))
+    await state.clear()
+    audit(message.from_user.id, "student_telegram_link", str(st["id"]), str(chat_id))
+    await send_and_clean_both(message, f"✅ **{md(st['fio'])}** o'quvchisining Telegram ID raqami biriktirildi.\n\nEndi shu Telegram akkaunt egasi @{(await bot.get_chat(chat_id)).username or 'foydalanuvchi'} botda /start bossa, o'quvchi kabineti ochiladi.", delay=60)
 
 
 @dp.callback_query(F.data.startswith("tp_del_"))
