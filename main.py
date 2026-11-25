@@ -382,9 +382,8 @@ def _init_db_impl():
         verify_status TEXT DEFAULT 'approved',
         doc_file_id TEXT,
         verify_note TEXT)""")
-    teacher_columns = {r[1] for r in run("PRAGMA table_info(teachers)", fetch="all")}
-    if "admin_approved" not in teacher_columns:
-        run("ALTER TABLE teachers ADD COLUMN admin_approved INTEGER DEFAULT 0")
+    # PostgreSQL schema/search_path farqi sabab PRAGMA'ga tayanmaymiz.
+    run("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS admin_approved INTEGER DEFAULT 0")
     run("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS code_encrypted TEXT")
     # Eski telefon tasdig‘idan o‘tgan arizalarni yangi qoidaga mos ravishda faollashtiramiz.
     # Admin tomonidan aniq rad etilgan yoki bloklangan akkauntlarga tegmaymiz.
@@ -447,11 +446,8 @@ def _init_db_impl():
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_methods (
         teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
         bank_name TEXT DEFAULT '', updated_at TEXT)""")
-    payment_cols = {r[1] for r in run("PRAGMA table_info(teacher_payment_methods)", fetch="all")}
-    if "payment_type" not in payment_cols:
-        run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_type TEXT DEFAULT 'card'")
-    if "payment_details" not in payment_cols:
-        run("ALTER TABLE teacher_payment_methods ADD COLUMN payment_details TEXT DEFAULT ''")
+    run("ALTER TABLE teacher_payment_methods ADD COLUMN IF NOT EXISTS payment_type TEXT DEFAULT 'card'")
+    run("ALTER TABLE teacher_payment_methods ADD COLUMN IF NOT EXISTS payment_details TEXT DEFAULT ''")
     run("""CREATE TABLE IF NOT EXISTS student_identities (
         id BIGSERIAL PRIMARY KEY, teacher_id BIGINT NOT NULL,
         fio_key TEXT NOT NULL, group_name TEXT NOT NULL, code TEXT UNIQUE NOT NULL,
@@ -607,11 +603,8 @@ def _init_db_impl():
         id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id BIGINT NOT NULL,
         body TEXT NOT NULL, created_at TEXT NOT NULL, hidden INTEGER DEFAULT 0,
         scope TEXT DEFAULT 'general', subject_id INTEGER)""")
-    community_cols = {r[1] for r in run("PRAGMA table_info(community_messages)", fetch="all")}
-    if "scope" not in community_cols:
-        run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'general'")
-    if "subject_id" not in community_cols:
-        run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS subject_id INTEGER")
+    run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS scope TEXT DEFAULT 'general'")
+    run("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS subject_id INTEGER")
     run("CREATE INDEX IF NOT EXISTS idx_community_scope_subject ON community_messages(scope,subject_id,id)")
     run("""CREATE TABLE IF NOT EXISTS community_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
