@@ -3081,7 +3081,7 @@ async def tp_student_link_save(message: types.Message, state: FSMContext):
     run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id", (chat_id, st["id"]))
     await state.clear()
     audit(message.from_user.id, "student_telegram_link", str(st["id"]), str(chat_id))
-    await send_and_clean_both(message, f"✅ **{md(st['fio'])}** o'quvchisining Telegram ID raqami biriktirildi.\n\nEndi shu Telegram akkaunt egasi @{(await bot.get_chat(chat_id)).username or 'foydalanuvchi'} botda /start bossa, o'quvchi kabineti ochiladi.", delay=60)
+    await send_and_clean_both(message, f"✅ **{md(st['fio'])}** o'quvchisining Telegram ID raqami biriktirildi.\n\nEndi shu Telegram akkaunt egasi botda /start bossa, o'quvchi kabineti ochiladi.", delay=60)
 
 
 @dp.callback_query(F.data.startswith("tp_del_"))
