@@ -322,13 +322,21 @@ def migrate_telegram_id_columns():
     if not DATABASE_URL:
         return
     id_columns = (
-        ("teachers", "chat_id"),
-        ("super_admins", "chat_id"),
-        ("student_links", "chat_id"),
-        ("parent_children", "parent_chat_id"),
-        ("pending_requests", "parent_chat_id"),
-        ("payment_requests", "parent_chat_id"),
-        ("audit_log", "actor"),
+        ("teachers", "chat_id"), ("super_admins", "chat_id"),
+        ("student_links", "chat_id"), ("parent_children", "parent_chat_id"),
+        ("pending_requests", "parent_chat_id"), ("payment_requests", "parent_chat_id"),
+        ("audit_log", "actor"), ("teacher_access", "teacher_id"),
+        ("subjects", "teacher_id"), ("students", "teacher_id"),
+        ("teacher_payment_methods", "teacher_id"), ("teacher_payment_schedules", "teacher_id"),
+        ("student_identities", "teacher_id"), ("student_identity_members", "student_id"),
+        ("identity_attendance", "identity_id"), ("attendance_history", "student_id"),
+        ("payment_reminder_log", "student_id"), ("student_monthly_charges", "teacher_id"),
+        ("student_monthly_charges", "student_id"), ("student_payment_entries", "teacher_id"),
+        ("student_payment_entries", "student_id"), ("payment_requests", "student_id"),
+        ("parent_children", "student_id"), ("pending_requests", "student_id"),
+        ("student_score_history", "student_id"), ("scheduled_broadcasts", "teacher_id"),
+        ("social_ads", "teacher_id"), ("export_download_tokens", "teacher_id"),
+        ("calendar_events", "teacher_id"), ("admin_notes", "teacher_id"),
     )
     for table, column in id_columns:
         row = run(
@@ -337,7 +345,6 @@ def migrate_telegram_id_columns():
             (table, column), fetch="one"
         )
         if row and row[0] != "bigint":
-            # INTEGER -> BIGINT ma'lumotni yo'qotmaydi; mavjud indeks/cheklovlar saqlanadi.
             run(f'ALTER TABLE "{table}" ALTER COLUMN "{column}" TYPE BIGINT')
             logging.info("Migrated neuron_bot.%s.%s to BIGINT", table, column)
 
