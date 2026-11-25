@@ -5753,15 +5753,24 @@ async def sync_bot_clock_bio():
 
 
 async def background_loop():
+    # Kunlik reset cache orqali har daqiqada tekshiriladi, lekin DB'ga faqat
+    # yangi kun almashganda murojaat qiladi. Qolgan rejalashtirilgan vazifalar
+    # Neon compute 5 daqiqalik idle vaqtdan keyin to'xtashi uchun 15 daqiqada
+    # bir bajariladi. Bu bepul tarifdagi compute sarfini kamaytiradi.
+    last_maintenance_run = 0.0
     while True:
         try:
-            # Yangi kun kirganda jurnalni bir daqiqa ichida avtomatik yangilash.
             check_and_reset_daily_data()
-            await auto_notify_once()
-            await payment_reminders_once()
-            await scheduled_broadcast_once()
-            await scheduled_tests_once()
-            await new_year_broadcast_once()
+            now_monotonic = time.monotonic()
+            if now_monotonic - last_maintenance_run >= 900:
+                # Xato yuz bersa ham keyingi urinish 15 daqiqadan keyin bo'ladi;
+                # bu xatoli DB so'rovlarining har daqiqada takrorlanishini to'xtatadi.
+                last_maintenance_run = now_monotonic
+                await auto_notify_once()
+                await payment_reminders_once()
+                await scheduled_broadcast_once()
+                await scheduled_tests_once()
+                await new_year_broadcast_once()
         except Exception:
             logging.exception("Fon vazifasi xatosi")
         await asyncio.sleep(60)
