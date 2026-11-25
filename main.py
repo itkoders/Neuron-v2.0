@@ -378,8 +378,7 @@ def _init_db_impl():
     teacher_columns = {r[1] for r in run("PRAGMA table_info(teachers)", fetch="all")}
     if "admin_approved" not in teacher_columns:
         run("ALTER TABLE teachers ADD COLUMN admin_approved INTEGER DEFAULT 0")
-    if "code_encrypted" not in teacher_columns:
-        run("ALTER TABLE teachers ADD COLUMN code_encrypted TEXT")
+    run("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS code_encrypted TEXT")
     # Eski telefon tasdig‘idan o‘tgan arizalarni yangi qoidaga mos ravishda faollashtiramiz.
     # Admin tomonidan aniq rad etilgan yoki bloklangan akkauntlarga tegmaymiz.
     run("""UPDATE teachers SET verify_status='approved', admin_approved=1, verify_note=NULL
