@@ -2699,14 +2699,16 @@ async def miniapp_teacher_contact(message: types.Message):
         await message.answer(with_message_emoji("O‘qituvchi hisobingiz avvaldan mavjud.", "teacher_registration"))
         return
     try:
-        teacher, code = create_teacher(uid, data, "admin_pending")
+        # verify_mode() hozir telefon orqali tasdiqlashni yetarli deb belgilaydi.
+        # Shu sabab yangi hisob darhol faol bo'ladi; aks holda foydalanuvchi
+        # kodni olsa ham admin_pending holatida kabinetga kira olmay qoladi.
+        teacher, code = create_teacher(uid, data, "approved")
         db_set_setting(key, "")
-        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; waiting for Super Admin approval")
-        await notify_super_admins_registration(teacher)
+        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; account activated")
         await message.answer(
-            with_message_emoji(f"Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz Super Admin tasdig‘iga yuborildi.\n"
+            with_message_emoji(f"✅ Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz faollashtirildi.\n"
             f"🔑 6 xonali kirish kodingiz: {code}\n"
-            "Tasdiqlangach, NEURON ilovasidan o‘qituvchi kabinetiga kira olasiz.", "teacher_registration")
+            "Kodni saqlang. Endi NEURON ilovasida shu kod bilan boshqa qurilmadan ham kirishingiz mumkin.", "teacher_registration")
         )
     except Exception:
         logging.exception("Mini App teacher registration failed")
@@ -2716,9 +2718,9 @@ async def miniapp_teacher_contact(message: types.Message):
 async def _finish_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
-    t, code = create_teacher(message.chat.id, data, "admin_pending")
-    await notify_super_admins_registration(t)
-    await message.answer("✅ Telefon raqamingiz tasdiqlandi. Hisobingiz Super Admin tasdig‘iga yuborildi.",
+    # Telefon raqami Telegram contact orqali tasdiqlandi — hisob darhol faollashadi.
+    t, code = create_teacher(message.chat.id, data, "approved")
+    await message.answer("✅ Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz faollashtirildi.",
                          reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
