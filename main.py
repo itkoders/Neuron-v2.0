@@ -408,6 +408,13 @@ def _init_db_impl():
         teacher_note TEXT DEFAULT 'Izoh mavjud emas',
         last_score_date TEXT DEFAULT '')""")
     student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
+    # Eski/yangi bazalarda students jadvali turlicha bo‘lishi mumkin.
+    # Ball ustunlarini CREATE TABLE IF NOT EXISTS mavjud jadvalga qo‘shmaydi,
+    # shuning uchun har birini alohida va xavfsiz qo‘shamiz.
+    for score_col in ("s1", "s2", "s3"):
+        if score_col not in student_cols:
+            run(f"ALTER TABLE students ADD COLUMN {score_col} INTEGER DEFAULT 0")
+    student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
     if "enrolled_month" not in student_cols:
         run("ALTER TABLE students ADD COLUMN enrolled_month TEXT DEFAULT ''")
     current_month = local_now().strftime("%Y-%m")
