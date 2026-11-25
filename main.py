@@ -439,14 +439,11 @@ def _init_db_impl():
     )
     for column, definition in student_migrations:
         run(f"ALTER TABLE students ADD COLUMN IF NOT EXISTS {column} {definition}")
-    student_cols = {r[1] for r in run("PRAGMA table_info(students)", fetch="all")}
     current_month = local_now().strftime("%Y-%m")
     run("UPDATE students SET enrolled_month=? WHERE enrolled_month IS NULL OR enrolled_month=''", (current_month,))
     for score_idx in (1, 2, 3):
         flag_col = f"s{score_idx}_scored"
-        if flag_col not in student_cols:
-            run(f"ALTER TABLE students ADD COLUMN {flag_col} INTEGER DEFAULT 0")
-            run(f"UPDATE students SET {flag_col}=1 WHERE COALESCE(s{score_idx}, 0) > 0")
+        run(f"UPDATE students SET {flag_col}=1 WHERE COALESCE({flag_col}, 0)=0 AND COALESCE(s{score_idx}, 0)>0")
     run("""CREATE TABLE IF NOT EXISTS teacher_payment_methods (
         teacher_id INTEGER PRIMARY KEY, card_number TEXT NOT NULL, card_holder TEXT NOT NULL,
         bank_name TEXT DEFAULT '', updated_at TEXT)""")
