@@ -1039,7 +1039,9 @@ async def notify_super_admins_registration(t):
     ), "teacher_registration")
     markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"),
                   btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
-    for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
+    admin_ids = {int(OWNER_TELEGRAM_ID)}
+    admin_ids.update(int(cid) for (cid,) in (run("SELECT chat_id FROM super_admins", fetch="all") or []) if cid)
+    for cid in admin_ids:
         try:
             await bot.send_message(cid, with_message_emoji(text, "teacher_registration"), reply_markup=markup, parse_mode="Markdown")
         except Exception:
@@ -1047,7 +1049,9 @@ async def notify_super_admins_registration(t):
 
 
 async def notify_super_admins_doc(t, file_id):
-    for (cid,) in run("SELECT chat_id FROM super_admins", fetch="all"):
+    admin_ids = {int(OWNER_TELEGRAM_ID)}
+    admin_ids.update(int(cid) for (cid,) in (run("SELECT chat_id FROM super_admins", fetch="all") or []) if cid)
+    for cid in admin_ids:
         try:
             await bot.send_photo(cid, file_id,
                                  caption=with_message_emoji(f"🪪 Yangi hujjat: **{md(teacher_name(t))}**\n📞 `{t['phone']}`", "teacher_registration"),
@@ -2680,13 +2684,14 @@ async def miniapp_teacher_contact(message: types.Message):
         await message.answer(with_message_emoji("O‘qituvchi hisobingiz avvaldan mavjud.", "teacher_registration"))
         return
     try:
-        teacher, code = create_teacher(uid, data, "approved")
+        teacher, code = create_teacher(uid, data, "admin_pending")
         db_set_setting(key, "")
-        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; account activated")
+        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; waiting for Super Admin approval")
+        await notify_super_admins_registration(teacher)
         await message.answer(
-            with_message_emoji(f"Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.\n"
+            with_message_emoji(f"Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz Super Admin tasdig‘iga yuborildi.\n"
             f"🔑 6 xonali kirish kodingiz: {code}\n"
-            "Kodni xavfsiz saqlang. Endi NEURON ilovasiga qaytib, o‘qituvchi kabinetini oching.", "teacher_registration")
+            "Tasdiqlangach, NEURON ilovasidan o‘qituvchi kabinetiga kira olasiz.", "teacher_registration")
         )
     except Exception:
         logging.exception("Mini App teacher registration failed")
@@ -2696,8 +2701,9 @@ async def miniapp_teacher_contact(message: types.Message):
 async def _finish_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
-    t, code = create_teacher(message.chat.id, data, "approved")
-    await message.answer("✅ Telefon raqamingiz tasdiqlandi va hisobingiz faollashtirildi.",
+    t, code = create_teacher(message.chat.id, data, "admin_pending")
+    await notify_super_admins_registration(t)
+    await message.answer("✅ Telefon raqamingiz tasdiqlandi. Hisobingiz Super Admin tasdig‘iga yuborildi.",
                          reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
