@@ -2910,7 +2910,7 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
     const adminRoleButton = document.querySelector('[data-entry-role="admin"]');
     if (adminRoleButton) adminRoleButton.classList.toggle("hidden", !me.is_admin);
     if (me.teacher_pending) {
-      host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
+      host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Quyidagi tugma orqali so‘rovni adminlarga qayta yuborishingiz mumkin.</div><button class="chip-btn primary" type="button" data-resend-teacher-approval>📨 Adminlarga so‘rovni yuborish</button><div id="teacherApprovalMessage"></div>';
     }
     const savedRole = String(me.last_role || "").trim();
     const allowedSaved = ["parent","student","teacher","admin"].includes(savedRole)
@@ -2926,7 +2926,7 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
         b.classList.toggle("role-selected", active);
         b.setAttribute("aria-pressed", active ? "true" : "false");
       });
-      if (me.teacher_pending && selected === "teacher") host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Tasdiqlangach, shu ilovadan kabinetga kira olasiz.</div>';
+      if (me.teacher_pending && selected === "teacher") host.innerHTML = '<div class="entry-message">⏳ O‘qituvchi hisobingiz Super Admin tasdig‘ini kutmoqda. Quyidagi tugma orqali so‘rovni adminlarga qayta yuborishingiz mumkin.</div><button class="chip-btn primary" type="button" data-resend-teacher-approval>📨 Adminlarga so‘rovni yuborish</button><div id="teacherApprovalMessage"></div>';
       else if (selected === "parent" && me.parent_pending && !me.parent_linked) host.innerHTML = '<div class="entry-message">⏳ Farzandni ulash so‘rovi o‘qituvchi tomonidan ko‘rib chiqilmoqda.</div>';
       else if (selected === "parent") host.innerHTML = '<h3>👨‍👩‍👧 Ota-ona kabineti</h3><p class="hint">Farzandingizning 4 xonali kodini kiriting. O‘qituvchi ulanishni tasdiqlaydi.</p>' + (me.parent_linked ? '<button class="chip-btn" type="button" id="openParentCabinet">Ulangan kabinetni ochish</button>' : '') + '<form class="entry-form" id="parentEntryForm"><input class="field" name="name" maxlength="80" placeholder="Ism-familiya (ixtiyoriy)"><input class="field" name="code" inputmode="numeric" maxlength="4" placeholder="4 xonali o‘quvchi kodi" required><button class="chip-btn primary" type="submit">Ulanish so‘rovini yuborish</button></form><div id="entryMessage"></div>';
       else if (selected === "student") host.innerHTML = '<h3>🎓 O‘quvchi kabineti</h3><p class="hint">O‘qituvchingiz bergan 4 xonali kodni kiriting.</p>' + (me.student_linked ? '<button class="chip-btn" type="button" id="openStudentCabinet">Ulangan kabinetni ochish</button>' : '') + '<form class="entry-form" id="studentEntryForm"><input class="field" name="code" inputmode="numeric" maxlength="4" placeholder="4 xonali kod" required><button class="chip-btn primary" type="submit">Kabinetga kirish</button></form><div id="entryMessage"></div>';
@@ -2980,6 +2980,24 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
       try { await api("/api/onboard/student",{method:"POST",body:JSON.stringify({code:fd.get("code")})}); await enterRole("student"); }
       catch(err) { setEntryMessage(errText(err)); }
     };
+    host.addEventListener("click", async e => {
+      const resend = e.target.closest("[data-resend-teacher-approval]");
+      if (!resend) return;
+      resend.disabled = true;
+      resend.textContent = "⏳ Yuborilmoqda…";
+      const msg = $("teacherApprovalMessage");
+      try {
+        const out = await api("/api/onboard/teacher/resend-approval", {method:"POST", body:"{}"});
+        if (msg) msg.textContent = out.already_approved
+          ? "✅ Hisobingiz allaqachon tasdiqlangan. Ilovani yangilang."
+          : "✅ So‘rov Super Adminlarga yuborildi. Admin tasdiqlash navbatini tekshiring.";
+        resend.textContent = "✅ So‘rov yuborildi";
+      } catch(err) {
+        if (msg) msg.textContent = errText(err);
+        resend.disabled = false;
+        resend.textContent = "📨 Qayta yuborish";
+      }
+    });
     const reg = $("teacherRegisterForm");
     if (reg) reg.onsubmit = async e => {
       e.preventDefault();
