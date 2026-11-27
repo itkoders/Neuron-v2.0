@@ -3024,7 +3024,7 @@ async def tp_stu_telegram_id_new(message: types.Message, state: FSMContext):
     fio = data.get("new_fio", "").strip()
     group = data.get("new_group", "Guruhsiz")
     code = db_add_student(t["id"], sid, fio, group)
-    student = run("SELECT id FROM students WHERE code=?", (code,), fetch="one")
+    student = run("SELECT id FROM students WHERE teacher_id=? AND subject_id=? AND fio=? AND group_name=? ORDER BY id DESC LIMIT 1", (t["id"], sid, fio, group), fetch="one")
     student_id = int(student[0]) if student else None
     if chat_id and student_id:
         run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?)", (chat_id, student_id))
