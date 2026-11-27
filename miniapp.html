@@ -2247,7 +2247,7 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
         </div>
         <div class="card panel settings-card">
           <h3>🔑 O‘quvchilar kirish kodlari</h3>
-          <p class="hint">Faqat sizning fanlaringizdagi o‘quvchilar kodlari ko‘rsatiladi.</p>
+          <p class="hint">Har bir o‘quvchining Telegram ID sini shu yerga kiriting. O‘quvchi hali botda Start bosmagan bo‘lsa ham ID saqlanadi; keyin /start bosganda kabineti avtomatik ochiladi.</p>
           <div class="settings-row">
             <input class="field" id="codeSearchInput" type="search" placeholder="O‘quvchi yoki guruhni qidirish…">
             <select class="field" id="codeSubjectFilter"><option value="">Barcha fanlar</option>${state.settingsSubjects.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select>
@@ -2371,11 +2371,32 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
           <code>${esc(s.code)}</code><button type="button" class="chip-btn" data-copy-code="${esc(s.code)}">Nusxa</button>
         </div>
         <div class="settings-row">
+          <input class="field" type="text" inputmode="numeric" maxlength="15" data-student-telegram="${s.id}" value="${esc(s.telegram_id||"")}" placeholder="Telegram ID (masalan: 123456789)">
+          <button type="button" class="chip-btn primary" data-save-telegram="${s.id}">ID ni bog‘lash</button>
+        </div>
+        <div class="settings-row">
           ${state.features.has("payments") ? `<input class="field" type="number" min="0" step="1000" data-student-payment="${s.id}" value="${Number(s.payment_amount||0)}" placeholder="Oylik to‘lov (so‘m)">` : ""}
           <input class="field" type="text" maxlength="500" data-student-note="${s.id}" value="${esc(s.teacher_note||"")}" placeholder="O‘qituvchi izohi">
           <button type="button" class="chip-btn primary" data-save-student="${s.id}">Saqlash</button>
         </div>
       </div>`).join("");
+    host.querySelectorAll("[data-save-telegram]").forEach(b => b.addEventListener("click", async () => {
+      const card=b.closest(".card"), sid=Number(b.dataset.saveTelegram);
+      const field=card.querySelector("[data-student-telegram]");
+      const telegramId=field.value.trim();
+      b.disabled=true;b.textContent="Saqlanmoqda…";
+      try {
+        const result=await api("/api/teacher/student-telegram-link",{method:"POST",body:JSON.stringify({student_id:sid,telegram_id:telegramId})});
+        field.value=result.telegram_id||"";
+        toast(telegramId ? "Telegram ID saqlandi. O‘quvchi /start bosganda kabineti ochiladi." : "Telegram ID bog‘lanishi uzildi.");
+        b.textContent=telegramId ? "Bog‘landi ✓" : "ID ni bog‘lash";
+      } catch(err) {
+        const code=err.data?.error;
+        const messages={bad_telegram_id:"Telegram ID faqat raqamlardan iborat bo‘lishi kerak.",telegram_id_in_use:"Bu Telegram ID boshqa o‘quvchiga biriktirilgan.",student_has_telegram:"Bu o‘quvchiga boshqa Telegram ID biriktirilgan."};
+        toast(messages[code]||errText(err));
+        b.disabled=false;b.textContent="ID ni bog‘lash";
+      }
+    }));
     host.querySelectorAll("[data-save-student]").forEach(b => b.addEventListener("click", async () => {
       const card=b.closest(".card"), sid=Number(b.dataset.saveStudent);
       const amount=card.querySelector("[data-student-payment]")?.value ?? "0";
