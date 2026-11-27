@@ -6277,6 +6277,10 @@ def miniapp_identity(request):
     # Bot havolasida rol aniq berilgan bo'lsa, boshqa rollar bazasini tekshirmaymiz.
     if requested_role == "teacher":
         t = teacher_by_chat(uid)
+        # Tasdiqlash kutilayotgan o‘qituvchini 403 xato sahifasiga yubormaymiz.
+        # Entry oynasi pending holatini ko‘rsatadi va adminlarga qayta so‘rov yuborish imkonini beradi.
+        if t and t["active"] and (t["verify_status"] != "approved" or not t.get("admin_approved")):
+            return "entry", uid, None
         if t and t["active"] and t["verify_status"] == "approved" and t.get("admin_approved") and (is_super(uid) or has_feature(t, "mini_app")):
             if is_super(uid):
                 t["_super_admin_access"] = True
