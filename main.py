@@ -2661,11 +2661,13 @@ async def t_reg_contact(message: types.Message, state: FSMContext):
             )
         )
         return
-    data = await state.get_data()
-    data["phone"] = "+" + _digits(c.phone_number)
-    if not is_valid_phone(data["phone"]):
+    phone = "+" + _digits(c.phone_number)
+    if not is_valid_phone(phone):
         await message.answer("❌ Telefon raqami noto‘g‘ri. Iltimos, qayta yuboring.")
         return
+    # FSMContext.get_data() nusxa qaytaradi; raqamni update_data orqali
+    # saqlamasak _finish_phone ichida phone maydoni yo‘qolib qoladi.
+    await state.update_data(phone=phone)
     await _finish_phone(message, state)
 
 
