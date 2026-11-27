@@ -1027,25 +1027,28 @@ def create_teacher(chat_id, data, status, doc_file_id=None):
 
 
 async def notify_super_admins_registration(t):
-    """Telefon orqali ro‘yxatdan o‘tgan yangi o‘qituvchi haqida barcha adminlarga xabar."""
+    """Yangi o‘qituvchi tasdiqlash so‘rovini barcha Super Adminlarga yuboradi."""
     if not bot or not t:
-        return
-    text = with_message_emoji((
+        return 0
+    text = (
         "🆕 YANGI O‘QITUVCHI TASDIQLASHI\n\n"
         f"👤 Ism: {md(teacher_name(t))}\n"
         f"📞 Telefon: {md(t.get('phone') or '—')}\n"
         f"🆔 ID: {t['id']}\n"
         "🪪 Holat: Tasdiqlash kutilmoqda"
-    ), "teacher_registration")
+    )
     markup = kb([[btn("✅ Tasdiqlash", f"sa_vapp_{t['id']}"),
                   btn("❌ Rad etish", f"sa_vrej_{t['id']}")]])
     admin_ids = {int(OWNER_TELEGRAM_ID)}
     admin_ids.update(int(cid) for (cid,) in (run("SELECT chat_id FROM super_admins", fetch="all") or []) if cid)
+    sent = 0
     for cid in admin_ids:
         try:
             await bot.send_message(cid, with_message_emoji(text, "teacher_registration"), reply_markup=markup, parse_mode="Markdown")
+            sent += 1
         except Exception:
             logging.exception("O‘qituvchi tasdiqlash xabari yuborilmadi: admin_id=%s", cid)
+    return sent
 
 
 async def notify_super_admins_doc(t, file_id):
@@ -2703,13 +2706,15 @@ async def miniapp_teacher_contact(message: types.Message):
         # verify_mode() hozir telefon orqali tasdiqlashni yetarli deb belgilaydi.
         # Shu sabab yangi hisob darhol faol bo'ladi; aks holda foydalanuvchi
         # kodni olsa ham admin_pending holatida kabinetga kira olmay qoladi.
-        teacher, code = create_teacher(uid, data, "approved")
+        teacher, code = create_teacher(uid, data, "admin_pending")
         db_set_setting(key, "")
-        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; account activated")
+        audit(uid, "miniapp_teacher_register", str(teacher["id"]), "Telegram self-contact confirmed; awaiting Super Admin approval")
+        sent = await notify_super_admins_registration(teacher)
+        logging.info("Teacher approval request created: teacher_id=%s admin_notifications=%s", teacher["id"], sent)
         await message.answer(
-            with_message_emoji(f"✅ Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz faollashtirildi.\n"
+            with_message_emoji(f"✅ Telefon raqamingiz tasdiqlandi.\n"
             f"🔑 6 xonali kirish kodingiz: {code}\n"
-            "Kodni saqlang. Endi NEURON ilovasida shu kod bilan boshqa qurilmadan ham kirishingiz mumkin.", "teacher_registration")
+            "⏳ So‘rovingiz Super Admin tasdig‘iga yuborildi. Tasdiqlangach, kabinet ochiladi.", "teacher_registration")
         )
     except Exception:
         logging.exception("Mini App teacher registration failed")
@@ -2720,8 +2725,10 @@ async def _finish_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
     # Telefon raqami Telegram contact orqali tasdiqlandi — hisob darhol faollashadi.
-    t, code = create_teacher(message.chat.id, data, "approved")
-    await message.answer("✅ Telefon raqamingiz tasdiqlandi. O‘qituvchi hisobingiz faollashtirildi.",
+    t, code = create_teacher(message.chat.id, data, "admin_pending")
+    sent = await notify_super_admins_registration(t)
+    logging.info("Legacy teacher approval request created: teacher_id=%s admin_notifications=%s", t["id"], sent)
+    await message.answer("✅ Telefon raqamingiz tasdiqlandi. So‘rovingiz Super Admin tasdig‘iga yuborildi.",
                          reply_markup=ReplyKeyboardRemove())
     await _send_code(message, t, code)
 
@@ -7697,6 +7704,26 @@ async def api_onboard_teacher_register(request):
     return web.json_response({"ok": True, "contact_required": True})
 
 
+async def api_onboard_teacher_resend_approval(request):
+    """Mavjud pending o‘qituvchi hisobining tasdiqlash xabarini adminlarga qayta yuboradi."""
+    uid, err = miniapp_entry_uid(request)
+    if err:
+        return err
+    teacher = teacher_by_chat(uid)
+    if not teacher:
+        return web.json_response({"error": "teacher_not_found"}, status=404)
+    if teacher.get("admin_approved") and teacher.get("verify_status") == "approved":
+        return web.json_response({"ok": True, "already_approved": True})
+    if teacher.get("verify_status") not in {"approved", "admin_pending", "doc_pending"}:
+        return web.json_response({"error": "not_pending"}, status=409)
+    sent = await notify_super_admins_registration(teacher)
+    if sent < 1:
+        return web.json_response({"error": "admin_notification_failed",
+                                  "message": "Adminlarga xabar yuborilmadi. Bot va Super Admin chatini tekshiring."}, status=503)
+    audit(uid, "teacher_approval_resent", str(teacher["id"]), f"admin_notifications={sent}")
+    return web.json_response({"ok": True, "sent": sent})
+
+
 async def api_onboard_teacher_login(request):
     uid, err = miniapp_entry_uid(request)
     if err: return err
@@ -9761,6 +9788,7 @@ async def start_web_server():
     app.router.add_post("/api/onboard/student", api_onboard_student)
     app.router.add_post("/api/onboard/parent", api_onboard_parent)
     app.router.add_post("/api/onboard/teacher/register", api_onboard_teacher_register)
+    app.router.add_post("/api/onboard/teacher/resend-approval", api_onboard_teacher_resend_approval)
     app.router.add_post("/api/onboard/teacher/login", api_onboard_teacher_login)
     app.router.add_get("/api/teacher/requests", api_teacher_requests)
     app.router.add_post("/api/teacher/unlink-account", api_teacher_unlink_account)
