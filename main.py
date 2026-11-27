@@ -1491,6 +1491,7 @@ class TeacherStates(StatesGroup):
     stu_name = State()
     stu_group = State()
     stu_telegram_id = State()
+    stu_telegram_id_new = State()
     custom_score = State()
     custom_pay = State()
     note_text = State()
@@ -2970,27 +2971,72 @@ async def tp_stu_name(message: types.Message, state: FSMContext):
         return
     await state.update_data(new_fio=fio)
     await state.set_state(TeacherStates.stu_group)
-    await send_and_clean_both(message, "🏫 **O'quvchi qaysi guruh/sinfga tegishli?**\n\n_Masalan: 10-A_", delay=60)
-
-
-@dp.message(TeacherStates.stu_group, F.chat.type == "private")
+    await send_and_clean_both(message, "🏫 **O'quvchi qaysi guruh/sinfga tegishli?**@dp.message(TeacherStates.stu_group, F.chat.type == "private")
 async def tp_stu_group(message: types.Message, state: FSMContext):
     group = (message.text or "").strip() or "Guruhsiz"
+    if len(group) > 60:
+        await send_and_clean_both(message, "❌ Guruh nomi 60 belgidan oshmasin. Qayta kiriting:", delay=20)
+        return
+    await state.update_data(new_group=group)
+    await state.set_state(TeacherStates.stu_telegram_id_new)
+    await send_and_clean_both(
+        message,
+        "🔗 **O'quvchining Telegram ID raqamini kiriting.**\n\n"
+        "Agar hozircha ID bo'lmasa, `0` yuborib o'tkazib yuboring. "
+        "Keyin o'quvchi profilidan ham biriktirish mumkin.",
+        delay=60
+    )
+
+
+@dp.message(TeacherStates.stu_telegram_id_new, F.chat.type == "private")
+async def tp_stu_telegram_id_new(message: types.Message, state: FSMContext):
+    raw = (message.text or "").strip()
+    skip_values = {"0", "-", "skip", "yo'q", "yoq", "o'tkazib yuborish", "otkazib yuborish"}
+    chat_id = None
+    if raw.lower() not in skip_values:
+        if not raw.isdigit() or len(raw) < 5 or len(raw) > 15:
+            await send_and_clean_both(message, "❌ Telegram ID 5–15 xonali raqam bo'lishi kerak. ID bo'lmasa, 0 yuboring:", delay=30)
+            return
+        chat_id = int(raw)
+        existing = run("SELECT student_id FROM student_links WHERE chat_id=?", (chat_id,), fetch="one")
+        if existing:
+            await send_and_clean_both(message, "⛔ Bu Telegram ID allaqachon boshqa o'quvchiga biriktirilgan. To'g'ri ID yuboring yoki 0 bilan o'tkazib yuboring:", delay=45)
+            return
+
     data = await state.get_data()
-    await state.clear()
     t = _me(message)
     if not t:
+        await state.clear()
         return
     sid = data.get("stadd_subject")
     if not owned_subject(t, sid):
+        await state.clear()
         await send_and_clean_both(message, "❌ Fan topilmadi.", delay=20)
         return
     if teacher_limit_reached(t):
+        await state.clear()
         await send_and_clean_both(message, "⛔ Limit to'ldi. Tarifni oshiring.", delay=30)
         return
-    code = db_add_student(t["id"], sid, data["new_fio"], group)
-    audit(message.chat.id, "student_add", str(sid), data["new_fio"])
-    await send_and_clean_both(message, f"✅ **{md(data['new_fio'])}** ({md(group)}) qo'shildi!\n🔑 O'quvchi kodi: `{code}`", delay=90)
+
+    fio = data.get("new_fio", "").strip()
+    group = data.get("new_group", "Guruhsiz")
+    code = db_add_student(t["id"], sid, fio, group)
+    student = run("SELECT id FROM students WHERE code=?", (code,), fetch="one")
+    student_id = int(student[0]) if student else None
+    if chat_id and student_id:
+        run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?)", (chat_id, student_id))
+        audit(message.from_user.id, "student_telegram_link", str(student_id), str(chat_id))
+    await state.clear()
+    audit(message.from_user.id, "student_add", str(sid), fio)
+    link_note = (
+        f"\n🔗 Telegram ID: `{chat_id}` biriktirildi. O'quvchi botda /start bossa, kabineti ochiladi."
+        if chat_id else "\n🔗 Telegram ID hozircha biriktirilmadi. Keyin o'quvchi profilidan biriktirishingiz mumkin."
+    )
+    await send_and_clean_both(
+        message,
+        f"✅ **{md(fio)}** ({md(group)}) qo'shildi!\n🔑 O'quvchi kodi: `{code}`{link_note}",
+        delay=90
+    )
     await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
