@@ -1491,7 +1491,6 @@ class TeacherStates(StatesGroup):
     stu_name = State()
     stu_group = State()
     stu_telegram_id = State()
-    stu_telegram_id_new = State()
     custom_score = State()
     custom_pay = State()
     note_text = State()
@@ -1669,7 +1668,8 @@ def teacher_panel_kb(t=None):
 
 
 def subject_menu_kb(sid, t=None):
-    rows = [[btn("➕ O'quvchi qo'shish", f"tp_stadd_{sid}"), btn("👥 O'quvchilar", f"tp_list_stu_{sid}")]]
+    rows = [[btn("➕ O'quvchi qo'shish", f"tp_stadd_{sid}"), btn("👥 O'quvchilar", f"tp_list_stu_{sid}")],
+            [btn("🔗 Telegram ID biriktirish", f"tp_list_link_{sid}")]]
     if t is None or has_feature(t, "scores"):
         rows.append([btn("📝 Ballar", f"tp_list_sc_{sid}")])
     if t is None or has_feature(t, "attendance"):
@@ -2977,69 +2977,21 @@ async def tp_stu_name(message: types.Message, state: FSMContext):
 @dp.message(TeacherStates.stu_group, F.chat.type == "private")
 async def tp_stu_group(message: types.Message, state: FSMContext):
     group = (message.text or "").strip() or "Guruhsiz"
-    if len(group) > 60:
-        await send_and_clean_both(message, "❌ Guruh nomi 60 belgidan oshmasin. Qayta kiriting:", delay=20)
-        return
-    await state.update_data(new_group=group)
-    await state.set_state(TeacherStates.stu_telegram_id_new)
-    await send_and_clean_both(
-        message,
-        "🔗 **O'quvchining Telegram ID raqamini kiriting.**\n\n"
-        "Agar hozircha ID bo'lmasa, `0` yuborib o'tkazib yuboring. "
-        "Keyin o'quvchi profilidan ham biriktirish mumkin.",
-        delay=60
-    )
-
-
-@dp.message(TeacherStates.stu_telegram_id_new, F.chat.type == "private")
-async def tp_stu_telegram_id_new(message: types.Message, state: FSMContext):
-    raw = (message.text or "").strip()
-    skip_values = {"0", "-", "skip", "yo'q", "yoq", "o'tkazib yuborish", "otkazib yuborish"}
-    chat_id = None
-    if raw.lower() not in skip_values:
-        if not raw.isdigit() or len(raw) < 5 or len(raw) > 15:
-            await send_and_clean_both(message, "❌ Telegram ID 5–15 xonali raqam bo'lishi kerak. ID bo'lmasa, 0 yuboring:", delay=30)
-            return
-        chat_id = int(raw)
-        existing = run("SELECT student_id FROM student_links WHERE chat_id=?", (chat_id,), fetch="one")
-        if existing:
-            await send_and_clean_both(message, "⛔ Bu Telegram ID allaqachon boshqa o'quvchiga biriktirilgan. To'g'ri ID yuboring yoki 0 bilan o'tkazib yuboring:", delay=45)
-            return
-
     data = await state.get_data()
+    await state.clear()
     t = _me(message)
     if not t:
-        await state.clear()
         return
     sid = data.get("stadd_subject")
     if not owned_subject(t, sid):
-        await state.clear()
         await send_and_clean_both(message, "❌ Fan topilmadi.", delay=20)
         return
     if teacher_limit_reached(t):
-        await state.clear()
         await send_and_clean_both(message, "⛔ Limit to'ldi. Tarifni oshiring.", delay=30)
         return
-
-    fio = data.get("new_fio", "").strip()
-    group = data.get("new_group", "Guruhsiz")
-    code = db_add_student(t["id"], sid, fio, group)
-    student = run("SELECT id FROM students WHERE teacher_id=? AND subject_id=? AND fio=? AND group_name=? ORDER BY id DESC LIMIT 1", (t["id"], sid, fio, group), fetch="one")
-    student_id = int(student[0]) if student else None
-    if chat_id and student_id:
-        run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?)", (chat_id, student_id))
-        audit(message.from_user.id, "student_telegram_link", str(student_id), str(chat_id))
-    await state.clear()
-    audit(message.from_user.id, "student_add", str(sid), fio)
-    link_note = (
-        f"\n🔗 Telegram ID: `{chat_id}` biriktirildi. O'quvchi botda /start bossa, kabineti ochiladi."
-        if chat_id else "\n🔗 Telegram ID hozircha biriktirilmadi. Keyin o'quvchi profilidan biriktirishingiz mumkin."
-    )
-    await send_and_clean_both(
-        message,
-        f"✅ **{md(fio)}** ({md(group)}) qo'shildi!\n🔑 O'quvchi kodi: `{code}`{link_note}",
-        delay=90
-    )
+    code = db_add_student(t["id"], sid, data["new_fio"], group)
+    audit(message.chat.id, "student_add", str(sid), data["new_fio"])
+    await send_and_clean_both(message, f"✅ **{md(data['new_fio'])}** ({md(group)}) qo'shildi!\n🔑 O'quvchi kodi: `{code}`", delay=90)
     await send_auto_clean_message(message.chat.id, teacher_panel_text(t), reply_markup=teacher_panel_kb(t), delay=300)
 
 
@@ -3052,7 +3004,7 @@ async def tp_list(call: types.CallbackQuery):
     subj = owned_subject(t, sid)
     if not subj:
         return
-    titles = {"stu": "👥 O'quvchilar", "sc": "📝 Ballar: o'quvchini tanlang", "att": "📌 Davomat: o'quvchini tanlang",
+    titles = {"stu": "👥 O'quvchilar", "link": "🔗 Telegram ID biriktirish — o'quvchini tanlang", "sc": "📝 Ballar: o'quvchini tanlang", "att": "📌 Davomat: o'quvchini tanlang",
               "pay": "💳 To'lovlar: o'quvchini tanlang", "nt": "💬 Izoh yozish: o'quvchini tanlang"}
     students = db_students(t["id"], sid)
     back = f"tp_sub_{sid}"
@@ -3063,12 +3015,13 @@ async def tp_list(call: types.CallbackQuery):
         return
     icons = {
         "stu": lambda s: "👤",
+        "link": lambda s: "🔗",
         "sc": lambda s: "🟢" if s["last_score_date"] == local_now().strftime("%d.%m.%Y") else "🟡",
         "att": lambda s: "✅" if s["davomat"] == "Keldi" else ("❌" if s["davomat"] == "Kelmadi" else "🟡"),
         "pay": lambda s: "✅" if s["payment_status"] == PAID else "❌",
         "nt": lambda s: "💬",
     }
-    prefix = {"stu": "tp_stu_", "sc": "tp_sc_", "att": "tp_att_", "pay": "tp_pay_", "nt": "tp_nt_"}[act]
+    prefix = {"stu": "tp_stu_", "link": "tp_stulink_", "sc": "tp_sc_", "att": "tp_att_", "pay": "tp_pay_", "nt": "tp_nt_"}[act]
     await call.message.edit_text(f"{titles[act]} — **{md(subj['name'])}**",
                                  reply_markup=student_grid(students, prefix, back, icon=icons[act], name_limit=18), parse_mode="Markdown")
 
