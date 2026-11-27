@@ -5981,7 +5981,7 @@ async def miniapp_page(request):
                 text=f.read(),
                 content_type="text/html",
                 charset="utf-8",
-                headers={"Cache-Control": "public, max-age=300, stale-while-revalidate=60"}
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"}
             )
             # Telegram WebView uchun katta HTML faylini siqib yuboramiz.
             response.enable_compression()
