@@ -7075,11 +7075,9 @@ async def api_teacher_student_telegram_link(request):
     current = run("SELECT student_id FROM student_links WHERE chat_id=?", (uid,), fetch="one")
     if current and int(current[0]) != sid:
         return web.json_response({"error": "telegram_id_in_use"}, status=409)
-    other = run("SELECT chat_id FROM student_links WHERE student_id=? AND chat_id<>? LIMIT 1",
-                (sid, uid), fetch="one")
-    if other:
-        return web.json_response({"error": "student_has_telegram"}, status=409)
-
+    # O‘qituvchi shu o‘quvchining eski ID sini yangisiga almashtirishi mumkin.
+    # Boshqa o‘quvchiga tegishli ID yuqoridagi tekshiruvda rad etiladi.
+    run("DELETE FROM student_links WHERE student_id=? AND chat_id<>?", (sid, uid))
     run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id",
         (uid, sid))
     audit(t["chat_id"], "miniapp_student_telegram_link", str(sid), f"{st['fio']}; telegram_id={uid}")
