@@ -2762,9 +2762,11 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
     }
     try {
       let me = await api("/api/me");
-      // Telegram bot har safar role=entry havolasini ochadi. Oldin tanlangan va
-      // hozir ham ruxsat etilgan rolni avtomatik tiklaymiz.
-      if (me.role === "entry") {
+      // role=entry aniq so‘ralgan bo‘lsa, eski localStorage/server last_role
+      // foydalanuvchini avtomatik kabinetga kiritmasin. Har doim rol tanlash oynasi ochilsin.
+      const explicitEntryRequest = new URLSearchParams(location.search).get("role") === "entry";
+      // Boshqa eski havolalarda foydalanuvchining oxirgi ruxsatli rolini tiklash mumkin.
+      if (me.role === "entry" && !explicitEntryRequest) {
         let savedRole = "";
         let forceRolePicker = false;
         try {
