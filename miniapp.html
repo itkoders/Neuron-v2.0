@@ -2765,9 +2765,14 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
       // role=entry aniq so‘ralgan bo‘lsa, eski localStorage/server last_role
       // foydalanuvchini avtomatik kabinetga kiritmasin. Har doim rol tanlash oynasi ochilsin.
       const explicitEntryRequest = new URLSearchParams(location.search).get("role") === "entry";
-      // Aniq entry havolasi serverda eski last_role sabab student/parent deb
-      // aniqlansa ham, bu sahifada kabinet APIlarini chaqirmaymiz.
-      if (explicitEntryRequest) me.role = "entry";
+      // Entry havolasi kirish oynasini majburiy ko'rsatadi. Bu tarmoqdagi
+      // eski rol, localStorage yoki takroriy init sabab kabinet API chaqirilishiga yo'l qo'ymaydi.
+      if (explicitEntryRequest) {
+        me.role = "entry";
+        state.role = "entry";
+        initEntry(me);
+        return;
+      }
       // Boshqa eski havolalarda foydalanuvchining oxirgi ruxsatli rolini tiklash mumkin.
       if (me.role === "entry" && !explicitEntryRequest) {
         let savedRole = "";
