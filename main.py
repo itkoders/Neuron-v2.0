@@ -6939,10 +6939,11 @@ async def api_teacher_settings(request):
     rows, subjects, payment = await asyncio.gather(
         asyncio.to_thread(run,
             "SELECT s.id, s.fio, s.group_name, COALESCE(i.code, s.code), s.subject_id, sub.name, "
-            "s.payment_amount, s.teacher_note, s.phone "
+            "s.payment_amount, s.teacher_note, s.phone, sl.chat_id "
             "FROM students s JOIN subjects sub ON sub.id = s.subject_id "
             "LEFT JOIN student_identity_members m ON m.student_id = s.id "
             "LEFT JOIN student_identities i ON i.id = m.identity_id "
+            "LEFT JOIN student_links sl ON sl.student_id = s.id "
             "WHERE s.teacher_id = ? ORDER BY sub.name, s.group_name, s.fio",
             (t["id"],), fetch="all"),
         asyncio.to_thread(db_subjects, t["id"]),
@@ -6957,7 +6958,7 @@ async def api_teacher_settings(request):
         "students": [{"id": r[0], "fio": r[1], "group_name": r[2] or "Guruhsiz",
                       "code": r[3], "subject_id": r[4], "subject_name": r[5],
                       "payment_amount": (r[6] or 0) if payments_enabled else 0, "teacher_note": r[7] or "",
-                      "phone": r[8] or ""} for r in rows]
+                      "phone": r[8] or "", "telegram_id": str(r[9] or "")} for r in rows]
     })
 
 
@@ -7040,6 +7041,49 @@ async def api_teacher_phone_save(request):
     run("UPDATE teachers SET phone=? WHERE id=?", (phone or None, t["id"]))
     audit(t["chat_id"], "miniapp_teacher_phone_save", str(t["id"]), phone or "phone_cleared")
     return web.json_response({"ok": True, "phone": phone})
+
+
+async def api_teacher_student_telegram_link(request):
+    t, err = miniapp_teacher(request)
+    if err:
+        return err
+    body = await _read_json(request)
+    try:
+        sid = int(body.get("student_id"))
+    except (TypeError, ValueError, AttributeError):
+        return web.json_response({"error": "bad_student"}, status=400)
+    st = owned_student(t, sid)
+    if not st:
+        return web.json_response({"error": "not_found"}, status=404)
+
+    raw_uid = str(body.get("telegram_id", "")).strip()
+    if not raw_uid:
+        # Faqat aynan shu o‘qituvchi boshqaradigan o‘quvchining bog‘lanishini yechamiz.
+        run("DELETE FROM student_links WHERE student_id=? AND EXISTS (SELECT 1 FROM students WHERE id=? AND teacher_id=?)",
+            (sid, sid, t["id"]))
+        audit(t["chat_id"], "miniapp_student_telegram_unlink", str(sid), st["fio"])
+        return web.json_response({"ok": True, "telegram_id": ""})
+    if not re.fullmatch(r"[1-9][0-9]{4,14}", raw_uid):
+        return web.json_response({"error": "bad_telegram_id"}, status=400)
+    try:
+        uid = int(raw_uid)
+    except ValueError:
+        return web.json_response({"error": "bad_telegram_id"}, status=400)
+    if uid > 9223372036854775807:
+        return web.json_response({"error": "bad_telegram_id"}, status=400)
+
+    current = run("SELECT student_id FROM student_links WHERE chat_id=?", (uid,), fetch="one")
+    if current and int(current[0]) != sid:
+        return web.json_response({"error": "telegram_id_in_use"}, status=409)
+    other = run("SELECT chat_id FROM student_links WHERE student_id=? AND chat_id<>? LIMIT 1",
+                (sid, uid), fetch="one")
+    if other:
+        return web.json_response({"error": "student_has_telegram"}, status=409)
+
+    run("INSERT INTO student_links (chat_id, student_id) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET student_id=excluded.student_id",
+        (uid, sid))
+    audit(t["chat_id"], "miniapp_student_telegram_link", str(sid), f"{st['fio']}; telegram_id={uid}")
+    return web.json_response({"ok": True, "telegram_id": str(uid), "pending_start": True})
 
 
 async def api_teacher_student_settings(request):
@@ -9805,6 +9849,7 @@ async def start_web_server():
     app.router.add_get("/api/settings", api_teacher_settings)
     app.router.add_get("/api/teacher/access-log", api_teacher_access_log)
     app.router.add_post("/api/settings/phone", api_teacher_phone_save)
+    app.router.add_post("/api/teacher/student-telegram-link", api_teacher_student_telegram_link)
     app.router.add_post("/api/settings/student", api_teacher_student_settings)
     app.router.add_post("/api/settings/channel", api_teacher_channel_save)
     app.router.add_get("/api/settings/payment", api_teacher_payment_settings)
