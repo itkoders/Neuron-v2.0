@@ -2970,6 +2970,8 @@ body.android-login-mode>.help-wrap,body.android-login-mode>#socialOverlay{displa
     await init();
   }
   function bindEntryForms() {
+    const host = $("entryForm");
+    if (!host) return;
     const openParent = $("openParentCabinet");
     if (openParent) openParent.onclick = () => enterRole("parent");
     const openStudent = $("openStudentCabinet");
