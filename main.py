@@ -1692,14 +1692,15 @@ def subject_menu_kb(sid, t=None):
 
 
 def main_menu_kb(user_id=None):
-    # Mini App va tarif tugmalari Telegram menyusida birga ko'rinadi.
+    # Telegram chatida ro'yxatdan o'tish va kabinetga kirish ham mavjud.
     if MINIAPP_URL:
         rows = [[InlineKeyboardButton(
             text="📱 Ilovani ochish",
             web_app=WebAppInfo(url=miniapp_role_url("entry"))
         )]]
     else:
-        rows = [[btn("📱 Ilovani ochish", "back_home")]]
+        rows = []
+    rows.append([btn("👨‍🏫 O‘qituvchi: ro‘yxatdan o‘tish / kirish", "t_reg")])
     rows.append([btn("💎 Tariflar", "public_plans")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -2590,8 +2591,14 @@ async def t_reg_start(call: types.CallbackQuery, state: FSMContext):
         await call.message.edit_text(teacher_panel_text(t), reply_markup=teacher_panel_kb(t), parse_mode="Markdown")
         return
     await state.set_state(TeacherStates.reg_first)
-    await call.message.edit_text("🆕 **O'qituvchi sifatida ro'yxatdan o'tish**\n\n👤 Ismingizni kiriting:",
-                                 reply_markup=kb([[btn("❌ Bekor qilish", "back_home")]]), parse_mode="Markdown")
+    await call.message.edit_text(
+        "🆕 **NEURON — O‘QITUVCHI RO‘YXATI**\n\n"
+        "Uchta oddiy qadamda hisob yarating:\n"
+        "1️⃣ Ism\n2️⃣ Familiya\n3️⃣ Telegram orqali telefonni tasdiqlash\n\n"
+        "Boshlash uchun ismingizni yozing.\n"
+        "🔒 Telefon raqamingiz faqat hisobni tasdiqlash uchun olinadi.",
+        reply_markup=kb([[btn("❌ Bekor qilish", "back_home")]]), parse_mode="Markdown"
+    )
 
 
 @dp.message(TeacherStates.reg_first, F.chat.type == "private")
@@ -2612,43 +2619,70 @@ async def t_reg_last(message: types.Message, state: FSMContext):
         await send_and_clean_both(message, "❌ Familiya 2–40 belgi bo'lsin, raqamsiz. Qaytadan kiriting:", delay=20)
         return
     await state.update_data(last_name=last)
-    await state.set_state(TeacherStates.reg_phone)
-    await send_and_clean_both(message, "📞 Telefon raqamingizni kiriting:\n\n_Masalan: +998901234567_", delay=120)
-
-
-@dp.message(TeacherStates.reg_phone, F.chat.type == "private")
-async def t_reg_phone(message: types.Message, state: FSMContext):
-    phone = (message.text or "").strip()
-    if not is_valid_phone(phone):
-        await send_and_clean_both(message, "❌ Telefon noto'g'ri. Masalan: +998901234567", delay=20)
-        return
-    await state.clear()
+    await state.set_state(TeacherStates.reg_contact)
+    contact_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Telefon raqamimni tasdiqlash", request_contact=True)],
+            [KeyboardButton(text="❌ Bekor qilish")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
     await message.answer(
-        "📱 Telefonni tasdiqlash va ro‘yxatdan o‘tish NEYRON ilovasida amalga oshiriladi.",
-        reply_markup=main_menu_kb(message.from_user.id)
+        "📞 **Endi telefon raqamingizni tasdiqlang**\n\n"
+        "Quyidagi **Telefon raqamimni tasdiqlash** tugmasini bosing. "
+        "Telegram sizning raqamingizni xavfsiz tarzda yuboradi.",
+        reply_markup=contact_keyboard,
+        parse_mode="Markdown"
     )
 
 
-@dp.message(TeacherStates.reg_contact, F.contact)
+@dp.message(TeacherStates.reg_phone, F.chat.type == "private")
+async def t_reg_phone_legacy(message: types.Message, state: FSMContext):
+    await state.set_state(TeacherStates.reg_contact)
+    contact_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamimni tasdiqlash", request_contact=True)],
+                  [KeyboardButton(text="❌ Bekor qilish")]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
+    await message.answer("Telefonni tasdiqlash uchun quyidagi tugmani bosing:", reply_markup=contact_keyboard)
+
+
+@dp.message(TeacherStates.reg_contact, F.contact, F.chat.type == "private")
 async def t_reg_contact(message: types.Message, state: FSMContext):
-    data = await state.get_data()
     c = message.contact
-    if c.user_id != message.from_user.id:
-        await state.clear()
-        await message.answer("❌ Faqat o'zingizning kontaktingizni yuboring. /start bilan qayta boshlang.",
-                             reply_markup=ReplyKeyboardRemove())
+    if not c.user_id or c.user_id != message.from_user.id:
+        await message.answer(
+            "❌ Iltimos, faqat o‘zingizning raqamingizni pastdagi tugma orqali yuboring.",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text="📱 Telefon raqamimni tasdiqlash", request_contact=True)],
+                          [KeyboardButton(text="❌ Bekor qilish")]],
+                resize_keyboard=True, one_time_keyboard=True
+            )
+        )
         return
-    if _digits(c.phone_number) != _digits(data.get("phone")):
-        await state.clear()
-        await message.answer("❌ Yuborilgan raqam kiritilgan raqamga mos kelmadi. /start bilan qayta boshlang.",
-                             reply_markup=ReplyKeyboardRemove())
+    data = await state.get_data()
+    data["phone"] = "+" + _digits(c.phone_number)
+    if not is_valid_phone(data["phone"]):
+        await message.answer("❌ Telefon raqami noto‘g‘ri. Iltimos, qayta yuboring.")
         return
     await _finish_phone(message, state)
 
 
+@dp.message(TeacherStates.reg_contact, F.text == "❌ Bekor qilish", F.chat.type == "private")
+async def t_reg_cancel_reply(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Ro‘yxatdan o‘tish bekor qilindi.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("🏠 **NEURON bosh menyusi**", reply_markup=main_menu_kb(message.from_user.id),
+                         parse_mode="Markdown")
+
+
 @dp.message(TeacherStates.reg_contact, F.chat.type == "private")
 async def t_reg_contact_fallback(message: types.Message, state: FSMContext):
-    await message.answer("📱 Iltimos, \"Raqamni tasdiqlash\" tugmasidan foydalaning.")
+    await message.answer(
+        "📱 Davom etish uchun **Telefon raqamimni tasdiqlash** tugmasini bosing. "
+        "Bekor qilish uchun ❌ tugmasidan foydalaning.", parse_mode="Markdown"
+    )
 
 
 @dp.message(Command("sharecontact"), F.chat.type == "private")
@@ -2728,9 +2762,16 @@ async def _finish_phone(message: types.Message, state: FSMContext):
     t, code = create_teacher(message.chat.id, data, "admin_pending")
     sent = await notify_super_admins_registration(t)
     logging.info("Legacy teacher approval request created: teacher_id=%s admin_notifications=%s", t["id"], sent)
-    await message.answer("✅ Telefon raqamingiz tasdiqlandi. So‘rovingiz Super Admin tasdig‘iga yuborildi.",
-                         reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        "🎉 **Ro‘yxatdan o‘tish yakunlandi!**\n\n"
+        "📱 Telefon raqamingiz Telegram orqali tasdiqlandi.\n"
+        "📨 Hisobingiz Super Admin tekshiruviga yuborildi. "
+        "Tasdiqlangach, sizga shu chatda xabar beramiz.",
+        reply_markup=ReplyKeyboardRemove(), parse_mode="Markdown"
+    )
     await _send_code(message, t, code)
+    if sent < 1:
+        await message.answer("⚠️ Hisob yaratildi, lekin adminlarga xabar yetkazilmadi. Administratorga murojaat qiling.")
 
 
 async def _send_code(message, t, code):
