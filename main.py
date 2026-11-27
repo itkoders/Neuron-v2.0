@@ -7801,9 +7801,13 @@ async def api_onboard_teacher_resend_approval(request):
     uid, err = miniapp_entry_uid(request)
     if err:
         return err
-    teacher = teacher_by_chat(uid)
+    # Entry sahifasi /api/me bilan aynan bir xil qidiruvdan foydalanamiz:
+    # asosiy chat_id yoki teacher_access orqali ulangan akkaunt.
+    teacher, _student_link, _parent_pending, _admin_flag, _last_role = _entry_core_snapshot(uid)
     if not teacher:
-        return web.json_response({"error": "teacher_not_found"}, status=404)
+        logging.warning("Teacher resend: account not found for telegram_uid=%s", uid)
+        return web.json_response({"error": "teacher_account_not_found",
+                                  "message": "Bu Telegram akkauntiga o‘qituvchi hisobi topilmadi. Botdagi ro‘yxatdan o‘tgan akkaunt bilan Mini Appni oching."}, status=404)
     if teacher.get("admin_approved") and teacher.get("verify_status") == "approved":
         return web.json_response({"ok": True, "already_approved": True})
     if teacher.get("verify_status") not in {"approved", "admin_pending", "doc_pending"}:
