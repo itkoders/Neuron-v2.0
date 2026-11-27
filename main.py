@@ -2971,7 +2971,10 @@ async def tp_stu_name(message: types.Message, state: FSMContext):
         return
     await state.update_data(new_fio=fio)
     await state.set_state(TeacherStates.stu_group)
-    await send_and_clean_both(message, "🏫 **O'quvchi qaysi guruh/sinfga tegishli?**@dp.message(TeacherStates.stu_group, F.chat.type == "private")
+    await send_and_clean_both(message, "🏫 **O'quvchi qaysi guruh/sinfga tegishli?**\n\n_Masalan: 10-A_", delay=60)
+
+
+@dp.message(TeacherStates.stu_group, F.chat.type == "private")
 async def tp_stu_group(message: types.Message, state: FSMContext):
     group = (message.text or "").strip() or "Guruhsiz"
     if len(group) > 60:
